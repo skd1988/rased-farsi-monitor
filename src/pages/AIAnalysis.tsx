@@ -222,20 +222,42 @@ const AIAnalysis = () => {
       
       if (error) {
         console.error('❌ Edge function error:', error);
+        
+        // Handle specific error codes
+        if (error.message?.includes('MISSING_API_KEY')) {
+          toast({
+            title: "کلید API موجود نیست",
+            description: "لطفاً DEEPSEEK_API_KEY را در تنظیمات تنظیم کنید",
+            variant: "destructive"
+          });
+        } else if (error.message?.includes('RATE_LIMIT')) {
+          toast({
+            title: "محدودیت تعداد درخواست",
+            description: "لطفاً چند لحظه صبر کنید و دوباره تلاش کنید",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "خطا در تحلیل AI",
+            description: error.message || "مشکلی در ارتباط با سرویس تحلیل پیش آمد",
+            variant: "destructive"
+          });
+        }
+        
         throw error;
       }
       
-      console.log('✅ Edge function response:', data);
+      console.log('✅ Edge function response:', JSON.stringify(data).substring(0, 300));
       
       // Check if we got valid analysis data
       if (!data || !data.success || !data.analysis) {
-        console.error('❌ Invalid response structure:', data);
+        console.error('❌ Invalid response structure. Expected data.analysis but got:', data);
         throw new Error('Invalid response from edge function');
       }
       
       const processingTime = (Date.now() - startTime) / 1000;
       console.log(`✅ Analysis completed in ${processingTime.toFixed(2)}s`);
-      console.log(`   Threat: ${data.analysis.threat_level} | Sentiment: ${data.analysis.sentiment}`);
+      console.log(`📊 Results - Threat: ${data.analysis.threat_level} | Sentiment: ${data.analysis.sentiment} | Topic: ${data.analysis.main_topic}`);
       
       // Return analysis data formatted for database
       return {
@@ -253,12 +275,13 @@ const AIAnalysis = () => {
       };
       
     } catch (error) {
-      console.error('❌ AI analysis failed:', error);
+      console.error('💥 AI analysis failed:', error);
+      console.error('💥 Error details:', error instanceof Error ? error.message : 'Unknown error');
       console.warn('⚠️ Falling back to mock analysis');
       
       toast({
-        title: '⚠️ خطا در تحلیل AI',
-        description: 'استفاده از تحلیل آزمایشی',
+        title: '⚠️ استفاده از داده‌های آزمایشی',
+        description: 'تحلیل AI ناموفق بود. از تحلیل شبیه‌سازی شده استفاده می‌شود.',
         variant: 'destructive',
       });
       

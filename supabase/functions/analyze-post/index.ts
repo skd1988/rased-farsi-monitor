@@ -11,10 +11,14 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log('🚀 analyze-post function called');
+
   try {
     const { postId, postTitle, postContent } = await req.json();
+    console.log('📥 Request body:', { postId, postTitle: postTitle?.substring(0, 50) });
     
     if (!postId || !postContent) {
+      console.error('❌ Missing required fields:', { postId: !!postId, postContent: !!postContent });
       return new Response(
         JSON.stringify({ error: 'postId and postContent are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -23,9 +27,17 @@ serve(async (req) => {
 
     const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
     if (!deepseekApiKey) {
-      throw new Error('DEEPSEEK_API_KEY is not configured');
+      console.error('❌ DEEPSEEK_API_KEY is not configured');
+      return new Response(
+        JSON.stringify({ 
+          error: 'DEEPSEEK_API_KEY is not configured',
+          code: 'MISSING_API_KEY'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    console.log('✅ DEEPSEEK_API_KEY found');
     const startTime = Date.now();
 
     const prompt = `تو یک تحلیلگر رسانه‌ای حرفه‌ای هستی. این مطلب خبری رو تحلیل کن:
@@ -53,7 +65,7 @@ serve(async (req) => {
 - Threat Level Medium: محتوای معمولی با کلیدواژه‌های مرتبط
 - Threat Level Low: اشاره غیرمستقیم`;
 
-    console.log('Calling DeepSeek API...');
+    console.log('📞 Calling DeepSeek API...');
     
     const deepseekResponse = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
@@ -73,14 +85,26 @@ serve(async (req) => {
 
     if (!deepseekResponse.ok) {
       const errorText = await deepseekResponse.text();
-      console.error('DeepSeek API error:', errorText);
-      throw new Error(`DeepSeek API error: ${deepseekResponse.status}`);
+      console.error('❌ DeepSeek API error:', deepseekResponse.status, errorText);
+      
+      if (deepseekResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Rate limit exceeded. Please try again later.',
+            code: 'RATE_LIMIT'
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      throw new Error(`DeepSeek API error: ${deepseekResponse.status} - ${errorText}`);
     }
 
     const deepseekData = await deepseekResponse.json();
-    const responseContent = deepseekData.choices[0].message.content;
+    console.log('📦 DeepSeek response received:', JSON.stringify(deepseekData).substring(0, 200));
     
-    console.log('DeepSeek raw response:', responseContent);
+    const responseContent = deepseekData.choices[0].message.content;
+    console.log('📝 DeepSeek raw response:', responseContent);
     
     // Extract JSON from response (in case there's extra text)
     const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
@@ -88,8 +112,8 @@ serve(async (req) => {
     
     const processingTime = (Date.now() - startTime) / 1000;
 
-    console.log('Analysis completed successfully in', processingTime, 'seconds');
-    console.log('Threat level:', analysis.threat_level, '| Sentiment:', analysis.sentiment);
+    console.log('✅ Analysis completed successfully in', processingTime, 'seconds');
+    console.log('📊 Results - Threat:', analysis.threat_level, '| Sentiment:', analysis.sentiment);
 
     // Return analysis only - frontend will handle database update
     return new Response(
@@ -113,9 +137,14 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in analyze-post function:', error);
+    console.error('💥 Error in analyze-post function:', error);
+    console.error('💥 Error details:', error instanceof Error ? error.stack : 'Unknown error');
+    
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        code: 'ANALYSIS_ERROR'
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
