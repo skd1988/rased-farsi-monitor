@@ -3,6 +3,8 @@ import { Newspaper, FileText, AlertTriangle, Globe } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import PostsLineChart from '@/components/dashboard/PostsLineChart';
 import LanguagePieChart from '@/components/dashboard/LanguagePieChart';
+import SourceTypePieChart from '@/components/dashboard/SourceTypePieChart';
+import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import SourcesBarChart from '@/components/dashboard/SourcesBarChart';
 import PostsTable from '@/components/dashboard/PostsTable';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
@@ -126,6 +128,99 @@ const Dashboard = () => {
     }));
   }, [posts, totalPosts]);
   
+  // Helper functions for source classification
+  const classifySource = (source: string): 'social' | 'website' | 'unknown' => {
+    if (!source) return 'unknown';
+    
+    const sourceLower = source.toLowerCase();
+    
+    const socialMedia = [
+      'twitter', 'x.com', 'توییتر', 'تويتر',
+      'facebook', 'fb', 'فيسبوك', 'فیسبوک',
+      'instagram', 'insta', 'إنستغرام', 'اینستاگرام',
+      'youtube', 'يوتيوب', 'یوتیوب',
+      'tiktok', 'تيك توك', 'تیک‌تاک', 'تیک',
+      'telegram', 'تلغرام', 'تلگرام',
+      'linkedin', 'لينكد إن',
+      'snapchat', 'سناب شات',
+      'whatsapp', 'واتساب'
+    ];
+    
+    const isSocial = socialMedia.some(platform => sourceLower.includes(platform));
+    return isSocial ? 'social' : 'website';
+  };
+
+  const getSocialPlatform = (source: string): string => {
+    if (!source) return 'سایر';
+    const sourceLower = source.toLowerCase();
+    
+    if (sourceLower.includes('twitter') || sourceLower.includes('توییتر') || sourceLower.includes('تويتر') || sourceLower.includes('x.com')) {
+      return 'Twitter';
+    }
+    if (sourceLower.includes('facebook') || sourceLower.includes('فيسبوك') || sourceLower.includes('فیسبوک')) {
+      return 'Facebook';
+    }
+    if (sourceLower.includes('instagram') || sourceLower.includes('إنستغرام') || sourceLower.includes('اینستاگرام')) {
+      return 'Instagram';
+    }
+    if (sourceLower.includes('youtube') || sourceLower.includes('يوتيوب') || sourceLower.includes('یوتیوب')) {
+      return 'YouTube';
+    }
+    if (sourceLower.includes('tiktok') || sourceLower.includes('تيك توك') || sourceLower.includes('تیک')) {
+      return 'TikTok';
+    }
+    if (sourceLower.includes('telegram') || sourceLower.includes('تلغرام') || sourceLower.includes('تلگرام')) {
+      return 'Telegram';
+    }
+    if (sourceLower.includes('linkedin') || sourceLower.includes('لينكد')) {
+      return 'LinkedIn';
+    }
+    return 'سایر';
+  };
+
+  // Prepare source type pie chart data
+  const sourceTypeData = useMemo(() => {
+    const sourceTypes = posts.reduce((acc, post) => {
+      const type = classifySource(post.source);
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return [
+      { name: 'وب‌سایت‌ها', value: sourceTypes.website || 0, fill: '#3B82F6' },
+      { name: 'شبکه‌های اجتماعی', value: sourceTypes.social || 0, fill: '#10B981' }
+    ];
+  }, [posts]);
+
+  // Prepare social media breakdown pie chart data
+  const socialMediaData = useMemo(() => {
+    const socialOnly = posts.filter(p => classifySource(p.source) === 'social');
+    const platforms = socialOnly.reduce((acc, post) => {
+      const platform = getSocialPlatform(post.source);
+      if (platform) {
+        acc[platform] = (acc[platform] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const platformColors: Record<string, string> = {
+      'Twitter': '#1DA1F2',
+      'Facebook': '#4267B2',
+      'Instagram': '#E1306C',
+      'YouTube': '#FF0000',
+      'TikTok': '#000000',
+      'Telegram': '#0088cc',
+      'LinkedIn': '#0077b5',
+      'سایر': '#6B7280'
+    };
+
+    return Object.entries(platforms).map(([name, value]) => ({
+      name,
+      value,
+      fill: platformColors[name] || '#6B7280'
+    }));
+  }, [posts]);
+
   // Prepare bar chart data (top 10 sources)
   const barChartData = useMemo(() => {
     const sourceCounts: Record<string, { count: number; sourceURL?: string }> = {};
@@ -197,7 +292,13 @@ const Dashboard = () => {
         <LanguagePieChart data={pieChartData} />
       </div>
       
-      {/* Charts Row 2 */}
+      {/* Charts Row 2 - New Source Analysis */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SourceTypePieChart data={sourceTypeData} />
+        <SocialMediaPieChart data={socialMediaData} />
+      </div>
+      
+      {/* Charts Row 3 */}
       <SourcesBarChart data={barChartData} />
       
       {/* Posts Table */}
