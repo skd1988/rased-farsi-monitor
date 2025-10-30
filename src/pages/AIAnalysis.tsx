@@ -50,6 +50,10 @@ const AIAnalysis = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    console.log('BulkAnalysisModal state changed:', showBulkModal);
+  }, [showBulkModal]);
+
+  useEffect(() => {
     fetchAnalyzedPosts();
   }, []);
 
@@ -154,7 +158,10 @@ const AIAnalysis = () => {
           <div className="text-6xl">🤖</div>
           <h3 className="text-2xl font-bold">هنوز هیچ مطلبی تحلیل نشده</h3>
           <p className="text-muted-foreground">برای شروع، از دکمه زیر استفاده کنید</p>
-          <Button onClick={() => setShowBulkModal(true)} size="lg">
+          <Button onClick={() => {
+            console.log('شروع تحلیل button clicked');
+            setShowBulkModal(true);
+          }} size="lg">
             <FileText className="ml-2 h-5 w-5" />
             شروع تحلیل
           </Button>
@@ -172,7 +179,10 @@ const AIAnalysis = () => {
           <p className="text-muted-foreground mt-2">تحلیل محتوا با هوش مصنوعی و شناسایی تهدیدها</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowBulkModal(true)}>
+          <Button onClick={() => {
+            console.log('تحلیل گروهی button clicked');
+            setShowBulkModal(true);
+          }}>
             <FileText className="ml-2 h-4 w-4" />
             تحلیل گروهی
           </Button>
@@ -295,8 +305,14 @@ const AIAnalysis = () => {
       {/* Modals */}
       <BulkAnalysisModal
         open={showBulkModal}
-        onClose={() => setShowBulkModal(false)}
-        onComplete={fetchAnalyzedPosts}
+        onClose={() => {
+          console.log('Modal closing');
+          setShowBulkModal(false);
+        }}
+        onComplete={() => {
+          console.log('Analysis complete, refreshing...');
+          fetchAnalyzedPosts();
+        }}
       />
 
       {selectedPost && (
