@@ -9,6 +9,40 @@ import { Loader2, Download, CheckCircle, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 
 // Helper functions
+function parseDate(dateString: string | null | undefined): string {
+  if (!dateString) return new Date().toISOString();
+  
+  try {
+    // Format 1: ISO format (2024-10-30 or 2024-10-30T...)
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateString)) {
+      const parsed = new Date(dateString);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    }
+    
+    // Format 2: Persian/Jalali date (1403/08/08)
+    if (/^\d{4}\/\d{2}\/\d{2}/.test(dateString)) {
+      console.warn('Jalali date detected:', dateString, '- using current date');
+      return new Date().toISOString();
+    }
+    
+    // Format 3: Try parsing as-is
+    const parsed = new Date(dateString);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+    
+    // Fallback: use current date
+    console.warn('Could not parse date:', dateString, '- using current date');
+    return new Date().toISOString();
+    
+  } catch (error) {
+    console.error('Date parsing error:', error);
+    return new Date().toISOString();
+  }
+}
+
 function deriveSource(url: string): string {
   if (!url) return 'نامشخص';
   try {
@@ -50,7 +84,7 @@ function extractKeywords(text: string): string[] {
 
 const Settings = () => {
   const [isImporting, setIsImporting] = useState(false);
-  const [importStatus, setImportStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [importStatus, setImportStatus] = useState<{ success: boolean; message: string; details?: string } | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const { toast } = useToast();
@@ -61,13 +95,31 @@ const Settings = () => {
   const importFromGoogleSheets = async () => {
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
     
-    console.log('Fetching from Google Sheets:', CSV_URL);
+    console.log('=== STARTING GOOGLE SHEETS IMPORT ===');
+    console.log('Fetching from URL:', CSV_URL);
     
     try {
       const response = await fetch(CSV_URL);
+      
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('دسترسی به Google Sheet رد شد. لطفاً Sheet را Public کنید (Anyone with link can view).');
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const csvText = await response.text();
       
-      console.log('Raw CSV:', csvText.substring(0, 200));
+      console.log('CSV received, length:', csvText.length);
+      console.log('First 500 chars:', csvText.substring(0, 500));
+      
+      // Check if it's actually CSV
+      if (!csvText.includes(',') && !csvText.includes('\n')) {
+        throw new Error('Response is not valid CSV format. Make sure the sheet is public.');
+      }
       
       // Parse CSV
       const parsed = Papa.parse(csvText, {
@@ -77,10 +129,17 @@ const Settings = () => {
       });
       
       console.log('Parsed data:', parsed.data.length, 'rows');
-      console.log('Headers:', parsed.meta.fields);
-      if (parsed.data.length > 0) {
-        console.log('Sample row:', parsed.data[0]);
+      console.log('Headers found:', parsed.meta.fields);
+      
+      if (parsed.errors.length > 0) {
+        console.warn('CSV parsing warnings:', parsed.errors);
       }
+      
+      if (parsed.data.length === 0) {
+        throw new Error('No data found in sheet. Make sure the sheet has data and is public.');
+      }
+      
+      console.log('Sample row:', parsed.data[0]);
       
       const rows = parsed.data as any[];
       setProgress({ current: 0, total: rows.length });
@@ -88,93 +147,130 @@ const Settings = () => {
       let newCount = 0;
       let updatedCount = 0;
       let skippedCount = 0;
+      const errors: string[] = [];
       
       // Process each row
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         
-        // Map Google Sheets columns (handle variations)
-        const date = row['Date'] || row['date'];
-        const title = row['Title'] || row['title'];
-        const contents = row['Contents'] || row['contents'];
-        const author = row['Author'] || row['author'];
-        const articleUrl = row['Article URL'] || row['Artile URL'] || row['article_url'];
-        
-        if (!title || !articleUrl) {
-          console.log('Skipping row - missing title or URL:', row);
+        try {
+          // Map Google Sheets columns (try multiple variations)
+          const date = row['Date'] || row['date'] || row['DATE'];
+          const title = row['Title'] || row['title'] || row['TITLE'];
+          const contents = row['Contents'] || row['contents'] || row['Content'] || row['CONTENTS'];
+          const author = row['Author'] || row['author'] || row['AUTHOR'];
+          const articleUrl = row['Article URL'] || row['Artile URL'] || row['article_url'] || row['URL'] || row['url'];
+          
+          console.log(`\n--- Row ${i + 1}/${rows.length} ---`);
+          console.log('Date:', date);
+          console.log('Title:', title?.substring(0, 50));
+          console.log('Article URL:', articleUrl);
+          
+          if (!title || !articleUrl) {
+            console.warn(`Row ${i + 1}: Missing required fields (title or URL), skipping`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Auto-derive additional fields
+          const source = deriveSource(articleUrl);
+          const language = detectLanguage(contents || title);
+          const keywords = extractKeywords(contents || title);
+          
+          // Prepare post data with safe date parsing
+          const postData = {
+            title: title.trim(),
+            contents: contents ? contents.trim() : '',
+            author: author ? author.trim() : 'نامشخص',
+            article_url: articleUrl.trim(),
+            source: source,
+            language: language,
+            status: 'جدید',
+            keywords: keywords,
+            published_at: parseDate(date) // Use safe date parser
+          };
+          
+          console.log('Derived source:', source);
+          console.log('Detected language:', language);
+          console.log('Parsed date:', postData.published_at);
+          
+          // Check if post already exists (by URL to avoid duplicates)
+          const { data: existing } = await supabase
+            .from('posts')
+            .select('id')
+            .eq('article_url', articleUrl.trim())
+            .maybeSingle();
+          
+          if (existing) {
+            console.log(`Row ${i + 1}: Post exists, updating...`);
+            const { error } = await supabase
+              .from('posts')
+              .update(postData)
+              .eq('id', existing.id);
+            
+            if (error) throw error;
+            updatedCount++;
+            console.log(`Row ${i + 1}: ✅ Updated`);
+          } else {
+            console.log(`Row ${i + 1}: Creating new post...`);
+            const { error } = await supabase
+              .from('posts')
+              .insert(postData);
+            
+            if (error) throw error;
+            newCount++;
+            console.log(`Row ${i + 1}: ✅ Inserted`);
+          }
+          
+        } catch (rowError) {
+          console.error(`❌ Error processing row ${i + 1}:`, rowError);
+          errors.push(`Row ${i + 1}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
           skippedCount++;
-          continue;
-        }
-        
-        // Auto-derive additional fields
-        const source = deriveSource(articleUrl);
-        const language = detectLanguage(contents || title);
-        const keywords = extractKeywords(contents || title);
-        
-        // Prepare post data
-        const postData = {
-          title: title.trim(),
-          contents: contents?.trim() || '',
-          author: author?.trim() || 'نامشخص',
-          article_url: articleUrl.trim(),
-          source: source,
-          language: language,
-          status: 'جدید',
-          keywords: keywords,
-          published_at: date ? new Date(date).toISOString() : new Date().toISOString()
-        };
-        
-        console.log(`Processing ${i + 1}/${rows.length}:`, postData.title);
-        
-        // Check if post already exists (by URL to avoid duplicates)
-        const { data: existing } = await supabase
-          .from('posts')
-          .select('id')
-          .eq('article_url', articleUrl)
-          .maybeSingle();
-        
-        if (existing) {
-          console.log('Post already exists, updating:', articleUrl);
-          await supabase
-            .from('posts')
-            .update(postData)
-            .eq('id', existing.id);
-          updatedCount++;
-        } else {
-          console.log('Creating new post:', articleUrl);
-          await supabase
-            .from('posts')
-            .insert(postData);
-          newCount++;
         }
         
         setProgress({ current: i + 1, total: rows.length });
         
         // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
       
-      console.log(`✅ Import complete! New: ${newCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}`);
-      return { newCount, updatedCount, skippedCount, total: rows.length };
+      console.log('\n=== IMPORT COMPLETE ===');
+      console.log('New posts:', newCount);
+      console.log('Updated posts:', updatedCount);
+      console.log('Skipped/errors:', skippedCount);
+      if (errors.length > 0) {
+        console.log('Errors:', errors);
+      }
+      
+      return { newCount, updatedCount, skippedCount, total: rows.length, errors };
       
     } catch (error) {
-      console.error('Import failed:', error);
+      console.error('❌ Import failed:', error);
       throw error;
     }
   };
 
   const handleImport = async () => {
+    console.log('=== IMPORT BUTTON CLICKED ===');
     setIsImporting(true);
     setImportStatus(null);
     
     try {
       const result = await importFromGoogleSheets();
       
-      const message = `✅ موفق! ${result.newCount} مطلب جدید، ${result.updatedCount} مطلب به‌روزرسانی شد، ${result.skippedCount} مطلب رد شد.`;
+      let message = `✅ موفق! ${result.newCount} مطلب جدید، ${result.updatedCount} مطلب به‌روزرسانی شد`;
+      if (result.skippedCount > 0) {
+        message += `، ${result.skippedCount} مطلب رد شد`;
+      }
+      
+      const details = result.errors && result.errors.length > 0 
+        ? `Errors:\n${result.errors.join('\n')}`
+        : undefined;
       
       setImportStatus({
         success: true,
-        message: message
+        message: message,
+        details: details
       });
       
       setLastSyncTime(new Date().toISOString());
@@ -184,16 +280,24 @@ const Settings = () => {
         description: message,
       });
       
+      console.log('=== IMPORT SUCCESS - Reloading in 2 seconds ===');
+      
       // Refresh data after 2 seconds
       setTimeout(() => {
-        window.location.reload();
+        window.location.href = '/dashboard';
       }, 2000);
       
     } catch (error) {
+      console.error('=== IMPORT ERROR ===');
+      console.error(error);
+      
       const errorMessage = error instanceof Error ? error.message : 'خطای نامشخص';
+      const errorDetails = error instanceof Error && error.stack ? error.stack : undefined;
+      
       setImportStatus({
         success: false,
-        message: `❌ خطا: ${errorMessage}`
+        message: `❌ خطا: ${errorMessage}`,
+        details: errorDetails
       });
       
       toast({
@@ -276,18 +380,27 @@ const Settings = () => {
           {/* Import Status */}
           {importStatus && (
             <div
-              className={`p-4 rounded-lg flex items-start gap-3 ${
+              className={`p-4 rounded-lg border-2 ${
                 importStatus.success
-                  ? 'bg-green-50 text-green-800 border border-green-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
+                  ? 'bg-green-50 text-green-800 border-green-500'
+                  : 'bg-red-50 text-red-800 border-red-500'
               }`}
             >
-              {importStatus.success ? (
-                <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-              ) : (
-                <XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-              )}
-              <p className="text-sm flex-1">{importStatus.message}</p>
+              <div className="flex items-start gap-3">
+                {importStatus.success ? (
+                  <CheckCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <p className="font-bold">{importStatus.message}</p>
+                  {importStatus.details && (
+                    <pre className="text-xs mt-2 overflow-auto bg-white/50 p-2 rounded border max-h-40">
+                      {importStatus.details}
+                    </pre>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
