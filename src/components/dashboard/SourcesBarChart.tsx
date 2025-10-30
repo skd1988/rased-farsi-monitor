@@ -2,8 +2,8 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface SourcesBarChartProps {
-  data: Array<{ source: string; count: number }>;
-  onSourceClick?: (source: string) => void;
+  data: Array<{ source: string; count: number; sourceURL?: string }>;
+  onSourceClick?: (source: string, sourceURL?: string) => void;
 }
 
 const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }) => {
@@ -43,7 +43,13 @@ const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }
             dataKey="count" 
             fill="hsl(var(--primary))"
             radius={[0, 4, 4, 0]}
-            onClick={(data) => onSourceClick && onSourceClick(data.source)}
+            onClick={(data) => {
+              if (data.sourceURL) {
+                window.open(data.sourceURL, '_blank');
+              } else if (onSourceClick) {
+                onSourceClick(data.source, data.sourceURL);
+              }
+            }}
             cursor="pointer"
           />
         </BarChart>

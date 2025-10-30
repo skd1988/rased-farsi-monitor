@@ -10,6 +10,7 @@ export interface RawPost {
 export interface EnrichedPost extends RawPost {
   id: string;
   source: string;
+  sourceURL?: string;
   language: string;
   status: string;
   keywords: string[];

@@ -67,9 +67,22 @@ const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge className={cn('text-xs', getSourceColor(post.source))}>
-                    {post.source}
-                  </Badge>
+                  {post.sourceURL ? (
+                    <a
+                      href={post.sourceURL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block hover:opacity-80 transition-opacity"
+                    >
+                      <Badge className={cn('text-xs cursor-pointer', getSourceColor(post.source))}>
+                        {post.source}
+                      </Badge>
+                    </a>
+                  ) : (
+                    <Badge className={cn('text-xs', getSourceColor(post.source))}>
+                      {post.source}
+                    </Badge>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sm text-right">{post.author}</td>
                 <td className="px-4 py-3">

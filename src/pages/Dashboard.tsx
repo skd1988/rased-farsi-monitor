@@ -35,6 +35,7 @@ const Dashboard = () => {
           contents: post.contents || '',
           date: post.published_at,
           source: post.source,
+          sourceURL: post.source_url,
           author: post.author || 'نامشخص',
           language: post.language,
           status: post.status,
@@ -131,13 +132,16 @@ const Dashboard = () => {
   
   // Prepare bar chart data (top 10 sources)
   const barChartData = useMemo(() => {
-    const sourceCounts: Record<string, number> = {};
+    const sourceCounts: Record<string, { count: number; sourceURL?: string }> = {};
     posts.forEach(post => {
-      sourceCounts[post.source] = (sourceCounts[post.source] || 0) + 1;
+      if (!sourceCounts[post.source]) {
+        sourceCounts[post.source] = { count: 0, sourceURL: post.sourceURL };
+      }
+      sourceCounts[post.source].count += 1;
     });
     
     return Object.entries(sourceCounts)
-      .map(([source, count]) => ({ source, count }))
+      .map(([source, data]) => ({ source, count: data.count, sourceURL: data.sourceURL }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   }, [posts]);
