@@ -169,6 +169,21 @@ const AIAnalysis = () => {
 
   const allTopics = Array.from(new Set(posts.map(p => p.main_topic).filter(Boolean)));
 
+  // Add logging to localStorage
+  const addAnalysisLog = (message: string, type: 'info' | 'error' | 'success' = 'info') => {
+    const timestamp = new Date().toISOString();
+    const logEntry = { timestamp, message, type };
+    
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    
+    // Store in localStorage
+    const logs = JSON.parse(localStorage.getItem('analysis_logs') || '[]');
+    logs.push(logEntry);
+    // Keep only last 100 logs
+    if (logs.length > 100) logs.shift();
+    localStorage.setItem('analysis_logs', JSON.stringify(logs));
+  };
+
   // Generate mock analysis (fallback)
   const generateMockAnalysis = (post: any) => {
     const threats = ['Critical', 'High', 'Medium', 'Low'];
@@ -203,63 +218,91 @@ const AIAnalysis = () => {
     };
   };
 
-  // Analyze post with DeepSeek API
-  const analyzePostWithAI = async (post: any) => {
-    console.log('🤖 Analyzing post:', post.title);
+  // Analyze a single post with AI (with timeout and retry)
+  const analyzePostWithAI = async (post: any, retryCount = 0): Promise<any | null> => {
+    const maxRetries = 1;
+    const timeoutMs = 30000; // 30 seconds
     
-    const startTime = Date.now();
+    addAnalysisLog(`شروع تحلیل پست ${post.id} (تلاش ${retryCount + 1}/${maxRetries + 1})`, 'info');
     
     try {
-      // Call Supabase edge function for analysis
-      console.log('📡 Calling analyze-post edge function...');
-      const { data, error } = await supabase.functions.invoke('analyze-post', {
+      addAnalysisLog('فراخوانی edge function...', 'info');
+      
+      // Create timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs);
+      });
+
+      // Create analysis promise
+      const analysisPromise = supabase.functions.invoke('analyze-post', {
         body: {
           postId: post.id,
           postTitle: post.title,
           postContent: post.contents || ''
         }
       });
-      
+
+      // Race between timeout and analysis
+      const { data, error } = await Promise.race([
+        analysisPromise,
+        timeoutPromise
+      ]) as any;
+
+      addAnalysisLog(`پاسخ دریافت شد: ${JSON.stringify({ hasData: !!data, hasError: !!error })}`, 'info');
+
       if (error) {
-        console.error('❌ Edge function error:', error);
+        addAnalysisLog(`خطای edge function: ${error.message}`, 'error');
         
         // Handle specific error codes
-        if (error.message?.includes('MISSING_API_KEY')) {
+        if (data?.error === 'MISSING_API_KEY') {
+          addAnalysisLog('DEEPSEEK_API_KEY تنظیم نشده است', 'error');
           toast({
-            title: "کلید API موجود نیست",
-            description: "لطفاً DEEPSEEK_API_KEY را در تنظیمات تنظیم کنید",
-            variant: "destructive"
+            title: "خطا: کلید API موجود نیست",
+            description: "لطفاً در تنظیمات، DEEPSEEK_API_KEY را وارد کنید.",
+            variant: "destructive",
           });
-        } else if (error.message?.includes('RATE_LIMIT')) {
-          toast({
-            title: "محدودیت تعداد درخواست",
-            description: "لطفاً چند لحظه صبر کنید و دوباره تلاش کنید",
-            variant: "destructive"
-          });
-        } else {
-          toast({
-            title: "خطا در تحلیل AI",
-            description: error.message || "مشکلی در ارتباط با سرویس تحلیل پیش آمد",
-            variant: "destructive"
-          });
+          return null;
         }
         
-        throw error;
+        if (data?.error === 'RATE_LIMIT') {
+          addAnalysisLog('محدودیت تعداد درخواست DeepSeek', 'error');
+          toast({
+            title: "محدودیت تعداد درخواست",
+            description: "به حد مجاز درخواست‌های API رسیده‌اید. چند دقیقه صبر کنید.",
+            variant: "destructive",
+          });
+          return null;
+        }
+        
+        // Network error - retry once
+        if (retryCount < maxRetries && error.message?.includes('network')) {
+          addAnalysisLog(`خطای شبکه. تلاش مجدد...`, 'error');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return analyzePostWithAI(post, retryCount + 1);
+        }
+        
+        addAnalysisLog(`تحلیل ناموفق: ${error.message}`, 'error');
+        toast({
+          title: "خطا در تحلیل",
+          description: `خطا: ${error.message || 'خطای ناشناخته'}`,
+          variant: "destructive",
+        });
+        return null;
       }
-      
-      console.log('✅ Edge function response:', JSON.stringify(data).substring(0, 300));
-      
-      // Check if we got valid analysis data
+
+      // Validate response structure
       if (!data || !data.success || !data.analysis) {
-        console.error('❌ Invalid response structure. Expected data.analysis but got:', data);
-        throw new Error('Invalid response from edge function');
+        addAnalysisLog('پاسخ نامعتبر از edge function', 'error');
+        toast({
+          title: "خطا: پاسخ نامعتبر",
+          description: "ساختار پاسخ از سرویس تحلیل معتبر نیست.",
+          variant: "destructive",
+        });
+        return null;
       }
+
+      addAnalysisLog(`تحلیل موفق - تهدید: ${data.analysis.threat_level}, احساس: ${data.analysis.sentiment}`, 'success');
       
-      const processingTime = (Date.now() - startTime) / 1000;
-      console.log(`✅ Analysis completed in ${processingTime.toFixed(2)}s`);
-      console.log(`📊 Results - Threat: ${data.analysis.threat_level} | Sentiment: ${data.analysis.sentiment} | Topic: ${data.analysis.main_topic}`);
-      
-      // Return analysis data formatted for database
       return {
         analysis_summary: data.analysis.analysis_summary,
         sentiment: data.analysis.sentiment,
@@ -274,29 +317,54 @@ const AIAnalysis = () => {
         processing_time: data.analysis.processing_time
       };
       
-    } catch (error) {
-      console.error('💥 AI analysis failed:', error);
-      console.error('💥 Error details:', error instanceof Error ? error.message : 'Unknown error');
-      console.warn('⚠️ Falling back to mock analysis');
+    } catch (error: any) {
+      if (error.message === 'TIMEOUT') {
+        addAnalysisLog('تحلیل به دلیل timeout متوقف شد (30 ثانیه)', 'error');
+        
+        // Retry once on timeout
+        if (retryCount < maxRetries) {
+          addAnalysisLog('تلاش مجدد پس از timeout...', 'info');
+          return analyzePostWithAI(post, retryCount + 1);
+        }
+        
+        toast({
+          title: "خطا: زمان انتظار تمام شد",
+          description: "تحلیل بیش از 30 ثانیه طول کشید. لطفاً دوباره تلاش کنید.",
+          variant: "destructive",
+        });
+        return null;
+      }
+      
+      addAnalysisLog(`Exception: ${error.message}`, 'error');
+      
+      // Network error - retry once
+      if (retryCount < maxRetries && (error.message?.includes('fetch') || error.message?.includes('network'))) {
+        addAnalysisLog('خطای شبکه. تلاش مجدد...', 'error');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return analyzePostWithAI(post, retryCount + 1);
+      }
       
       toast({
-        title: '⚠️ استفاده از داده‌های آزمایشی',
-        description: 'تحلیل AI ناموفق بود. از تحلیل شبیه‌سازی شده استفاده می‌شود.',
-        variant: 'destructive',
+        title: "خطا در تحلیل هوشمند",
+        description: `خطا: ${error.message || 'خطای ناشناخته'}`,
+        variant: "destructive",
       });
       
-      return generateMockAnalysis(post);
+      return null;
     }
   };
 
   const startAnalysis = async (count: number) => {
-    console.log(`Starting analysis of ${count} posts`);
     setIsAnalyzing(true);
     setProgress(0);
     setAnalyzedCount(0);
     setTotalCount(count);
     
+    addAnalysisLog(`=== شروع تحلیل گروهی ${count} مطلب ===`, 'info');
+
     try {
+      addAnalysisLog(`دریافت ${count} مطلب تحلیل نشده از دیتابیس...`, 'info');
+      
       // Get posts that haven't been analyzed
       const { data: postsToAnalyze, error } = await supabase
         .from('posts')
@@ -304,67 +372,91 @@ const AIAnalysis = () => {
         .is('analysis_summary', null)
         .order('published_at', { ascending: false })
         .limit(count);
-      
-      if (error) throw error;
-      
-      console.log(`Found ${postsToAnalyze?.length || 0} posts to analyze`);
-      
+
+      if (error) {
+        addAnalysisLog(`خطا در دریافت مطالب: ${error.message}`, 'error');
+        throw error;
+      }
+
       if (!postsToAnalyze || postsToAnalyze.length === 0) {
+        addAnalysisLog('هیچ مطلب جدیدی برای تحلیل یافت نشد', 'info');
         toast({
-          title: 'هیچ مطلبی برای تحلیل یافت نشد',
-          description: 'همه مطالب قبلاً تحلیل شده‌اند',
+          title: "اطلاعیه",
+          description: "هیچ مطلب جدیدی برای تحلیل وجود ندارد",
         });
         setIsAnalyzing(false);
         setShowModal(false);
         return;
       }
-      
+
+      addAnalysisLog(`${postsToAnalyze.length} مطلب برای تحلیل یافت شد`, 'success');
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // Analyze each post
       for (let i = 0; i < postsToAnalyze.length; i++) {
         const post = postsToAnalyze[i];
-        console.log(`Analyzing post ${i + 1}/${postsToAnalyze.length}: ${post.title}`);
         
-        // Analyze with AI (calls edge function -> DeepSeek)
+        addAnalysisLog(`--- تحلیل مطلب ${i + 1}/${postsToAnalyze.length}: ${post.id} ---`, 'info');
+
         const analysis = await analyzePostWithAI(post);
         
-        // Update post in database
-        const { error: updateError } = await supabase
-          .from('posts')
-          .update(analysis)
-          .eq('id', post.id);
-        
-        if (updateError) {
-          console.error('Error updating post:', updateError);
+        if (analysis) {
+          addAnalysisLog('ذخیره نتایج در دیتابیس...', 'info');
+          
+          // Update post in database
+          const { error: updateError } = await supabase
+            .from('posts')
+            .update(analysis)
+            .eq('id', post.id);
+
+          if (updateError) {
+            addAnalysisLog(`خطا در ذخیره نتایج: ${updateError.message}`, 'error');
+            failCount++;
+          } else {
+            addAnalysisLog(`نتایج با موفقیت ذخیره شد`, 'success');
+            successCount++;
+          }
         } else {
-          console.log(`Successfully analyzed post ${i + 1}`);
+          addAnalysisLog('تحلیل ناموفق بود - ادامه به مطلب بعدی', 'error');
+          failCount++;
         }
-        
+
         // Update progress
         const newProgress = Math.round(((i + 1) / postsToAnalyze.length) * 100);
         setProgress(newProgress);
         setAnalyzedCount(i + 1);
-        
-        // Small delay between requests (avoid rate limits)
-        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      
-      console.log('Analysis complete!');
-      
-      // Show success and reload
+
+      const finalMessage = `تحلیل کامل شد! ${successCount} موفق، ${failCount} ناموفق`;
+      addAnalysisLog(finalMessage, successCount > 0 ? 'success' : 'error');
+
       toast({
-        title: '✅ تحلیل با موفقیت انجام شد',
-        description: `${postsToAnalyze.length} مطلب تحلیل شد`,
+        title: "تحلیل کامل شد",
+        description: `${successCount} مطلب با موفقیت تحلیل شد${failCount > 0 ? ` و ${failCount} مطلب ناموفق بود` : ''}`,
+        variant: successCount > 0 ? "default" : "destructive",
       });
-      
+
+      // Refresh data
+      addAnalysisLog('بارگذاری مجدد داده‌ها...', 'info');
+      await fetchAnalyzedPosts();
+
+      // Close modal after a delay
       setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-      
-    } catch (error) {
-      console.error('Analysis failed:', error);
+        setShowModal(false);
+        setIsAnalyzing(false);
+      }, 2000);
+
+    } catch (error: any) {
+      addAnalysisLog(`Exception در تحلیل گروهی: ${error.message}`, 'error');
       toast({
-        title: '❌ خطا در تحلیل',
-        description: error instanceof Error ? error.message : 'خطای نامشخص',
-        variant: 'destructive',
+        title: "خطا در فرآیند تحلیل",
+        description: error instanceof Error ? error.message : "خطای ناشناخته",
+        variant: "destructive",
       });
       setIsAnalyzing(false);
       setShowModal(false);
