@@ -227,7 +227,6 @@ const AIAnalysis = () => {
     console.log('🔍 Starting AI analysis for post:', post.id);
     
     try {
-      // Setup timeout with AbortController
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
@@ -236,65 +235,71 @@ const AIAnalysis = () => {
       }, timeoutMs);
 
       addAnalysisLog('🚀 فراخوانی edge function...', 'info');
-      console.log('📞 Invoking analyze-post edge function...');
+      console.log('📞 Calling analyze-post edge function...');
       
-      // Call edge function
-      const { data, error } = await supabase.functions.invoke('analyze-post', {
-        body: {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-post`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
           postId: post.id,
           postTitle: post.title,
           postContent: post.contents || ''
-        }
+        }),
+        signal: controller.signal
       });
 
       clearTimeout(timeoutId);
       
-      addAnalysisLog(`✅ پاسخ از edge function دریافت شد`, 'info');
-      console.log('📦 Edge function response:', { data, error });
+      addAnalysisLog(`✅ پاسخ از edge function دریافت شد (status: ${response.status})`, 'info');
+      console.log('📦 Edge function response status:', response.status);
 
-      // Handle errors
-      if (error) {
-        addAnalysisLog(`❌ خطای edge function: ${error.message}`, 'error');
-        console.error('❌ Edge function error:', error);
+      if (!response.ok) {
+        const errorText = await response.text();
+        addAnalysisLog(`❌ خطای HTTP ${response.status}: ${errorText}`, 'error');
         
-        if (data?.error === 'MISSING_API_KEY') {
-          addAnalysisLog('🔑 کلید API موجود نیست', 'error');
-          toast({
-            title: "خطا: کلید API موجود نیست",
-            description: "لطفاً کلید DEEPSEEK_API_KEY را در تنظیمات تعریف کنید",
-            variant: "destructive"
-          });
-          return null;
-        }
-        
-        if (data?.error === 'RATE_LIMIT') {
-          addAnalysisLog('⏸️ محدودیت تعداد درخواست', 'error');
-          toast({
-            title: "محدودیت تعداد درخواست",
-            description: "لطفاً چند دقیقه صبر کنید و مجدداً تلاش کنید",
-            variant: "destructive"
-          });
-          return null;
-        }
-        
-        // Retry once for network errors
-        if (retryCount < maxRetries) {
+        if (response.status >= 500 && retryCount < maxRetries) {
           addAnalysisLog(`🔄 تلاش مجدد (${retryCount + 1}/${maxRetries})...`, 'info');
-          console.log(`🔄 Retrying... (${retryCount + 1}/${maxRetries})`);
           await new Promise(r => setTimeout(r, 2000));
           return analyzePostWithAI(post, retryCount + 1);
         }
         
-        addAnalysisLog('❌ تحلیل ناموفق بود', 'error');
         toast({
-          title: "خطا در تحلیل",
-          description: `خطا: ${error.message}`,
+          title: "خطای سرور",
+          description: `کد خطا: ${response.status}`,
           variant: "destructive"
         });
         return null;
       }
 
-      // Validate response
+      const data = await response.json();
+      console.log('📦 Edge function data:', data);
+
+      if (data?.error === 'MISSING_API_KEY') {
+        addAnalysisLog('🔑 کلید API موجود نیست', 'error');
+        toast({
+          title: "خطا: کلید API موجود نیست",
+          description: "لطفاً کلید DEEPSEEK_API_KEY را در تنظیمات تعریف کنید",
+          variant: "destructive"
+        });
+        return null;
+      }
+      
+      if (data?.error === 'RATE_LIMIT') {
+        addAnalysisLog('⏸️ محدودیت تعداد درخواست', 'error');
+        toast({
+          title: "محدودیت تعداد درخواست",
+          description: "لطفاً چند دقیقه صبر کنید و مجدداً تلاش کنید",
+          variant: "destructive"
+        });
+        return null;
+      }
+
       if (!data?.success || !data?.analysis) {
         addAnalysisLog('⚠️ پاسخ نامعتبر از edge function', 'error');
         console.error('⚠️ Invalid response format:', data);
@@ -334,7 +339,6 @@ const AIAnalysis = () => {
       };
       
     } catch (error: any) {
-      // Handle abort/timeout
       if (error.name === 'AbortError') {
         addAnalysisLog('⏱️ Timeout - زمان انتظار تمام شد', 'error');
         console.error('❌ Request aborted due to timeout');
@@ -353,15 +357,25 @@ const AIAnalysis = () => {
         return null;
       }
       
-      // Handle other errors
+      if (error.message.includes('fetch') || error.message.includes('network')) {
+        addAnalysisLog(`🌐 خطای شبکه: ${error.message}`, 'error');
+        
+        if (retryCount < maxRetries) {
+          addAnalysisLog(`🔄 تلاش مجدد (${retryCount + 1}/${maxRetries})...`, 'info');
+          await new Promise(r => setTimeout(r, 2000));
+          return analyzePostWithAI(post, retryCount + 1);
+        }
+        
+        toast({
+          title: "خطای شبکه",
+          description: "لطفاً اتصال اینترنت خود را بررسی کنید",
+          variant: "destructive"
+        });
+        return null;
+      }
+      
       addAnalysisLog(`❌ خطای غیرمنتظره: ${error.message}`, 'error');
       console.error('❌ Unexpected error:', error);
-      
-      if (retryCount < maxRetries) {
-        addAnalysisLog(`🔄 تلاش مجدد (${retryCount + 1}/${maxRetries})...`, 'info');
-        await new Promise(r => setTimeout(r, 2000));
-        return analyzePostWithAI(post, retryCount + 1);
-      }
       
       toast({
         title: "خطای غیرمنتظره",
