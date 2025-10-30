@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -49,13 +49,41 @@ const AIAnalysis = () => {
   const [progress, setProgress] = useState(0);
   const [analyzedCount, setAnalyzedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const modalStateRef = useRef(false);
 
   // Debug logging
   console.log('AI Analysis component rendered. Modal state:', showModal);
   
   useEffect(() => {
-    console.log('Modal state changed to:', showModal);
+    console.log('=== MODAL STATE CHANGED ===');
+    console.log('New state:', showModal);
+    console.log('Ref state:', modalStateRef.current);
+    console.log('Stack trace:', new Error().stack);
   }, [showModal]);
+
+  const openModal = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    console.log('=== OPENING MODAL ===');
+    modalStateRef.current = true;
+    setShowModal(true);
+    
+    // Force state to stay true
+    setTimeout(() => {
+      if (modalStateRef.current) {
+        console.log('Reinforcing modal state to true');
+        setShowModal(true);
+      }
+    }, 10);
+  };
+
+  const closeModal = () => {
+    console.log('=== CLOSING MODAL ===');
+    modalStateRef.current = false;
+    setShowModal(false);
+  };
   const [selectedPost, setSelectedPost] = useState<AnalyzedPost | null>(null);
   const { toast } = useToast();
 
@@ -339,11 +367,13 @@ const AIAnalysis = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => {
+            onClick={(e) => {
               console.log('=== BUTTON CLICKED ===');
               console.log('Current modal state:', showModal);
-              setShowModal(true);
-              console.log('Modal state set to: true');
+              openModal(e);
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
             }}
             style={{
               backgroundColor: '#3B82F6',
@@ -494,10 +524,11 @@ const AIAnalysis = () => {
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          onClick={() => {
+          onMouseDown={(e) => {
+            e.preventDefault();
             if (!isAnalyzing) {
               console.log('Background clicked, closing modal');
-              setShowModal(false);
+              closeModal();
             }
           }}
         >
@@ -512,9 +543,10 @@ const AIAnalysis = () => {
               position: 'relative',
               zIndex: 1000000
             }}
-            onClick={(e) => {
-              console.log('Modal content clicked, preventing close');
+            onMouseDown={(e) => {
+              e.preventDefault();
               e.stopPropagation();
+              console.log('Modal content clicked, preventing close');
             }}
           >
             {!isAnalyzing ? (
@@ -603,9 +635,11 @@ const AIAnalysis = () => {
                   </button>
                   
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       console.log('Cancel clicked, closing modal');
-                      setShowModal(false);
+                      closeModal();
                     }}
                     style={{
                       backgroundColor: '#E5E7EB',
