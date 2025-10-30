@@ -48,7 +48,6 @@ interface Post {
   published_at: string;
 }
 
-const SOURCES = ['الجزیرة', 'ایسنا', 'مهر', 'تسنیم', 'فارس', 'ایرنا', 'RT Arabic', 'BBC Persian', 'نامشخص'];
 const LANGUAGES = [
   { code: 'فارسی', label: 'فارسی', emoji: '🇮🇷' },
   { code: 'عربی', label: 'عربی', emoji: '🇸🇦' },
@@ -93,6 +92,21 @@ const PostsExplorer = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'keywords' | 'alphabetical'>('newest');
+
+  // Get unique sources from posts
+  const uniqueSources = useMemo(() => {
+    const sources = new Set(posts.map(p => p.source).filter(s => s && s !== ''));
+    return Array.from(sources).sort((a, b) => a.localeCompare(b, 'fa'));
+  }, [posts]);
+
+  // Get unique keywords from posts
+  const uniqueKeywords = useMemo(() => {
+    const keywords = new Set<string>();
+    posts.forEach(post => {
+      post.keywords.forEach(k => keywords.add(k));
+    });
+    return Array.from(keywords).sort((a, b) => a.localeCompare(b, 'fa'));
+  }, [posts]);
 
   useEffect(() => {
     fetchPosts();
@@ -309,30 +323,35 @@ const PostsExplorer = () => {
             <div className="mb-6">
               <h4 className="font-medium mb-3">منبع خبری</h4>
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {SOURCES.map(source => (
-                  <div key={source} className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox
-                        checked={selectedSources.has(source)}
-                        onCheckedChange={(checked) => {
-                          const newSources = new Set(selectedSources);
-                          if (checked) newSources.add(source);
-                          else newSources.delete(source);
-                          setSelectedSources(newSources);
-                        }}
-                      />
-                      <span className="text-sm">{source}</span>
-                    </label>
-                    <span className="text-xs text-muted-foreground">({getSourceCount(source)})</span>
-                  </div>
-                ))}
+                {uniqueSources.length > 0 ? (
+                  uniqueSources.map(source => (
+                    <div key={source} className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={selectedSources.has(source)}
+                          onCheckedChange={(checked) => {
+                            const newSources = new Set(selectedSources);
+                            if (checked) newSources.add(source);
+                            else newSources.delete(source);
+                            setSelectedSources(newSources);
+                          }}
+                        />
+                        <span className="text-sm">{source}</span>
+                      </label>
+                      <span className="text-xs text-muted-foreground">({getSourceCount(source)})</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">منبعی یافت نشد</p>
+                )}
               </div>
               <div className="flex gap-2 mt-3">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setSelectedSources(new Set(SOURCES))}
+                  onClick={() => setSelectedSources(new Set(uniqueSources))}
                   className="text-xs"
+                  disabled={uniqueSources.length === 0}
                 >
                   انتخاب همه
                 </Button>
@@ -444,26 +463,30 @@ const PostsExplorer = () => {
             {/* Keywords */}
             <div className="mb-6">
               <h4 className="font-medium mb-3">کلمات کلیدی</h4>
-              <div className="space-y-2">
-                {ALL_KEYWORDS.map(keyword => (
-                  <div key={keyword} className="flex items-center justify-between">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox
-                        checked={selectedKeywords.has(keyword)}
-                        onCheckedChange={(checked) => {
-                          const newKeywords = new Set(selectedKeywords);
-                          if (checked) newKeywords.add(keyword);
-                          else newKeywords.delete(keyword);
-                          setSelectedKeywords(newKeywords);
-                        }}
-                      />
-                      <Badge variant="outline" className={cn('text-xs', KEYWORD_COLORS[keyword])}>
-                        {keyword}
-                      </Badge>
-                    </label>
-                    <span className="text-xs text-muted-foreground">({getKeywordCount(keyword)})</span>
-                  </div>
-                ))}
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {uniqueKeywords.length > 0 ? (
+                  uniqueKeywords.map(keyword => (
+                    <div key={keyword} className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={selectedKeywords.has(keyword)}
+                          onCheckedChange={(checked) => {
+                            const newKeywords = new Set(selectedKeywords);
+                            if (checked) newKeywords.add(keyword);
+                            else newKeywords.delete(keyword);
+                            setSelectedKeywords(newKeywords);
+                          }}
+                        />
+                        <Badge variant="outline" className={cn('text-xs', KEYWORD_COLORS[keyword] || 'bg-muted text-muted-foreground')}>
+                          {keyword}
+                        </Badge>
+                      </label>
+                      <span className="text-xs text-muted-foreground">({getKeywordCount(keyword)})</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">کلمه کلیدی یافت نشد</p>
+                )}
               </div>
             </div>
           </div>
