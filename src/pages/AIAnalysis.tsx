@@ -49,6 +49,13 @@ const AIAnalysis = () => {
   const [progress, setProgress] = useState(0);
   const [analyzedCount, setAnalyzedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Debug logging
+  console.log('AI Analysis component rendered. Modal state:', showModal);
+  
+  useEffect(() => {
+    console.log('Modal state changed to:', showModal);
+  }, [showModal]);
   const [selectedPost, setSelectedPost] = useState<AnalyzedPost | null>(null);
   const { toast } = useToast();
 
@@ -331,13 +338,31 @@ const AIAnalysis = () => {
           <p className="text-muted-foreground mt-2">تحلیل محتوا با هوش مصنوعی و شناسایی تهدیدها</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => {
-            console.log('تحلیل گروهی button clicked');
-            setShowModal(true);
-          }}>
-            <FileText className="ml-2 h-4 w-4" />
+          <button
+            onClick={() => {
+              console.log('=== BUTTON CLICKED ===');
+              console.log('Current modal state:', showModal);
+              setShowModal(true);
+              console.log('Modal state set to: true');
+            }}
+            style={{
+              backgroundColor: '#3B82F6',
+              color: 'white',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              border: 'none',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            type="button"
+          >
+            <FileText className="h-4 w-4" />
             تحلیل گروهی
-          </Button>
+          </button>
           <Button variant="outline">
             <Download className="ml-2 h-4 w-4" />
             خروجی گزارش PDF
@@ -454,63 +479,76 @@ const AIAnalysis = () => {
         </div>
       )}
 
-      {/* Simple Custom Modal */}
+      {/* Ultra-Simple Modal */}
       {showModal && (
         <div 
-          className="fixed inset-0 flex items-center justify-center"
           style={{
-            zIndex: 999999,
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            zIndex: 999999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={() => {
+            if (!isAnalyzing) {
+              console.log('Background clicked, closing modal');
+              setShowModal(false);
+            }
           }}
         >
-          {/* Background overlay */}
           <div 
-            className="absolute inset-0 bg-black opacity-50"
-            onClick={() => !isAnalyzing && setShowModal(false)}
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-            }}
-          />
-          
-          {/* Modal content */}
-          <div 
-            className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full mx-4"
-            style={{
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              padding: '32px',
+              maxWidth: '500px',
+              width: '90%',
+              direction: 'rtl',
               position: 'relative',
-              zIndex: 1000000,
-              maxHeight: '90vh',
-              overflow: 'auto',
+              zIndex: 1000000
             }}
-            dir="rtl"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              console.log('Modal content clicked, preventing close');
+              e.stopPropagation();
+            }}
           >
             {!isAnalyzing ? (
-              // Selection screen
-              <div className="space-y-6">
-                <h2 className="text-3xl font-bold text-gray-900 text-center">
+              <div>
+                <h2 style={{fontSize: '24px', fontWeight: 'bold', marginBottom: '16px', color: '#111'}}>
                   تحلیل گروهی مطالب
                 </h2>
-                <p className="text-gray-600 text-center text-lg">
-                  یکی از گزینه‌های زیر را انتخاب کنید:
+                <p style={{color: '#666', marginBottom: '24px', fontSize: '16px'}}>
+                  چند مطلب می‌خواهید تحلیل کنید؟
                 </p>
                 
-                <div className="space-y-4">
+                <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
                   <button
                     onClick={() => {
                       console.log('Analyzing 5 posts...');
                       startAnalysis(5);
                     }}
-                    className="w-full p-6 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xl font-bold transition-all hover:scale-105 shadow-lg flex items-center justify-center gap-3"
+                    style={{
+                      backgroundColor: '#3B82F6',
+                      color: 'white',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '18px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '12px'
+                    }}
+                    type="button"
                   >
-                    <span className="text-3xl">🤖</span>
+                    <span style={{fontSize: '24px'}}>🤖</span>
                     <span>تحلیل 5 مطلب (تست سریع)</span>
                   </button>
                   
@@ -519,9 +557,23 @@ const AIAnalysis = () => {
                       console.log('Analyzing 10 posts...');
                       startAnalysis(10);
                     }}
-                    className="w-full p-6 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xl font-bold transition-all hover:scale-105 shadow-lg flex items-center justify-center gap-3"
+                    style={{
+                      backgroundColor: '#10B981',
+                      color: 'white',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '18px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '12px'
+                    }}
+                    type="button"
                   >
-                    <span className="text-3xl">⚡</span>
+                    <span style={{fontSize: '24px'}}>⚡</span>
                     <span>تحلیل 10 مطلب اخیر</span>
                   </button>
                   
@@ -530,51 +582,82 @@ const AIAnalysis = () => {
                       console.log('Analyzing 20 posts...');
                       startAnalysis(20);
                     }}
-                    className="w-full p-6 bg-purple-500 hover:bg-purple-600 text-white rounded-xl text-xl font-bold transition-all hover:scale-105 shadow-lg flex items-center justify-center gap-3"
+                    style={{
+                      backgroundColor: '#8B5CF6',
+                      color: 'white',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '18px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '12px'
+                    }}
+                    type="button"
                   >
-                    <span className="text-3xl">🚀</span>
+                    <span style={{fontSize: '24px'}}>🚀</span>
                     <span>تحلیل 20 مطلب اخیر</span>
                   </button>
                   
                   <button
                     onClick={() => {
-                      console.log('Modal closed');
+                      console.log('Cancel clicked, closing modal');
                       setShowModal(false);
                     }}
-                    className="w-full p-4 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl text-lg font-bold transition-all"
+                    style={{
+                      backgroundColor: '#E5E7EB',
+                      color: '#374151',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      fontSize: '18px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                    type="button"
                   >
                     انصراف
                   </button>
                 </div>
               </div>
             ) : (
-              // Progress screen
-              <div className="space-y-6">
-                <h2 className="text-3xl font-bold text-gray-900 text-center">
+              <div>
+                <h2 style={{fontSize: '24px', fontWeight: 'bold', marginBottom: '16px', textAlign: 'center', color: '#111'}}>
                   در حال تحلیل...
                 </h2>
                 
-                <div className="space-y-4">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-blue-600">
-                      {analyzedCount} از {totalCount}
-                    </p>
-                    <p className="text-gray-600">مطلب تحلیل شده</p>
-                  </div>
-                  
-                  <div className="w-full bg-gray-200 rounded-full h-6 overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-blue-500 to-green-500 h-6 rounded-full transition-all duration-300 flex items-center justify-center text-white text-sm font-bold"
-                      style={{width: `${progress}%`}}
-                    >
-                      {progress > 10 && `${progress}%`}
-                    </div>
-                  </div>
-                  
-                  <p className="text-center text-gray-600 text-sm">
-                    لطفاً صبر کنید، این فرآیند چند ثانیه طول می‌کشد...
+                <div style={{textAlign: 'center', marginBottom: '16px'}}>
+                  <p style={{fontSize: '32px', fontWeight: 'bold', color: '#3B82F6', marginBottom: '8px'}}>
+                    {analyzedCount} از {totalCount}
                   </p>
+                  <p style={{color: '#666', fontSize: '14px'}}>مطلب تحلیل شده</p>
                 </div>
+                
+                <div style={{width: '100%', height: '24px', backgroundColor: '#E5E7EB', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px'}}>
+                  <div 
+                    style={{
+                      width: `${progress}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #3B82F6 0%, #10B981 100%)',
+                      transition: 'width 0.3s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {progress > 10 && `${progress}%`}
+                  </div>
+                </div>
+                
+                <p style={{textAlign: 'center', color: '#666', fontSize: '14px'}}>
+                  لطفاً صبر کنید، این فرآیند چند ثانیه طول می‌کشد...
+                </p>
               </div>
             )}
           </div>
