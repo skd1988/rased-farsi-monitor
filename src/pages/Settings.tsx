@@ -317,6 +317,54 @@ const Settings = () => {
         <p className="text-muted-foreground mt-2">مدیریت اتصالات و تنظیمات سیستم</p>
       </div>
 
+      {/* Data Management Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            🗑️ مدیریت داده‌ها
+          </CardTitle>
+          <CardDescription>
+            پاک کردن داده‌های آزمایشی و تست
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={async () => {
+              if (!confirm('⚠️ آیا مطمئن هستید؟ تمام داده‌های آزمایشی (با آدرس example.com) حذف می‌شوند.')) return;
+              
+              try {
+                const { error } = await supabase
+                  .from('posts')
+                  .delete()
+                  .like('article_url', '%example.com%');
+                
+                if (error) throw error;
+                
+                toast({
+                  title: "✅ موفق!",
+                  description: "داده‌های آزمایشی حذف شدند.",
+                });
+                
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1000);
+              } catch (error: any) {
+                toast({
+                  title: "❌ خطا",
+                  description: error.message,
+                  variant: "destructive",
+                });
+              }
+            }}
+            variant="destructive"
+            size="lg"
+            className="w-full"
+          >
+            🗑️ پاک کردن داده‌های آزمایشی
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Google Sheets Import Section */}
       <Card>
         <CardHeader>
