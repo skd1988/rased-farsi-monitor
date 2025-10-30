@@ -205,12 +205,13 @@ const AIAnalysis = () => {
 
   // Analyze post with DeepSeek API
   const analyzePostWithAI = async (post: any) => {
-    console.log('Analyzing post with AI:', post.title);
+    console.log('🤖 Analyzing post:', post.title);
     
     const startTime = Date.now();
     
     try {
       // Call Supabase edge function for analysis
+      console.log('📡 Calling analyze-post edge function...');
       const { data, error } = await supabase.functions.invoke('analyze-post', {
         body: {
           postId: post.id,
@@ -220,22 +221,47 @@ const AIAnalysis = () => {
       });
       
       if (error) {
-        console.error('Edge function error:', error);
+        console.error('❌ Edge function error:', error);
         throw error;
       }
       
-      console.log('Analysis result:', data);
+      console.log('✅ Edge function response:', data);
+      
+      // Check if we got valid analysis data
+      if (!data || !data.success || !data.analysis) {
+        console.error('❌ Invalid response structure:', data);
+        throw new Error('Invalid response from edge function');
+      }
       
       const processingTime = (Date.now() - startTime) / 1000;
+      console.log(`✅ Analysis completed in ${processingTime.toFixed(2)}s`);
+      console.log(`   Threat: ${data.analysis.threat_level} | Sentiment: ${data.analysis.sentiment}`);
       
+      // Return analysis data formatted for database
       return {
-        ...data.analysis,
-        processing_time: processingTime
+        analysis_summary: data.analysis.analysis_summary,
+        sentiment: data.analysis.sentiment,
+        sentiment_score: data.analysis.sentiment_score,
+        main_topic: data.analysis.main_topic,
+        threat_level: data.analysis.threat_level,
+        confidence: data.analysis.confidence,
+        key_points: data.analysis.key_points,
+        recommended_action: data.analysis.recommended_action,
+        analyzed_at: data.analysis.analyzed_at,
+        analysis_model: data.analysis.analysis_model,
+        processing_time: data.analysis.processing_time
       };
       
     } catch (error) {
-      console.error('AI analysis failed:', error);
-      console.warn('Falling back to mock analysis');
+      console.error('❌ AI analysis failed:', error);
+      console.warn('⚠️ Falling back to mock analysis');
+      
+      toast({
+        title: '⚠️ خطا در تحلیل AI',
+        description: 'استفاده از تحلیل آزمایشی',
+        variant: 'destructive',
+      });
+      
       return generateMockAnalysis(post);
     }
   };

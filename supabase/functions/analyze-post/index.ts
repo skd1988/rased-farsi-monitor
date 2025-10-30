@@ -80,44 +80,34 @@ serve(async (req) => {
     const deepseekData = await deepseekResponse.json();
     const responseContent = deepseekData.choices[0].message.content;
     
+    console.log('DeepSeek raw response:', responseContent);
+    
     // Extract JSON from response (in case there's extra text)
     const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
     const analysis = JSON.parse(jsonMatch ? jsonMatch[0] : responseContent);
     
     const processingTime = (Date.now() - startTime) / 1000;
 
-    // Update post with analysis results
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('Analysis completed successfully in', processingTime, 'seconds');
+    console.log('Threat level:', analysis.threat_level, '| Sentiment:', analysis.sentiment);
 
-    const { error: updateError } = await supabase
-      .from('posts')
-      .update({
-        analysis_summary: analysis.summary,
-        sentiment: analysis.sentiment,
-        sentiment_score: analysis.sentiment_score,
-        main_topic: analysis.main_topic,
-        threat_level: analysis.threat_level,
-        confidence: analysis.confidence,
-        key_points: analysis.key_points,
-        recommended_action: analysis.recommended_action,
-        analyzed_at: new Date().toISOString(),
-        analysis_model: 'DeepSeek',
-        processing_time: processingTime
-      })
-      .eq('id', postId);
-
-    if (updateError) {
-      console.error('Error updating post:', updateError);
-      throw updateError;
-    }
-
+    // Return analysis only - frontend will handle database update
     return new Response(
       JSON.stringify({ 
         success: true, 
-        analysis,
-        processing_time: processingTime 
+        analysis: {
+          analysis_summary: analysis.summary,
+          sentiment: analysis.sentiment,
+          sentiment_score: analysis.sentiment_score,
+          main_topic: analysis.main_topic,
+          threat_level: analysis.threat_level,
+          confidence: analysis.confidence,
+          key_points: analysis.key_points,
+          recommended_action: analysis.recommended_action,
+          analyzed_at: new Date().toISOString(),
+          analysis_model: 'DeepSeek',
+          processing_time: processingTime
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
