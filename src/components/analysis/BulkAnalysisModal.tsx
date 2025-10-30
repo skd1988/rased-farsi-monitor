@@ -47,7 +47,9 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const { toast } = useToast();
 
   useEffect(() => {
+    console.log('🟡 BulkAnalysisModal useEffect - open:', open);
     if (open) {
+      console.log('🟢 Modal opened - fetching posts');
       fetchUnanalyzedPosts();
       setShowManualSelection(false);
       setSelectedPosts(new Set());
@@ -211,8 +213,16 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   };
 
 
+  console.log('🔴 BulkAnalysisModal rendering - open:', open);
+  
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+    <Dialog open={open} onOpenChange={(isOpen) => { 
+      console.log('🟣 Dialog onOpenChange called - isOpen:', isOpen);
+      if (!isOpen) {
+        console.log('🔴 Closing modal');
+        onClose();
+      }
+    }}>
       <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-2xl">تحلیل گروهی مطالب</DialogTitle>
