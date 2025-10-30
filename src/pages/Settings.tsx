@@ -9,62 +9,49 @@ import { Loader2, Download, CheckCircle, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 
 // Helper functions
-function parseDate(dateString: string | null | undefined): string {
-  if (!dateString) return new Date().toISOString();
-  
-  try {
-    // Format 1: ISO format (2024-10-30 or 2024-10-30T...)
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateString)) {
-      const parsed = new Date(dateString);
-      if (!isNaN(parsed.getTime())) {
-        return parsed.toISOString();
-      }
-    }
-    
-    // Format 2: Persian/Jalali date (1403/08/08)
-    if (/^\d{4}\/\d{2}\/\d{2}/.test(dateString)) {
-      console.warn('Jalali date detected:', dateString, '- using current date');
-      return new Date().toISOString();
-    }
-    
-    // Format 3: Try parsing as-is
-    const parsed = new Date(dateString);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-    
-    // Fallback: use current date
-    console.warn('Could not parse date:', dateString, '- using current date');
-    return new Date().toISOString();
-    
-  } catch (error) {
-    console.error('Date parsing error:', error);
-    return new Date().toISOString();
-  }
-}
-
-function deriveSource(url: string): string {
+function deriveSourceFromURL(url: string): string {
   if (!url) return 'نامشخص';
+  
+  const urlLower = url.toLowerCase();
+  
+  // Social Media
+  if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) return 'YouTube';
+  if (urlLower.includes('facebook.com')) return 'Facebook';
+  if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) return 'Twitter';
+  if (urlLower.includes('t.me')) return 'Telegram';
+  if (urlLower.includes('instagram.com')) return 'Instagram';
+  
+  // News websites
+  if (urlLower.includes('aljazeera.')) return 'الجزيرة';
+  if (urlLower.includes('alarabiya.')) return 'العربية';
+  if (urlLower.includes('france24.')) return 'فرانس 24';
+  if (urlLower.includes('bbc.')) return 'BBC';
+  if (urlLower.includes('dostor.org')) return 'الدستور';
+  if (urlLower.includes('nna-leb.gov')) return 'الوكالة الوطنية';
+  if (urlLower.includes('almanar.com')) return 'المنار';
+  if (urlLower.includes('963media.')) return '963 ميديا';
+  if (urlLower.includes('independentarabia.')) return 'اندبندنت عربية';
+  if (urlLower.includes('7al.net')) return '7al';
+  if (urlLower.includes('shorouknews.')) return 'الشروق';
+  if (urlLower.includes('imlebanon.')) return 'IMLeb';
+  if (urlLower.includes('nile.eg')) return 'النيل';
+  if (urlLower.includes('noonpost.')) return 'نون بوست';
+  if (urlLower.includes('lebanondebate.')) return 'لبنان ديبيت';
+  if (urlLower.includes('viory.')) return 'فيوري';
+  if (urlLower.includes('arabwindow.')) return 'نافذة عربية';
+  if (urlLower.includes('sarabic.')) return 'سرابيك';
+  
+  // Fallback
   try {
     const hostname = new URL(url).hostname.replace('www.', '');
-    const sourceMap: Record<string, string> = {
-      'aljazeera.net': 'الجزیرة',
-      'isna.ir': 'ایسنا',
-      'mehrnews.com': 'مهر',
-      'tasnimnews.com': 'تسنیم',
-      'farsnews.ir': 'فارس',
-      'irna.ir': 'ایرنا',
-      'rt.com': 'RT Arabic',
-      'bbc.com': 'BBC Persian'
-    };
-    return sourceMap[hostname] || 'نامشخص';
+    return hostname.split('.')[0];
   } catch {
     return 'نامشخص';
   }
 }
 
 function detectLanguage(text: string): string {
-  if (!text) return 'English';
+  if (!text) return 'عربی';
   if (/[پچژگ]/.test(text)) return 'فارسی';
   if (/[\u0600-\u06FF]/.test(text)) return 'عربی';
   return 'English';
@@ -73,13 +60,37 @@ function detectLanguage(text: string): string {
 function extractKeywords(text: string): string[] {
   if (!text) return [];
   const keywords = [
-    'جنگ روانی', 'جنگ‌روانی',
-    'محور مقاومت', 'محور‌مقاومت',
-    'اتهام', 'متهم',
-    'شبهه', 'شبهات',
-    'کمپین', 'کمپین‌های'
+    'جنگ روانی', 'محور مقاومت', 'اتهام', 'شبهه', 'کمپین',
+    'حرب نفسية', 'محور المقاومة', 'اتهامات', 'شبهات', 'حملة'
   ];
   return keywords.filter(kw => text.includes(kw));
+}
+
+function cleanHTMLContent(content: string): string {
+  if (!content) return '';
+  
+  let cleaned = content;
+  
+  // Strip ALL HTML tags
+  cleaned = cleaned.replace(/<[^>]*>/g, ' ');
+  
+  // Decode HTML entities
+  cleaned = cleaned.replace(/&nbsp;/g, ' ');
+  cleaned = cleaned.replace(/&quot;/g, '"');
+  cleaned = cleaned.replace(/&amp;/g, '&');
+  cleaned = cleaned.replace(/&lt;/g, '<');
+  cleaned = cleaned.replace(/&gt;/g, '>');
+  cleaned = cleaned.replace(/&#x([0-9A-F]+);/gi, (m, p1) => 
+    String.fromCharCode(parseInt(p1, 16))
+  );
+  cleaned = cleaned.replace(/&#(\d+);/g, (m, p1) => 
+    String.fromCharCode(parseInt(p1, 10))
+  );
+  
+  // Remove extra whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  return cleaned;
 }
 
 const Settings = () => {
@@ -95,7 +106,7 @@ const Settings = () => {
   const importFromGoogleSheets = async () => {
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
     
-    console.log('=== STARTING GOOGLE SHEETS IMPORT ===');
+    console.log('=== STARTING GOOGLE SHEETS IMPORT (2-COLUMN FORMAT) ===');
     console.log('Fetching from URL:', CSV_URL);
     
     try {
@@ -121,15 +132,13 @@ const Settings = () => {
         throw new Error('Response is not valid CSV format. Make sure the sheet is public.');
       }
       
-      // Parse CSV
+      // Parse CSV WITHOUT headers (2-column format)
       const parsed = Papa.parse(csvText, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (header: string) => header.trim()
+        header: false,
+        skipEmptyLines: true
       });
       
       console.log('Parsed data:', parsed.data.length, 'rows');
-      console.log('Headers found:', parsed.meta.fields);
       
       if (parsed.errors.length > 0) {
         console.warn('CSV parsing warnings:', parsed.errors);
@@ -139,8 +148,6 @@ const Settings = () => {
         throw new Error('No data found in sheet. Make sure the sheet has data and is public.');
       }
       
-      console.log('Sample row:', parsed.data[0]);
-      
       const rows = parsed.data as any[];
       setProgress({ current: 0, total: rows.length });
       
@@ -149,78 +156,82 @@ const Settings = () => {
       let skippedCount = 0;
       const errors: string[] = [];
       
-      // Process each row
-      for (let i = 0; i < rows.length; i++) {
+      // Process each row (skip header row)
+      for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
         
         try {
-          // Map Google Sheets columns (try multiple variations)
-          const date = row['Date'] || row['date'] || row['DATE'];
-          const title = row['Title'] || row['title'] || row['TITLE'];
-          const contents = row['Contents'] || row['contents'] || row['Content'] || row['CONTENTS'];
-          const sheetSource = row['Source'] || row['source'] || row['SOURCE'];
-          const articleUrl = row['Article URL'] || row['Artile URL'] || row['article_url'] || row['URL'] || row['url'];
-          const sheetLanguage = row['Language'] || row['language'] || row['LANGUAGE'];
-          const sheetStatus = row['Status'] || row['status'] || row['STATUS'];
-          const sheetKeywords = row['Keywords'] || row['keywords'] || row['KEYWORDS'];
-          
-          console.log(`\n--- Row ${i + 1}/${rows.length} ---`);
-          console.log('Date:', date);
-          console.log('Title:', title?.substring(0, 50));
-          console.log('Source (sheet):', sheetSource);
-          console.log('Article URL:', articleUrl);
-          console.log('Language (sheet):', sheetLanguage);
-          console.log('Status (sheet):', sheetStatus);
-          console.log('Keywords (sheet):', sheetKeywords);
-          
-          if (!title || !articleUrl) {
-            console.warn(`Row ${i + 1}: Missing required fields (title or URL), skipping`);
+          if (!row || row.length < 2) {
+            console.warn(`Row ${i}: Missing columns, skipping`);
             skippedCount++;
             continue;
           }
           
-          // Use sheet values if provided, fallback to auto-derive
-          const source = (sheetSource && sheetSource.trim() !== '') 
-            ? sheetSource.trim() 
-            : deriveSource(articleUrl);
-            
-          const language = (sheetLanguage && sheetLanguage.trim() !== '') 
-            ? sheetLanguage.trim() 
-            : detectLanguage(contents || title);
-            
-          const status = (sheetStatus && sheetStatus.trim() !== '') 
-            ? sheetStatus.trim() 
-            : 'جدید';
+          const mixedContent = row[0]; // Column A: Date + HTML content mixed
+          const articleUrl = row[1];   // Column B: URL
           
-          // Parse keywords from sheet (comma-separated string)
-          let keywords: string[] = [];
-          if (sheetKeywords && sheetKeywords.trim() !== '') {
-            keywords = sheetKeywords.split(',').map((k: string) => k.trim()).filter((k: string) => k);
-          }
-          // Fallback to auto-extract if empty
-          if (keywords.length === 0) {
-            keywords = extractKeywords(contents || title);
+          if (!mixedContent || !articleUrl) {
+            console.warn(`Row ${i}: Missing content or URL, skipping`);
+            skippedCount++;
+            continue;
           }
           
-          // Prepare post data with safe date parsing
+          console.log(`\n--- Row ${i}/${rows.length} ---`);
+          console.log('Article URL:', articleUrl);
+          
+          // ✅ EXTRACT DATE from beginning
+          const dateMatch = mixedContent.match(/^(\w+\s+\d+,\s+\d+\s+at\s+\d+:\d+)/);
+          const dateStr = dateMatch ? dateMatch[1] : null;
+          
+          // ✅ CLEAN the content (remove ALL HTML)
+          let cleanContent = mixedContent;
+          
+          // Remove date prefix
+          if (dateStr) {
+            cleanContent = cleanContent.replace(dateStr, '').trim();
+          }
+          
+          // Clean HTML tags and entities
+          cleanContent = cleanHTMLContent(cleanContent);
+          
+          if (!cleanContent || cleanContent.length < 10) {
+            console.warn(`Row ${i}: Content too short after cleaning, skipping`);
+            skippedCount++;
+            continue;
+          }
+          
+          // ✅ EXTRACT TITLE (first 100 chars of clean content as title)
+          const title = cleanContent.substring(0, 100).trim() || 'بدون عنوان';
+          
+          // ✅ FULL CONTENTS (all clean text)
+          const contents = cleanContent;
+          
+          // ✅ DERIVE SOURCE from URL
+          const source = deriveSourceFromURL(articleUrl);
+          
+          // ✅ DETECT LANGUAGE
+          const language = detectLanguage(cleanContent);
+          
+          // ✅ EXTRACT KEYWORDS
+          const keywords = extractKeywords(cleanContent);
+          
+          console.log('Title:', title);
+          console.log('Source:', source);
+          console.log('Language:', language);
+          console.log('Keywords:', keywords);
+          
           const postData = {
-            title: title.trim(),
-            contents: contents ? contents.trim() : '',
-            author: 'نامشخص', // No author column in your sheet
+            title: title,
+            contents: contents,
+            author: 'نامشخص',
             article_url: articleUrl.trim(),
             source: source,
             source_url: articleUrl.trim(),
             language: language,
-            status: status,
+            status: 'جدید',
             keywords: keywords,
-            published_at: parseDate(date) // Use safe date parser
+            published_at: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString()
           };
-          
-          console.log('Final source:', source);
-          console.log('Final language:', language);
-          console.log('Final status:', status);
-          console.log('Final keywords:', keywords);
-          console.log('Parsed date:', postData.published_at);
           
           // Check if post already exists (by URL to avoid duplicates)
           const { data: existing } = await supabase
@@ -230,7 +241,7 @@ const Settings = () => {
             .maybeSingle();
           
           if (existing) {
-            console.log(`Row ${i + 1}: Post exists, updating...`);
+            console.log(`Row ${i}: Post exists, updating...`);
             const { error } = await supabase
               .from('posts')
               .update(postData)
@@ -238,21 +249,21 @@ const Settings = () => {
             
             if (error) throw error;
             updatedCount++;
-            console.log(`Row ${i + 1}: ✅ Updated`);
+            console.log(`Row ${i}: ✅ Updated`);
           } else {
-            console.log(`Row ${i + 1}: Creating new post...`);
+            console.log(`Row ${i}: Creating new post...`);
             const { error } = await supabase
               .from('posts')
               .insert(postData);
             
             if (error) throw error;
             newCount++;
-            console.log(`Row ${i + 1}: ✅ Inserted`);
+            console.log(`Row ${i}: ✅ Inserted`);
           }
           
         } catch (rowError) {
-          console.error(`❌ Error processing row ${i + 1}:`, rowError);
-          errors.push(`Row ${i + 1}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
+          console.error(`❌ Error processing row ${i}:`, rowError);
+          errors.push(`Row ${i}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
           skippedCount++;
         }
         
@@ -270,7 +281,7 @@ const Settings = () => {
         console.log('Errors:', errors);
       }
       
-      return { newCount, updatedCount, skippedCount, total: rows.length, errors };
+      return { newCount, updatedCount, skippedCount, total: rows.length - 1, errors };
       
     } catch (error) {
       console.error('❌ Import failed:', error);
@@ -482,20 +493,22 @@ const Settings = () => {
 
           {/* Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm space-y-2">
-            <p className="font-semibold text-blue-900">📋 فرمت Google Sheet (8 ستون):</p>
+            <p className="font-semibold text-blue-900">📋 فرمت Google Sheet (2 ستون):</p>
             <ul className="list-disc list-inside text-blue-800 space-y-1 mr-4">
-              <li>ستون 1 - Date: تاریخ انتشار</li>
-              <li>ستون 2 - Title: عنوان مطلب</li>
-              <li>ستون 3 - Contents: متن کامل</li>
-              <li>ستون 4 - Source: منبع (مثل: الشرق الاوسط، Twitter)</li>
-              <li>ستون 5 - Article URL: لینک مطلب</li>
-              <li>ستون 6 - Language: زبان (فارسی، عربی، English)</li>
-              <li>ستون 7 - Status: وضعیت (جدید)</li>
-              <li>ستون 8 - Keywords: کلمات کلیدی (جدا شده با ویرگول)</li>
+              <li>ستون A - محتوای ترکیبی: تاریخ + محتوای HTML در یک سلول</li>
+              <li>ستون B - لینک مطلب: URL کامل مطلب</li>
             </ul>
             <p className="text-blue-700 mt-2">
-              ✅ سیستم ستون‌های 4، 6، 7، 8 را از Sheet می‌خواند و فقط در صورت خالی بودن، مقادیر را خودکار استخراج می‌کند.
+              ✅ سیستم به صورت خودکار:
             </p>
+            <ul className="list-disc list-inside text-blue-700 space-y-1 mr-4">
+              <li>تاریخ را از ابتدای متن استخراج می‌کند</li>
+              <li>تمام تگ‌های HTML را پاک می‌کند</li>
+              <li>عنوان را از 100 کاراکتر اول تولید می‌کند</li>
+              <li>منبع را از URL تشخیص می‌دهد (YouTube، الجزيرة، Twitter، و...)</li>
+              <li>زبان را شناسایی می‌کند (فارسی، عربی، English)</li>
+              <li>کلمات کلیدی را استخراج می‌کند</li>
+            </ul>
           </div>
         </CardContent>
       </Card>
