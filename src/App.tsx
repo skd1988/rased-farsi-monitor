@@ -10,6 +10,7 @@ import DashboardLayout from "./pages/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
+import Settings from "./pages/Settings";
 import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 
@@ -30,9 +31,9 @@ const App = () => (
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="posts" element={<PostsExplorer />} />
                 <Route path="ai-analysis" element={<AIAnalysis />} />
+                <Route path="settings" element={<Settings />} />
                 <Route path="alerts" element={<ComingSoon title="هشدارها" description="سیستم هشدارهای هوشمند به زودی فعال می‌شود" />} />
                 <Route path="trends" element={<ComingSoon title="ترندها" description="تحلیل روندهای رسانه‌ای به زودی در دسترس خواهد بود" />} />
-                <Route path="settings" element={<ComingSoon title="تنظیمات" description="صفحه تنظیمات به زودی راه‌اندازی می‌شود" />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
