@@ -31,19 +31,15 @@ const Dashboard = () => {
         const mappedPosts: EnrichedPost[] = (data || []).map(post => ({
           id: post.id,
           title: post.title,
-          content: post.contents || '',
           contents: post.contents || '',
           date: post.published_at,
           source: post.source,
-          sourceURL: post.source_url,
+          sourceURL: post.source_url || undefined,
           author: post.author || 'نامشخص',
           language: post.language,
           status: post.status,
-          articleURL: post.article_url,
+          articleURL: post.article_url || '',
           keywords: post.keywords || [],
-          sentiment: post.sentiment,
-          threat_level: post.threat_level,
-          analysis_summary: post.analysis_summary,
         }));
         
         setPosts(mappedPosts);
