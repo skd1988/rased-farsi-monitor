@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Newspaper, FileText, AlertTriangle, Globe } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import PostsLineChart from '@/components/dashboard/PostsLineChart';
@@ -6,40 +6,84 @@ import LanguagePieChart from '@/components/dashboard/LanguagePieChart';
 import SourcesBarChart from '@/components/dashboard/SourcesBarChart';
 import PostsTable from '@/components/dashboard/PostsTable';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
-import { mockPosts, EnrichedPost } from '@/lib/mockData';
+import { EnrichedPost } from '@/lib/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { Loader2 } from 'lucide-react';
 
 const Dashboard = () => {
   const [selectedPost, setSelectedPost] = useState<EnrichedPost | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [posts, setPosts] = useState<EnrichedPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Fetch real data from Supabase
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('*')
+          .order('published_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        // Map Supabase data to EnrichedPost format
+        const mappedPosts: EnrichedPost[] = (data || []).map(post => ({
+          id: post.id,
+          title: post.title,
+          content: post.contents || '',
+          contents: post.contents || '',
+          date: post.published_at,
+          source: post.source,
+          author: post.author || 'نامشخص',
+          language: post.language,
+          status: post.status,
+          articleURL: post.article_url,
+          keywords: post.keywords || [],
+          sentiment: post.sentiment,
+          threat_level: post.threat_level,
+          analysis_summary: post.analysis_summary,
+        }));
+        
+        setPosts(mappedPosts);
+      } catch (error) {
+        console.error('Error fetching posts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchPosts();
+  }, []);
   
   // Calculate KPIs
   const todayPosts = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return mockPosts.filter(post => {
+    return posts.filter(post => {
       const postDate = new Date(post.date);
       postDate.setHours(0, 0, 0, 0);
       return postDate.getTime() === today.getTime();
     }).length;
-  }, []);
+  }, [posts]);
   
-  const totalPosts = mockPosts.length;
+  const totalPosts = posts.length;
   const activeAlerts = 0; // Placeholder for future implementation
   const uniqueSources = useMemo(() => {
-    return new Set(mockPosts.map(post => post.source)).size;
-  }, []);
+    return new Set(posts.map(post => post.source)).size;
+  }, [posts]);
   
   // Calculate yesterday's posts for percentage change
   const yesterdayPosts = useMemo(() => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(0, 0, 0, 0);
-    return mockPosts.filter(post => {
+    return posts.filter(post => {
       const postDate = new Date(post.date);
       postDate.setHours(0, 0, 0, 0);
       return postDate.getTime() === yesterday.getTime();
     }).length;
-  }, []);
+  }, [posts]);
   
   const changePercentage = yesterdayPosts > 0 
     ? Math.round(((todayPosts - yesterdayPosts) / yesterdayPosts) * 100)
@@ -56,7 +100,7 @@ const Dashboard = () => {
       date.setDate(date.getDate() - i);
       date.setHours(0, 0, 0, 0);
       
-      const count = mockPosts.filter(post => {
+      const count = posts.filter(post => {
         const postDate = new Date(post.date);
         postDate.setHours(0, 0, 0, 0);
         return postDate.getTime() === date.getTime();
@@ -69,12 +113,12 @@ const Dashboard = () => {
     }
     
     return data;
-  }, []);
+  }, [posts]);
   
   // Prepare pie chart data (language distribution)
   const pieChartData = useMemo(() => {
     const languageCounts: Record<string, number> = {};
-    mockPosts.forEach(post => {
+    posts.forEach(post => {
       languageCounts[post.language] = (languageCounts[post.language] || 0) + 1;
     });
     
@@ -83,12 +127,12 @@ const Dashboard = () => {
       value,
       percentage: (value / totalPosts) * 100,
     }));
-  }, [totalPosts]);
+  }, [posts, totalPosts]);
   
   // Prepare bar chart data (top 10 sources)
   const barChartData = useMemo(() => {
     const sourceCounts: Record<string, number> = {};
-    mockPosts.forEach(post => {
+    posts.forEach(post => {
       sourceCounts[post.source] = (sourceCounts[post.source] || 0) + 1;
     });
     
@@ -96,12 +140,20 @@ const Dashboard = () => {
       .map(([source, count]) => ({ source, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, []);
+  }, [posts]);
   
   const handleViewPost = (post: EnrichedPost) => {
     setSelectedPost(post);
     setIsModalOpen(true);
   };
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
   
   return (
     <div className="p-6 space-y-6">
@@ -149,7 +201,7 @@ const Dashboard = () => {
       <SourcesBarChart data={barChartData} />
       
       {/* Posts Table */}
-      <PostsTable posts={mockPosts.slice(0, 20)} onViewPost={handleViewPost} />
+      <PostsTable posts={posts.slice(0, 20)} onViewPost={handleViewPost} />
       
       {/* Detail Modal */}
       <PostDetailModal
