@@ -387,6 +387,7 @@ const AIAnalysis = () => {
   };
 
   const startAnalysis = async (count: number) => {
+    console.log('🎯 startAnalysis CALLED with count:', count);
     setIsAnalyzing(true);
     setProgress(0);
     setAnalyzedCount(0);
@@ -697,9 +698,8 @@ const AIAnalysis = () => {
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            if (!isAnalyzing) {
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isAnalyzing) {
               console.log('Background clicked, closing modal');
               closeModal();
             }
@@ -717,7 +717,6 @@ const AIAnalysis = () => {
               zIndex: 1000000
             }}
             onMouseDown={(e) => {
-              e.preventDefault();
               e.stopPropagation();
               console.log('Modal content clicked, preventing close');
             }}
@@ -734,8 +733,9 @@ const AIAnalysis = () => {
                 <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
                   <button
                     onClick={() => {
-                      console.log('Analyzing 5 posts...');
+                      console.log('🔵 Button clicked - about to call startAnalysis(5)');
                       startAnalysis(5);
+                      console.log('🔵 startAnalysis(5) called');
                     }}
                     style={{
                       backgroundColor: '#3B82F6',
@@ -759,8 +759,9 @@ const AIAnalysis = () => {
                   
                   <button
                     onClick={() => {
-                      console.log('Analyzing 10 posts...');
+                      console.log('🔵 Button clicked - about to call startAnalysis(10)');
                       startAnalysis(10);
+                      console.log('🔵 startAnalysis(10) called');
                     }}
                     style={{
                       backgroundColor: '#10B981',
@@ -784,8 +785,9 @@ const AIAnalysis = () => {
                   
                   <button
                     onClick={() => {
-                      console.log('Analyzing 20 posts...');
+                      console.log('🔵 Button clicked - about to call startAnalysis(20)');
                       startAnalysis(20);
+                      console.log('🔵 startAnalysis(20) called');
                     }}
                     style={{
                       backgroundColor: '#8B5CF6',
