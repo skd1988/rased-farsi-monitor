@@ -101,18 +101,34 @@ const PostsExplorer = () => {
   const fetchPosts = async () => {
     try {
       setLoading(true);
+      console.log('Fetching posts from Supabase...');
+      
       const { data, error } = await supabase
         .from('posts')
         .select('*')
         .order('published_at', { ascending: false });
       
-      if (error) throw error;
+      console.log('Supabase response:', { data, error });
+      
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      
+      console.log(`Successfully fetched ${data?.length || 0} posts`);
       setPosts(data || []);
+      
+      if (!data || data.length === 0) {
+        toast({
+          title: 'اطلاع',
+          description: 'هیچ مطلبی در دیتابیس یافت نشد',
+        });
+      }
     } catch (error) {
       console.error('Error fetching posts:', error);
       toast({
         title: 'خطا در بارگذاری مطالب',
-        description: 'لطفا دوباره تلاش کنید',
+        description: error instanceof Error ? error.message : 'لطفا دوباره تلاش کنید',
         variant: 'destructive',
       });
     } finally {
