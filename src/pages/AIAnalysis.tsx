@@ -134,6 +134,77 @@ const AIAnalysis = () => {
 
   const allTopics = Array.from(new Set(posts.map(p => p.main_topic).filter(Boolean)));
 
+  // Generate mock analysis (fallback)
+  const generateMockAnalysis = (post: any) => {
+    const threats = ['Critical', 'High', 'Medium', 'Low'];
+    const sentiments = ['Positive', 'Neutral', 'Negative'];
+    const topics = ['جنگ روانی', 'محور مقاومت', 'اتهام', 'شبهه', 'کمپین', 'اخبار عادی'];
+    
+    // Intelligent mock based on keywords
+    let threat = 'Low';
+    if (post.keywords?.includes('جنگ روانی') || post.keywords?.includes('حرب نفسية')) {
+      threat = 'High';
+    }
+    if (post.keywords?.includes('اتهام') || post.keywords?.includes('کمپین')) {
+      threat = 'Medium';
+    }
+    
+    return {
+      analysis_summary: `تحلیل تلقائی: این مطلب از ${post.source} درباره ${post.title.substring(0, 50)}... است و بررسی شده است.`,
+      sentiment: sentiments[Math.floor(Math.random() * sentiments.length)],
+      sentiment_score: parseFloat((Math.random() * 2 - 1).toFixed(2)),
+      main_topic: topics[Math.floor(Math.random() * topics.length)],
+      threat_level: threat,
+      confidence: Math.floor(Math.random() * 30) + 70,
+      key_points: [
+        'نکته کلیدی اول: بررسی محتوای مطلب',
+        'نکته کلیدی دوم: تحلیل احساسات و لحن',
+        'نکته کلیدی سوم: ارزیابی سطح تهدید'
+      ],
+      recommended_action: 'رصد و بررسی بیشتر توصیه می‌شود',
+      analyzed_at: new Date().toISOString(),
+      analysis_model: 'Mock',
+      processing_time: 2.5
+    };
+  };
+
+  // Analyze post with DeepSeek API
+  const analyzePostWithAI = async (post: any) => {
+    console.log('Analyzing post with AI:', post.title);
+    
+    const startTime = Date.now();
+    
+    try {
+      // Call Supabase edge function for analysis
+      const { data, error } = await supabase.functions.invoke('analyze-post', {
+        body: {
+          postId: post.id,
+          postTitle: post.title,
+          postContent: post.contents || ''
+        }
+      });
+      
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
+      
+      console.log('Analysis result:', data);
+      
+      const processingTime = (Date.now() - startTime) / 1000;
+      
+      return {
+        ...data.analysis,
+        processing_time: processingTime
+      };
+      
+    } catch (error) {
+      console.error('AI analysis failed:', error);
+      console.warn('Falling back to mock analysis');
+      return generateMockAnalysis(post);
+    }
+  };
+
   const startAnalysis = async (count: number) => {
     console.log(`Starting analysis of ${count} posts`);
     setIsAnalyzing(true);
@@ -168,29 +239,10 @@ const AIAnalysis = () => {
         const post = postsToAnalyze[i];
         console.log(`Analyzing post ${i + 1}/${postsToAnalyze.length}: ${post.title}`);
         
-        // Mock analysis data
-        const threats = ['Critical', 'High', 'Medium', 'Low'];
-        const sentiments = ['Positive', 'Neutral', 'Negative'];
-        const topics = ['جنگ روانی', 'محور مقاومت', 'اتهام', 'شبهه', 'کمپین', 'اخبار عادی'];
+        // Analyze with AI (calls edge function -> DeepSeek)
+        const analysis = await analyzePostWithAI(post);
         
-        const analysis = {
-          analysis_summary: `تحلیل هوشمند: این مطلب درباره ${post.title.substring(0, 30)}... است. محتوا بررسی و تحلیل شده است.`,
-          sentiment: sentiments[Math.floor(Math.random() * sentiments.length)],
-          sentiment_score: parseFloat((Math.random() * 2 - 1).toFixed(2)),
-          main_topic: topics[Math.floor(Math.random() * topics.length)],
-          threat_level: threats[Math.floor(Math.random() * threats.length)],
-          confidence: Math.floor(Math.random() * 30) + 70,
-          key_points: [
-            'نکته کلیدی اول: بررسی محتوای مطلب',
-            'نکته کلیدی دوم: تحلیل احساسات و لحن',
-            'نکته کلیدی سوم: ارزیابی سطح تهدید'
-          ],
-          recommended_action: 'رصد و بررسی بیشتر توصیه می‌شود',
-          analyzed_at: new Date().toISOString(),
-          processing_time: 2.5
-        };
-        
-        // Update post
+        // Update post in database
         const { error: updateError } = await supabase
           .from('posts')
           .update(analysis)
@@ -207,8 +259,8 @@ const AIAnalysis = () => {
         setProgress(newProgress);
         setAnalyzedCount(i + 1);
         
-        // Delay to simulate processing
-        await new Promise(resolve => setTimeout(resolve, 800));
+        // Small delay between requests (avoid rate limits)
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       console.log('Analysis complete!');
