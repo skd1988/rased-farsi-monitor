@@ -169,6 +169,8 @@ const Settings = () => {
   const [nextSyncTime, setNextSyncTime] = useState<string | null>(null);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [syncHistory, setSyncHistory] = useState<Array<{ timestamp: string; success: boolean; count?: number; error?: string; manual?: boolean }>>([]);
+  const [lastSyncedRow, setLastSyncedRow] = useState(0);
+  const [totalRowsInSheet, setTotalRowsInSheet] = useState(0);
 
   const SHEET_ID = '11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ';
   const SHEET_NAME = 'Sheet1';
@@ -179,11 +181,15 @@ const Settings = () => {
     const savedInterval = parseInt(localStorage.getItem('syncInterval') || '60');
     const savedLastSync = localStorage.getItem('lastAutoSync');
     const savedHistory = JSON.parse(localStorage.getItem('syncHistory') || '[]');
+    const savedRow = parseInt(localStorage.getItem('lastSyncedRow') || '0');
+    const savedTotal = parseInt(localStorage.getItem('totalRowsInSheet') || '0');
     
     setAutoSyncEnabled(savedEnabled);
     setSyncInterval(savedInterval);
     if (savedLastSync) setLastAutoSync(savedLastSync);
     setSyncHistory(savedHistory);
+    setLastSyncedRow(savedRow);
+    setTotalRowsInSheet(savedTotal);
   }, []);
 
   // Save settings to localStorage
@@ -219,11 +225,11 @@ const Settings = () => {
     return () => clearInterval(interval);
   }, [autoSyncEnabled, syncInterval]);
 
-const importFromGoogleSheets = async (silent = false) => {
+const importFromGoogleSheets = async (startFromRow: number | null = null, silent = false) => {
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
     
     if (!silent) {
-      console.log('=== STARTING GOOGLE SHEETS IMPORT (8-COLUMN FORMAT) ===');
+      console.log('=== STARTING GOOGLE SHEETS IMPORT (8-COLUMN FORMAT, INCREMENTAL) ===');
       console.log('Fetching from URL:', CSV_URL);
     }
     
@@ -257,27 +263,40 @@ const importFromGoogleSheets = async (silent = false) => {
         transformHeader: (h) => h.trim()
       });
       
-      console.log('Headers:', parsed.meta.fields);
-      console.log('Parsed data:', parsed.data.length, 'rows');
+      const totalRows = parsed.data.length;
+      console.log(`Total rows in sheet: ${totalRows}`);
+      
+      const lastRow = startFromRow !== null 
+        ? startFromRow 
+        : parseInt(localStorage.getItem('lastSyncedRow') || '0');
+      
+      console.log(`Last synced row: ${lastRow}`);
+      console.log(`New rows to import: ${totalRows - lastRow}`);
+      
+      if (totalRows <= lastRow) {
+        console.log('✅ No new posts to import');
+        return { newCount: 0, updatedCount: 0, skippedCount: 0, total: totalRows, errors: [] };
+      }
       
       if (parsed.errors.length > 0) {
         console.warn('CSV parsing warnings:', parsed.errors);
       }
       
-      if (parsed.data.length === 0) {
-        throw new Error('No data found in sheet. Make sure the sheet has data and is public.');
-      }
+      const allData = parsed.data as any[];
+      const newRows = allData.slice(lastRow);
+      console.log(`Processing ${newRows.length} new rows...`);
       
-      setProgress({ current: 0, total: parsed.data.length });
+      setProgress({ current: 0, total: newRows.length });
       
       let newCount = 0;
       let updatedCount = 0;
       let skippedCount = 0;
       const errors: string[] = [];
       
-      // Process each row
-      for (let i = 0; i < parsed.data.length; i++) {
-        const row = parsed.data[i] as any;
+      // Process only NEW rows
+      for (let i = 0; i < newRows.length; i++) {
+        const row = newRows[i] as any;
+        const actualRowNumber = lastRow + i + 1;
         
         try {
           // Read all 8 columns
@@ -291,12 +310,12 @@ const importFromGoogleSheets = async (silent = false) => {
           const keywords = row['Keywords'];
           
           if (!articleUrl) {
-            console.warn(`Row ${i + 1}: Missing URL, skipping`);
+            console.warn(`Row ${actualRowNumber}: Missing URL, skipping`);
             skippedCount++;
             continue;
           }
           
-          console.log(`\n--- Row ${i + 1}/${parsed.data.length} ---`);
+          console.log(`\n--- Row ${actualRowNumber}/${totalRows} ---`);
           console.log('Article URL:', articleUrl);
           
           // ✅ DEEP CLEAN: Title
@@ -355,7 +374,7 @@ const importFromGoogleSheets = async (silent = false) => {
             .maybeSingle();
           
           if (existing) {
-            console.log(`Row ${i + 1}: Post exists, updating...`);
+            console.log(`Row ${actualRowNumber}: Post exists, updating...`);
             const { error } = await supabase
               .from('posts')
               .update(postData)
@@ -363,41 +382,51 @@ const importFromGoogleSheets = async (silent = false) => {
             
             if (error) throw error;
             updatedCount++;
-            console.log(`Row ${i + 1}: ✅ Updated`);
+            console.log(`Row ${actualRowNumber}: ✅ Updated`);
           } else {
-            console.log(`Row ${i + 1}: Creating new post...`);
+            console.log(`Row ${actualRowNumber}: Creating new post...`);
             const { error } = await supabase
               .from('posts')
               .insert(postData);
             
             if (error) throw error;
             newCount++;
-            console.log(`Row ${i + 1}: ✅ Inserted`);
+            console.log(`Row ${actualRowNumber}: ✅ Inserted`);
           }
           
+          // Update progress after each successful import
+          localStorage.setItem('lastSyncedRow', actualRowNumber.toString());
+          
         } catch (rowError) {
-          console.error(`❌ Error processing row ${i + 1}:`, rowError);
-          errors.push(`Row ${i + 1}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
+          console.error(`❌ Error processing row ${actualRowNumber}:`, rowError);
+          errors.push(`Row ${actualRowNumber}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
           skippedCount++;
         }
         
-        setProgress({ current: i + 1, total: parsed.data.length });
+        setProgress({ current: i + 1, total: newRows.length });
         
         // Small delay to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       
+      // Save final state
+      localStorage.setItem('lastSyncedRow', totalRows.toString());
+      localStorage.setItem('totalRowsInSheet', totalRows.toString());
+      setLastSyncedRow(totalRows);
+      setTotalRowsInSheet(totalRows);
+      
       if (!silent) {
-        console.log('\n=== IMPORT COMPLETE ===');
+        console.log('\n=== INCREMENTAL SYNC COMPLETE ===');
         console.log('New posts:', newCount);
         console.log('Updated posts:', updatedCount);
         console.log('Skipped/errors:', skippedCount);
+        console.log(`Synced rows: ${lastRow} → ${totalRows}`);
         if (errors.length > 0) {
           console.log('Errors:', errors);
         }
       }
       
-      return { newCount, updatedCount, skippedCount, total: parsed.data.length, errors };
+      return { newCount, updatedCount, skippedCount, total: totalRows, errors };
       
     } catch (error) {
       console.error('❌ Import failed:', error);
@@ -406,11 +435,16 @@ const importFromGoogleSheets = async (silent = false) => {
   };
 
   const handleAutoSync = async () => {
-    console.log('Running auto-sync...');
+    console.log('Running auto-sync (incremental)...');
     
     try {
-      const result = await importFromGoogleSheets(true);
+      const result = await importFromGoogleSheets(null, true);
       const count = result.newCount + result.updatedCount;
+      
+      if (count === 0) {
+        console.log('No new posts to import');
+        return;
+      }
       
       const now = new Date().toISOString();
       setLastAutoSync(now);
@@ -424,7 +458,7 @@ const importFromGoogleSheets = async (silent = false) => {
       setSyncHistory(newHistory);
       localStorage.setItem('syncHistory', JSON.stringify(newHistory));
       
-      console.log(`✅ Auto-sync complete: ${count} posts`);
+      console.log(`✅ Auto-sync: ${count} new posts imported`);
       
     } catch (error) {
       console.error('Auto-sync failed:', error);
@@ -444,7 +478,7 @@ const importFromGoogleSheets = async (silent = false) => {
     setIsManualSyncing(true);
     
     try {
-      const result = await importFromGoogleSheets(false);
+      const result = await importFromGoogleSheets(null, false);
       const count = result.newCount + result.updatedCount;
       
       const now = new Date().toISOString();
@@ -459,10 +493,17 @@ const importFromGoogleSheets = async (silent = false) => {
       setSyncHistory(newHistory);
       localStorage.setItem('syncHistory', JSON.stringify(newHistory));
       
-      toast({
-        title: 'همگام‌سازی موفق',
-        description: `${count} مطلب Import شد`,
-      });
+      if (count === 0) {
+        toast({
+          title: 'همگام‌سازی انجام شد',
+          description: 'مطلب جدیدی یافت نشد',
+        });
+      } else {
+        toast({
+          title: 'همگام‌سازی موفق',
+          description: `${count} مطلب جدید Import شد`,
+        });
+      }
       
       setTimeout(() => {
         window.location.href = '/dashboard';
@@ -480,13 +521,43 @@ const importFromGoogleSheets = async (silent = false) => {
     }
   };
 
+  const handleResetSync = async () => {
+    if (!confirm('آیا مطمئن هستید؟ تمام مطالب از اول Import می‌شوند.')) {
+      return;
+    }
+    
+    localStorage.setItem('lastSyncedRow', '0');
+    setLastSyncedRow(0);
+    
+    setIsManualSyncing(true);
+    try {
+      const result = await importFromGoogleSheets(0, false);
+      const count = result.newCount + result.updatedCount;
+      
+      toast({
+        title: 'همگام‌سازی کامل انجام شد',
+        description: `${count} مطلب`,
+      });
+      
+      window.location.href = '/';
+    } catch (error) {
+      toast({
+        title: 'خطا',
+        description: error instanceof Error ? error.message : 'خطای نامشخص',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
+
   const handleImport = async () => {
     console.log('=== IMPORT BUTTON CLICKED ===');
     setIsImporting(true);
     setImportStatus(null);
     
     try {
-      const result = await importFromGoogleSheets(false);
+      const result = await importFromGoogleSheets(null, false);
       
       let message = `✅ موفق! ${result.newCount} مطلب جدید، ${result.updatedCount} مطلب به‌روزرسانی شد`;
       if (result.skippedCount > 0) {
@@ -755,7 +826,7 @@ const importFromGoogleSheets = async (silent = false) => {
 
           {/* Status Display */}
           {autoSyncEnabled && (
-            <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+            <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg space-y-2">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="font-bold">همگام‌سازی خودکار فعال است</span>
@@ -773,6 +844,21 @@ const importFromGoogleSheets = async (silent = false) => {
                   همگام‌سازی بعدی: {new Date(nextSyncTime).toLocaleString('fa-IR')}
                 </p>
               )}
+              
+              {/* Progress Display */}
+              <div className="pt-2 mt-2 border-t border-primary/30">
+                <p className="font-bold text-sm mb-1">وضعیت همگام‌سازی:</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">ردیف‌های پردازش شده:</span>
+                  <span className="font-bold">{lastSyncedRow} / {totalRowsInSheet || '?'}</span>
+                </div>
+                {totalRowsInSheet > lastSyncedRow && (
+                  <div className="flex justify-between text-sm text-orange-600 dark:text-orange-400 mt-1">
+                    <span>ردیف‌های جدید در انتظار:</span>
+                    <span className="font-bold">{totalRowsInSheet - lastSyncedRow}</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -816,6 +902,26 @@ const importFromGoogleSheets = async (silent = false) => {
               </div>
             </div>
           )}
+
+          {/* Reset Sync Section */}
+          <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg space-y-3">
+            <p className="font-bold">تنظیمات پیشرفته</p>
+            <p className="text-sm text-muted-foreground">
+              آخرین ردیف همگام‌سازی شده: {lastSyncedRow} از {totalRowsInSheet || '?'}
+            </p>
+            <Button
+              onClick={handleResetSync}
+              disabled={isManualSyncing}
+              variant="outline"
+              className="w-full border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+            >
+              <RefreshCw className="ml-2 h-4 w-4" />
+              ریست و همگام‌سازی کامل از ابتدا
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              ⚠️ این گزینه تمام مطالب را از اول Import می‌کند
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
