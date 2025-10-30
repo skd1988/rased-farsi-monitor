@@ -16,44 +16,77 @@ export type Database = {
     Tables: {
       posts: {
         Row: {
+          analysis_model: string | null
+          analysis_summary: string | null
+          analyzed_at: string | null
           article_url: string | null
           author: string | null
+          confidence: number | null
           contents: string | null
           created_at: string
           id: string
+          key_points: string[] | null
           keywords: string[] | null
           language: string
+          main_topic: string | null
+          processing_time: number | null
           published_at: string
+          recommended_action: string | null
+          sentiment: string | null
+          sentiment_score: number | null
           source: string
           status: string
+          threat_level: string | null
           title: string
           updated_at: string
         }
         Insert: {
+          analysis_model?: string | null
+          analysis_summary?: string | null
+          analyzed_at?: string | null
           article_url?: string | null
           author?: string | null
+          confidence?: number | null
           contents?: string | null
           created_at?: string
           id?: string
+          key_points?: string[] | null
           keywords?: string[] | null
           language?: string
+          main_topic?: string | null
+          processing_time?: number | null
           published_at?: string
+          recommended_action?: string | null
+          sentiment?: string | null
+          sentiment_score?: number | null
           source: string
           status?: string
+          threat_level?: string | null
           title: string
           updated_at?: string
         }
         Update: {
+          analysis_model?: string | null
+          analysis_summary?: string | null
+          analyzed_at?: string | null
           article_url?: string | null
           author?: string | null
+          confidence?: number | null
           contents?: string | null
           created_at?: string
           id?: string
+          key_points?: string[] | null
           keywords?: string[] | null
           language?: string
+          main_topic?: string | null
+          processing_time?: number | null
           published_at?: string
+          recommended_action?: string | null
+          sentiment?: string | null
+          sentiment_score?: number | null
           source?: string
           status?: string
+          threat_level?: string | null
           title?: string
           updated_at?: string
         }
