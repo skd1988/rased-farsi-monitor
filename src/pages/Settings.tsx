@@ -158,13 +158,20 @@ const Settings = () => {
           const date = row['Date'] || row['date'] || row['DATE'];
           const title = row['Title'] || row['title'] || row['TITLE'];
           const contents = row['Contents'] || row['contents'] || row['Content'] || row['CONTENTS'];
-          const author = row['Author'] || row['author'] || row['AUTHOR'];
+          const sheetSource = row['Source'] || row['source'] || row['SOURCE'];
           const articleUrl = row['Article URL'] || row['Artile URL'] || row['article_url'] || row['URL'] || row['url'];
+          const sheetLanguage = row['Language'] || row['language'] || row['LANGUAGE'];
+          const sheetStatus = row['Status'] || row['status'] || row['STATUS'];
+          const sheetKeywords = row['Keywords'] || row['keywords'] || row['KEYWORDS'];
           
           console.log(`\n--- Row ${i + 1}/${rows.length} ---`);
           console.log('Date:', date);
           console.log('Title:', title?.substring(0, 50));
+          console.log('Source (sheet):', sheetSource);
           console.log('Article URL:', articleUrl);
+          console.log('Language (sheet):', sheetLanguage);
+          console.log('Status (sheet):', sheetStatus);
+          console.log('Keywords (sheet):', sheetKeywords);
           
           if (!title || !articleUrl) {
             console.warn(`Row ${i + 1}: Missing required fields (title or URL), skipping`);
@@ -172,26 +179,47 @@ const Settings = () => {
             continue;
           }
           
-          // Auto-derive additional fields
-          const source = deriveSource(articleUrl);
-          const language = detectLanguage(contents || title);
-          const keywords = extractKeywords(contents || title);
+          // Use sheet values if provided, fallback to auto-derive
+          const source = (sheetSource && sheetSource.trim() !== '') 
+            ? sheetSource.trim() 
+            : deriveSource(articleUrl);
+            
+          const language = (sheetLanguage && sheetLanguage.trim() !== '') 
+            ? sheetLanguage.trim() 
+            : detectLanguage(contents || title);
+            
+          const status = (sheetStatus && sheetStatus.trim() !== '') 
+            ? sheetStatus.trim() 
+            : 'جدید';
+          
+          // Parse keywords from sheet (comma-separated string)
+          let keywords: string[] = [];
+          if (sheetKeywords && sheetKeywords.trim() !== '') {
+            keywords = sheetKeywords.split(',').map((k: string) => k.trim()).filter((k: string) => k);
+          }
+          // Fallback to auto-extract if empty
+          if (keywords.length === 0) {
+            keywords = extractKeywords(contents || title);
+          }
           
           // Prepare post data with safe date parsing
           const postData = {
             title: title.trim(),
             contents: contents ? contents.trim() : '',
-            author: author ? author.trim() : 'نامشخص',
+            author: 'نامشخص', // No author column in your sheet
             article_url: articleUrl.trim(),
             source: source,
+            source_url: articleUrl.trim(),
             language: language,
-            status: 'جدید',
+            status: status,
             keywords: keywords,
             published_at: parseDate(date) // Use safe date parser
           };
           
-          console.log('Derived source:', source);
-          console.log('Detected language:', language);
+          console.log('Final source:', source);
+          console.log('Final language:', language);
+          console.log('Final status:', status);
+          console.log('Final keywords:', keywords);
           console.log('Parsed date:', postData.published_at);
           
           // Check if post already exists (by URL to avoid duplicates)
@@ -454,16 +482,19 @@ const Settings = () => {
 
           {/* Instructions */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm space-y-2">
-            <p className="font-semibold text-blue-900">📋 فرمت Google Sheet:</p>
+            <p className="font-semibold text-blue-900">📋 فرمت Google Sheet (8 ستون):</p>
             <ul className="list-disc list-inside text-blue-800 space-y-1 mr-4">
-              <li>ستون Date: تاریخ انتشار (فرمت: YYYY-MM-DD)</li>
-              <li>ستون Title: عنوان مطلب</li>
-              <li>ستون Contents: متن کامل مطلب</li>
-              <li>ستون Author: نویسنده</li>
-              <li>ستون Article URL: لینک مطلب</li>
+              <li>ستون 1 - Date: تاریخ انتشار</li>
+              <li>ستون 2 - Title: عنوان مطلب</li>
+              <li>ستون 3 - Contents: متن کامل</li>
+              <li>ستون 4 - Source: منبع (مثل: الشرق الاوسط، Twitter)</li>
+              <li>ستون 5 - Article URL: لینک مطلب</li>
+              <li>ستون 6 - Language: زبان (فارسی، عربی، English)</li>
+              <li>ستون 7 - Status: وضعیت (جدید)</li>
+              <li>ستون 8 - Keywords: کلمات کلیدی (جدا شده با ویرگول)</li>
             </ul>
             <p className="text-blue-700 mt-2">
-              💡 سیستم به طور خودکار منبع، زبان و کلمات کلیدی را استخراج می‌کند.
+              ✅ سیستم ستون‌های 4، 6، 7، 8 را از Sheet می‌خواند و فقط در صورت خالی بودن، مقادیر را خودکار استخراج می‌کند.
             </p>
           </div>
         </CardContent>
