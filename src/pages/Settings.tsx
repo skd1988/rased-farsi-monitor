@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Download, CheckCircle, XCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Loader2, Download, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import Papa from 'papaparse';
 
 // Helper functions
@@ -161,14 +162,70 @@ const Settings = () => {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const { toast } = useToast();
 
+  // Auto-sync states
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [syncInterval, setSyncInterval] = useState(60);
+  const [lastAutoSync, setLastAutoSync] = useState<string | null>(null);
+  const [nextSyncTime, setNextSyncTime] = useState<string | null>(null);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [syncHistory, setSyncHistory] = useState<Array<{ timestamp: string; success: boolean; count?: number; error?: string; manual?: boolean }>>([]);
+
   const SHEET_ID = '11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ';
   const SHEET_NAME = 'Sheet1';
 
-const importFromGoogleSheets = async () => {
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedEnabled = localStorage.getItem('autoSyncEnabled') === 'true';
+    const savedInterval = parseInt(localStorage.getItem('syncInterval') || '60');
+    const savedLastSync = localStorage.getItem('lastAutoSync');
+    const savedHistory = JSON.parse(localStorage.getItem('syncHistory') || '[]');
+    
+    setAutoSyncEnabled(savedEnabled);
+    setSyncInterval(savedInterval);
+    if (savedLastSync) setLastAutoSync(savedLastSync);
+    setSyncHistory(savedHistory);
+  }, []);
+
+  // Save settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('autoSyncEnabled', String(autoSyncEnabled));
+    localStorage.setItem('syncInterval', String(syncInterval));
+  }, [autoSyncEnabled, syncInterval]);
+
+  // Auto-sync interval
+  useEffect(() => {
+    if (!autoSyncEnabled) {
+      setNextSyncTime(null);
+      return;
+    }
+    
+    console.log(`Auto-sync enabled with interval: ${syncInterval} minutes`);
+    
+    // Calculate next sync time
+    const intervalMs = syncInterval * 60 * 1000;
+    const updateNextSyncTime = () => {
+      const next = new Date(Date.now() + intervalMs);
+      setNextSyncTime(next.toISOString());
+    };
+    
+    updateNextSyncTime();
+    
+    // Run auto-sync
+    const interval = setInterval(() => {
+      handleAutoSync();
+      updateNextSyncTime();
+    }, intervalMs);
+    
+    return () => clearInterval(interval);
+  }, [autoSyncEnabled, syncInterval]);
+
+const importFromGoogleSheets = async (silent = false) => {
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
     
-    console.log('=== STARTING GOOGLE SHEETS IMPORT (8-COLUMN FORMAT) ===');
-    console.log('Fetching from URL:', CSV_URL);
+    if (!silent) {
+      console.log('=== STARTING GOOGLE SHEETS IMPORT (8-COLUMN FORMAT) ===');
+      console.log('Fetching from URL:', CSV_URL);
+    }
     
     try {
       const response = await fetch(CSV_URL);
@@ -330,12 +387,14 @@ const importFromGoogleSheets = async () => {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       
-      console.log('\n=== IMPORT COMPLETE ===');
-      console.log('New posts:', newCount);
-      console.log('Updated posts:', updatedCount);
-      console.log('Skipped/errors:', skippedCount);
-      if (errors.length > 0) {
-        console.log('Errors:', errors);
+      if (!silent) {
+        console.log('\n=== IMPORT COMPLETE ===');
+        console.log('New posts:', newCount);
+        console.log('Updated posts:', updatedCount);
+        console.log('Skipped/errors:', skippedCount);
+        if (errors.length > 0) {
+          console.log('Errors:', errors);
+        }
       }
       
       return { newCount, updatedCount, skippedCount, total: parsed.data.length, errors };
@@ -346,13 +405,88 @@ const importFromGoogleSheets = async () => {
     }
   };
 
+  const handleAutoSync = async () => {
+    console.log('Running auto-sync...');
+    
+    try {
+      const result = await importFromGoogleSheets(true);
+      const count = result.newCount + result.updatedCount;
+      
+      const now = new Date().toISOString();
+      setLastAutoSync(now);
+      localStorage.setItem('lastAutoSync', now);
+      
+      const newHistory = [
+        { timestamp: now, success: true, count },
+        ...syncHistory
+      ].slice(0, 10);
+      
+      setSyncHistory(newHistory);
+      localStorage.setItem('syncHistory', JSON.stringify(newHistory));
+      
+      console.log(`✅ Auto-sync complete: ${count} posts`);
+      
+    } catch (error) {
+      console.error('Auto-sync failed:', error);
+      
+      const now = new Date().toISOString();
+      const newHistory = [
+        { timestamp: now, success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+        ...syncHistory
+      ].slice(0, 10);
+      
+      setSyncHistory(newHistory);
+      localStorage.setItem('syncHistory', JSON.stringify(newHistory));
+    }
+  };
+
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    
+    try {
+      const result = await importFromGoogleSheets(false);
+      const count = result.newCount + result.updatedCount;
+      
+      const now = new Date().toISOString();
+      setLastAutoSync(now);
+      localStorage.setItem('lastAutoSync', now);
+      
+      const newHistory = [
+        { timestamp: now, success: true, count, manual: true },
+        ...syncHistory
+      ].slice(0, 10);
+      
+      setSyncHistory(newHistory);
+      localStorage.setItem('syncHistory', JSON.stringify(newHistory));
+      
+      toast({
+        title: 'همگام‌سازی موفق',
+        description: `${count} مطلب Import شد`,
+      });
+      
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1500);
+      
+    } catch (error) {
+      console.error('Manual sync failed:', error);
+      toast({
+        title: 'خطا در همگام‌سازی',
+        description: error instanceof Error ? error.message : 'خطای نامشخص',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
+
   const handleImport = async () => {
     console.log('=== IMPORT BUTTON CLICKED ===');
     setIsImporting(true);
     setImportStatus(null);
     
     try {
-      const result = await importFromGoogleSheets();
+      const result = await importFromGoogleSheets(false);
       
       let message = `✅ موفق! ${result.newCount} مطلب جدید، ${result.updatedCount} مطلب به‌روزرسانی شد`;
       if (result.skippedCount > 0) {
@@ -573,6 +707,115 @@ const importFromGoogleSheets = async () => {
               <li>منابع را با نقشه جامع 40+ منبع تشخیص می‌دهد</li>
             </ul>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Auto-Sync Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            همگام‌سازی خودکار
+          </CardTitle>
+          <CardDescription>
+            Import خودکار مطالب جدید از Google Sheets
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Toggle Switch */}
+          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+            <div className="flex-1">
+              <p className="font-bold">فعال‌سازی همگام‌سازی خودکار</p>
+              <p className="text-sm text-muted-foreground">مطالب جدید به صورت خودکار Import می‌شوند</p>
+            </div>
+            <Switch
+              checked={autoSyncEnabled}
+              onCheckedChange={setAutoSyncEnabled}
+            />
+          </div>
+
+          {/* Interval Selector */}
+          {autoSyncEnabled && (
+            <div className="space-y-2">
+              <Label className="font-bold">فاصله زمانی همگام‌سازی:</Label>
+              <select
+                value={syncInterval}
+                onChange={(e) => setSyncInterval(Number(e.target.value))}
+                className="w-full p-3 border rounded-lg bg-background"
+              >
+                <option value={5}>هر 5 دقیقه (تست)</option>
+                <option value={15}>هر 15 دقیقه</option>
+                <option value={30}>هر 30 دقیقه</option>
+                <option value={60}>هر 1 ساعت</option>
+                <option value={180}>هر 3 ساعت</option>
+                <option value={360}>هر 6 ساعت</option>
+              </select>
+            </div>
+          )}
+
+          {/* Status Display */}
+          {autoSyncEnabled && (
+            <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="font-bold">همگام‌سازی خودکار فعال است</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                فاصله: هر {syncInterval} دقیقه
+              </p>
+              {lastAutoSync && (
+                <p className="text-sm text-muted-foreground">
+                  آخرین همگام‌سازی: {new Date(lastAutoSync).toLocaleString('fa-IR')}
+                </p>
+              )}
+              {nextSyncTime && (
+                <p className="text-sm text-muted-foreground">
+                  همگام‌سازی بعدی: {new Date(nextSyncTime).toLocaleString('fa-IR')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Manual Sync Button */}
+          <Button
+            onClick={handleManualSync}
+            disabled={isManualSyncing}
+            className="w-full"
+            size="lg"
+            variant="default"
+          >
+            {isManualSyncing ? (
+              <>
+                <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+                در حال همگام‌سازی...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="ml-2 h-5 w-5" />
+                همگام‌سازی دستی (الان)
+              </>
+            )}
+          </Button>
+
+          {/* Sync History */}
+          {syncHistory.length > 0 && (
+            <div className="space-y-2">
+              <p className="font-bold">تاریخچه همگام‌سازی:</p>
+              <div className="max-h-40 overflow-y-auto space-y-2">
+                {syncHistory.slice(0, 5).map((sync, index) => (
+                  <div key={index} className="p-3 bg-muted rounded-lg text-sm flex justify-between items-center">
+                    <span className="text-muted-foreground">
+                      {new Date(sync.timestamp).toLocaleString('fa-IR')}
+                      {sync.manual && ' (دستی)'}
+                    </span>
+                    <span className={sync.success ? 'text-green-600 font-semibold' : 'text-destructive font-semibold'}>
+                      {sync.success ? `✅ ${sync.count} مطلب` : '❌ خطا'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
