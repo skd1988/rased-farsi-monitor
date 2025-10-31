@@ -507,7 +507,62 @@ const Settings = () => {
       });
       return;
     }
+  };
 
+  const deleteAllPosts = async () => {
+    const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      setCleaning(true);
+
+      toast({
+        title: "شروع حذف...",
+        description: "لطفاً صبر کنید",
+      });
+
+      // Delete all in batches
+      let deletedTotal = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: batch } = await supabase.from("posts").select("id").limit(100);
+
+        if (!batch || batch.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        const ids = batch.map((p) => p.id);
+        await supabase.from("posts").delete().in("id", ids);
+
+        deletedTotal += batch.length;
+        console.log(`🗑️ Deleted ${deletedTotal}...`);
+      }
+
+      localStorage.setItem("lastSyncedRow", "0");
+
+      toast({
+        title: "✅ حذف کامل شد",
+        description: `${deletedTotal} مطلب حذف شد`,
+      });
+
+      await checkSyncStatus();
+      window.location.reload();
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast({
+        title: "خطا در حذف",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  const handleManualSync = async () => {
     setIsSyncing(true);
     setSyncProgress(10);
 
@@ -1117,25 +1172,6 @@ const Settings = () => {
                     همگام‌سازی کامل (خطرناک)
                   </Button>
                 </div>
-                {/* Delete All Button */}
-                <Button
-                  variant="destructive"
-                  onClick={deleteAllPosts}
-                  disabled={cleaning || syncStats.dbPosts === 0}
-                  className="w-full mt-2"
-                >
-                  {cleaning ? (
-                    <>
-                      <Loader2 className="ms-2 h-4 w-4 animate-spin" />
-                      در حال حذف...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="ms-2 h-4 w-4" />
-                      حذف همه پست‌ها ({syncStats.dbPosts})
-                    </>
-                  )}
-                </Button>
               </CardContent>
             </Card>
 
