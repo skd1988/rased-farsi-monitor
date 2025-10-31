@@ -797,9 +797,8 @@ const Settings = () => {
             continue;
           }
 
-          // Detect language and source type
+          // Detect language only (source_type removed since column doesn't exist)
           const detectedLanguage = detectLanguage(title + " " + contents);
-          const sourceType = detectSourceType(source, url);
 
           const post = {
             title: title,
@@ -809,7 +808,6 @@ const Settings = () => {
             published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
             source_url: url || null,
             language: detectedLanguage,
-            source_type: sourceType,
             status: "جدید",
           };
 
