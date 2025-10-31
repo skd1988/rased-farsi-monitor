@@ -920,16 +920,17 @@ const Settings = () => {
           const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
           const url = (row["url"] || row["لینک"] || row["source_url"] || row["article url"] || "").trim();
 
-          // Clean and shorten source for display
-          let cleanSource = source;
+          // Smart source detection: prioritize URL field for source extraction
+          let cleanSource = "";
+          let finalUrl = "";
 
-          // If source is a URL, extract domain name for better display
-          if (source.includes("http")) {
+          // First, try to extract source from URL field (most reliable)
+          if (url && url.includes("http")) {
             try {
-              const urlObj = new URL(source);
-              let domain = urlObj.hostname.replace("www.", "");
+              const urlObj = new URL(url);
+              const domain = urlObj.hostname.replace("www.", "");
 
-              // Map known domains to clean names (optional)
+              // Map known domains to clean names
               const domainMap: Record<string, string> = {
                 "arabic.rt.com": "RT Arabic",
                 "aljazeera.net": "الجزیرة",
@@ -940,18 +941,65 @@ const Settings = () => {
                 "alarabiya.net": "العربية",
                 "independentarabia.com": "اندبندنت عربية",
                 "asharq.com": "الشرق",
+                "independentarabia.com": "اندبندنت عربية",
+                "alaraby.co.uk": "العربي الجديد",
+                "alquds.co.uk": "القدس العربي",
+                "aawsat.com": "الشرق الأوسط",
+                "albayan.ae": "البيان",
+                "almustaqbal.com": "المستقبل",
+                "annahar.com": "النهار",
+                "almadenahnews.com": "المدينة",
               };
 
               cleanSource = domainMap[domain] || domain;
+              finalUrl = url;
+
+              if (i < 3) {
+                console.log(`🔍 URL-based source detection: ${domain} → ${cleanSource}`);
+              }
             } catch (e) {
-              // If URL parsing fails, use first part before .com
-              cleanSource = source.split(".com")[0].split("//").pop() || source;
+              console.log(`⚠️ URL parsing failed for: ${url}`);
+              cleanSource = url.split(".com")[0].split("//").pop() || url;
+              finalUrl = url;
             }
           }
 
-          // Don't skip any sources - just use original if no cleanup worked
+          // If URL extraction failed, try source field
+          if (!cleanSource && source) {
+            if (source.includes("http")) {
+              try {
+                const urlObj = new URL(source);
+                const domain = urlObj.hostname.replace("www.", "");
+
+                const domainMap: Record<string, string> = {
+                  "arabic.rt.com": "RT Arabic",
+                  "aljazeera.net": "الجزیرة",
+                  "bbc.com": "BBC Arabic",
+                  "enabbaladi.net": "عنب بلدي",
+                  "jadidouna.com": "جديدونا",
+                  "skynewsarabia.com": "سكاي نيوز عربية",
+                  "alarabiya.net": "العربية",
+                  "independentarabia.com": "اندبندنت عربية",
+                  "asharq.com": "الشرق",
+                };
+
+                cleanSource = domainMap[domain] || domain;
+                finalUrl = source; // Use source as URL if no separate URL field
+              } catch (e) {
+                cleanSource = source.split(".com")[0].split("//").pop() || source;
+                finalUrl = source;
+              }
+            } else {
+              // Source is already a clean name
+              cleanSource = source;
+              finalUrl = url || ""; // Use URL field if available
+            }
+          }
+
+          // Last resort fallback
           if (!cleanSource || cleanSource.length < 2) {
-            cleanSource = source || "منبع نامشخص";
+            cleanSource = source || url || "منبع نامشخص";
+            finalUrl = url || source || "";
           }
 
           if (i < 3) {
@@ -959,10 +1007,12 @@ const Settings = () => {
               title: title.substring(0, 60),
               contents: contents.substring(0, 60),
               source: cleanSource.substring(0, 30),
-              url: url.substring(0, 30),
+              url: finalUrl.substring(0, 40),
               hasTitle: !!title,
               titleLength: title.length,
               contentsLength: contents.length,
+              rawSource: source.substring(0, 20),
+              rawUrl: url.substring(0, 20),
             });
           }
 
@@ -997,7 +1047,7 @@ const Settings = () => {
             source: cleanSource,
             author: (row["author"] || row["نویسنده"] || "").trim() || null,
             published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
-            source_url: url || null,
+            source_url: finalUrl || null,
             language: detectedLanguage,
             status: "جدید",
           };
