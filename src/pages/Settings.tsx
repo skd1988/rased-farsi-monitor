@@ -28,116 +28,145 @@ import {
 const Settings = () => {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
-
-  // Tab 1: Data Sources
-  const [deepseekApiKey, setDeepseekApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [lastTestedTime, setLastTestedTime] = useState<string | null>(null);
-  const [sheetId, setSheetId] = useState('11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ');
-  const [sheetName, setSheetName] = useState('Sheet1');
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'success' | 'error' | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Tab 4: Appearance
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [colorScheme, setColorScheme] = useState('blue');
-  const [language, setLanguage] = useState('persian');
-  const [desktopNotifications, setDesktopNotifications] = useState(true);
-  const [alertSounds, setAlertSounds] = useState(true);
-  const [fontSize, setFontSize] = useState([16]);
-  const [showTooltips, setShowTooltips] = useState(true);
-  const [animationsEnabled, setAnimationsEnabled] = useState(true);
-  const [showKpiCards, setShowKpiCards] = useState(true);
-  const [showCharts, setShowCharts] = useState(true);
-  const [showRecentPosts, setShowRecentPosts] = useState(true);
-  const [showRecentAlerts, setShowRecentAlerts] = useState(true);
-  const [defaultTimeRange, setDefaultTimeRange] = useState('7');
-
-  // Tab 5: Automation
-  const [autoAnalysis, setAutoAnalysis] = useState(false);
-  const [analysisDelay, setAnalysisDelay] = useState([5]);
-  const [batchSize, setBatchSize] = useState('10');
-  const [analysisSchedule, setAnalysisSchedule] = useState('manual');
-  const [weeklyReports, setWeeklyReports] = useState(false);
-  const [reportDay, setReportDay] = useState('saturday');
-  const [reportTime, setReportTime] = useState('09:00');
-  const [reportEmail, setReportEmail] = useState('');
-  const [autoSync, setAutoSync] = useState(false);
-  const [syncInterval, setSyncInterval] = useState('30');
-  const [autoCleanup, setAutoCleanup] = useState(false);
-  const [keepPostsFor, setKeepPostsFor] = useState('90');
-  const [archiveBeforeDelete, setArchiveBeforeDelete] = useState(true);
-  const [autoBackup, setAutoBackup] = useState('never');
-
-  // Load settings from localStorage
-  useEffect(() => {
-    const savedSettings = localStorage.getItem('appSettings');
-    if (savedSettings) {
-      const settings = JSON.parse(savedSettings);
-      setDeepseekApiKey(settings.deepseekApiKey || '');
-      setSheetId(settings.sheetId || '11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ');
-      setSheetName(settings.sheetName || 'Sheet1');
-      setIsDarkMode(settings.isDarkMode || false);
-      setColorScheme(settings.colorScheme || 'blue');
-      setDesktopNotifications(settings.desktopNotifications ?? true);
-      setAlertSounds(settings.alertSounds ?? true);
-      setAutoAnalysis(settings.autoAnalysis || false);
-      setAutoSync(settings.autoSync || false);
+  // Initialize settings from localStorage
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('appSettings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Error parsing settings:', e);
+      }
     }
     
-    const lastSync = localStorage.getItem('lastSyncTime');
-    if (lastSync) setLastSyncTime(lastSync);
-  }, []);
+    // Default settings
+    return {
+      deepseek_api_key: '',
+      google_sheet_id: localStorage.getItem('sheetId') || '11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ',
+      google_sheet_name: localStorage.getItem('sheetName') || 'Sheet1',
+      last_sync_time: localStorage.getItem('lastSyncTime') || null,
+      sync_status: null,
+      theme: localStorage.getItem('theme') || 'blue',
+      dark_mode: localStorage.getItem('darkMode') === 'true',
+      language: 'persian',
+      notifications_enabled: true,
+      alert_sounds: true,
+      font_size: 16,
+      show_tooltips: true,
+      animations_enabled: true,
+      show_kpi_cards: true,
+      show_charts: true,
+      show_recent_posts: true,
+      show_recent_alerts: true,
+      default_time_range: '7',
+      auto_analysis: localStorage.getItem('autoAnalysis') === 'true',
+      analysis_delay: 5,
+      batch_size: '10',
+      analysis_schedule: 'manual',
+      weekly_reports: false,
+      report_day: 'saturday',
+      report_time: '09:00',
+      report_email: '',
+      auto_sync: localStorage.getItem('autoSyncEnabled') === 'true',
+      sync_interval: localStorage.getItem('syncInterval') || '30',
+      auto_cleanup: false,
+      keep_posts_for: '90',
+      archive_before_delete: true,
+      auto_backup: 'never',
+    };
+  });
 
-  const handleSaveApiKey = async () => {
-    setIsSaving(true);
-    try {
-      const settings = {
-        deepseekApiKey,
-        sheetId,
-        sheetName,
-        isDarkMode,
-        colorScheme,
-        desktopNotifications,
-        alertSounds,
-        autoAnalysis,
-        autoSync
-      };
-      localStorage.setItem('appSettings', JSON.stringify(settings));
-      
-      toast({
-        title: 'ذخیره شد',
-        description: 'تنظیمات با موفقیت ذخیره شد',
-      });
-    } catch (error) {
-      toast({
-        title: 'خطا',
-        description: 'خطا در ذخیره تنظیمات',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSaving(false);
+  // Save settings function
+  const saveSettings = (updates: Partial<typeof settings>) => {
+    const newSettings = { ...settings, ...updates };
+    setSettings(newSettings);
+    
+    // Save to localStorage
+    localStorage.setItem('appSettings', JSON.stringify(newSettings));
+    
+    // Also save individual keys for backward compatibility
+    if (updates.theme) localStorage.setItem('theme', updates.theme);
+    if (updates.dark_mode !== undefined) localStorage.setItem('darkMode', String(updates.dark_mode));
+    if (updates.google_sheet_id) localStorage.setItem('sheetId', updates.google_sheet_id);
+    if (updates.google_sheet_name) localStorage.setItem('sheetName', updates.google_sheet_name);
+    if (updates.auto_sync !== undefined) localStorage.setItem('autoSyncEnabled', String(updates.auto_sync));
+    if (updates.sync_interval) localStorage.setItem('syncInterval', updates.sync_interval);
+    if (updates.auto_analysis !== undefined) localStorage.setItem('autoAnalysis', String(updates.auto_analysis));
+    
+    toast({
+      title: 'تنظیمات ذخیره شد',
+      description: 'تغییرات با موفقیت اعمال شد',
+    });
+    
+    // Apply theme changes immediately
+    if (updates.theme) {
+      document.documentElement.setAttribute('data-theme', updates.theme);
+    }
+    
+    if (updates.dark_mode !== undefined) {
+      document.documentElement.classList.toggle('dark', updates.dark_mode);
     }
   };
 
+  const handleSaveApiKey = () => {
+    if (!settings.deepseek_api_key) {
+      toast({
+        title: 'خطا',
+        description: 'لطفا کلید API را وارد کنید',
+        variant: 'destructive',
+      });
+      return;
+    }
+    saveSettings({ deepseek_api_key: settings.deepseek_api_key });
+  };
+
   const handleTestConnection = async () => {
+    if (!settings.deepseek_api_key) {
+      toast({
+        title: 'کلید API وارد نشده',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Simulate API test
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setApiKeyStatus('connected');
-      setLastTestedTime(new Date().toISOString());
-      toast({
-        title: 'اتصال موفق',
-        description: 'اتصال به DeepSeek API برقرار شد',
+      toast({ title: 'در حال تست اتصال...' });
+      
+      // Test DeepSeek API
+      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.deepseek_api_key}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [{ role: 'user', content: 'test' }],
+          max_tokens: 10,
+        }),
       });
+
+      if (response.ok) {
+        setApiKeyStatus('connected');
+        setLastTestedTime(new Date().toISOString());
+        toast({
+          title: '✅ اتصال موفق',
+          description: 'کلید API معتبر است',
+        });
+      } else {
+        throw new Error('Invalid API key');
+      }
     } catch (error) {
       setApiKeyStatus('disconnected');
       toast({
-        title: 'خطا در اتصال',
-        description: 'اتصال به API برقرار نشد',
+        title: '❌ خطا در اتصال',
+        description: 'کلید API نامعتبر است',
         variant: 'destructive',
       });
     } finally {
@@ -146,22 +175,40 @@ const Settings = () => {
   };
 
   const handleManualSync = async () => {
+    if (!settings.google_sheet_id || !settings.google_sheet_name) {
+      toast({
+        title: 'اطلاعات ناقص',
+        description: 'لطفا Sheet ID و نام Sheet را وارد کنید',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSyncing(true);
     try {
+      toast({
+        title: 'در حال همگام‌سازی...',
+        description: 'لطفا صبر کنید',
+      });
+
+      // Simulate sync
       await new Promise(resolve => setTimeout(resolve, 2000));
+      
       const now = new Date().toISOString();
-      setLastSyncTime(now);
-      localStorage.setItem('lastSyncTime', now);
-      setSyncStatus('success');
+      saveSettings({ 
+        last_sync_time: now,
+        sync_status: 'success' 
+      });
+      
       toast({
         title: 'همگام‌سازی موفق',
         description: 'داده‌ها با موفقیت از Google Sheets وارد شد',
       });
     } catch (error) {
-      setSyncStatus('error');
+      saveSettings({ sync_status: 'error' });
       toast({
-        title: 'خطا',
-        description: 'خطا در همگام‌سازی',
+        title: 'خطا در همگام‌سازی',
+        description: error.message,
         variant: 'destructive',
       });
     } finally {
@@ -170,10 +217,27 @@ const Settings = () => {
   };
 
   const handleExportData = () => {
-    toast({
-      title: 'در حال آماده‌سازی',
-      description: 'فایل پشتیبان در حال آماده‌سازی است...',
-    });
+    try {
+      const dataStr = JSON.stringify(settings, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `settings-backup-${new Date().toISOString()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: 'دانلود موفق',
+        description: 'فایل پشتیبان دانلود شد',
+      });
+    } catch (error) {
+      toast({
+        title: 'خطا',
+        description: 'خطا در دانلود فایل',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -230,8 +294,8 @@ const Settings = () => {
                       <Input
                         id="deepseek-key"
                         type={showApiKey ? "text" : "password"}
-                        value={deepseekApiKey}
-                        onChange={(e) => setDeepseekApiKey(e.target.value)}
+                        value={settings.deepseek_api_key}
+                        onChange={(e) => setSettings({...settings, deepseek_api_key: e.target.value})}
                         placeholder="sk-..."
                         dir="ltr"
                         className="text-left"
@@ -245,7 +309,7 @@ const Settings = () => {
                         {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <Button onClick={handleTestConnection} disabled={isSaving || !deepseekApiKey}>
+                    <Button onClick={handleTestConnection} disabled={isSaving || !settings.deepseek_api_key}>
                       {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تست اتصال'}
                     </Button>
                   </div>
@@ -297,8 +361,8 @@ const Settings = () => {
                   <Label htmlFor="sheet-id">شناسه Sheet</Label>
                   <Input
                     id="sheet-id"
-                    value={sheetId}
-                    onChange={(e) => setSheetId(e.target.value)}
+                    value={settings.google_sheet_id}
+                    onChange={(e) => setSettings({...settings, google_sheet_id: e.target.value})}
                     placeholder="11VzLIg5-evMkd..."
                     dir="ltr"
                   />
@@ -308,8 +372,8 @@ const Settings = () => {
                   <Label htmlFor="sheet-name">نام Sheet</Label>
                   <Input
                     id="sheet-name"
-                    value={sheetName}
-                    onChange={(e) => setSheetName(e.target.value)}
+                    value={settings.google_sheet_name}
+                    onChange={(e) => setSettings({...settings, google_sheet_name: e.target.value})}
                     placeholder="Sheet1"
                   />
                 </div>
@@ -317,26 +381,29 @@ const Settings = () => {
                 <div className="flex gap-3">
                   <Button onClick={handleManualSync} disabled={isSyncing}>
                     {isSyncing ? (
-                      <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                      <Loader2 className="h-4 w-4 animate-spin ms-2" />
                     ) : (
-                      <RefreshCw className="h-4 w-4 ml-2" />
+                      <RefreshCw className="h-4 w-4 ms-2" />
                     )}
                     وارد کردن از Google Sheets
                   </Button>
-                  <Button variant="outline" onClick={handleSaveApiKey}>
+                  <Button variant="outline" onClick={() => saveSettings({ 
+                    google_sheet_id: settings.google_sheet_id,
+                    google_sheet_name: settings.google_sheet_name 
+                  })}>
                     ذخیره
                   </Button>
                 </div>
 
-                {lastSyncTime && (
+                {settings.last_sync_time && (
                   <div className="flex items-center gap-2 text-sm pt-2 border-t">
-                    {syncStatus === 'success' ? (
+                    {settings.sync_status === 'success' ? (
                       <CheckCircle className="h-4 w-4 text-success" />
                     ) : (
                       <XCircle className="h-4 w-4 text-danger" />
                     )}
                     <span className="text-muted-foreground">
-                      آخرین همگام‌سازی: {new Date(lastSyncTime).toLocaleString('fa-IR')}
+                      آخرین همگام‌سازی: {new Date(settings.last_sync_time).toLocaleString('fa-IR')}
                     </span>
                   </div>
                 )}
@@ -459,8 +526,8 @@ const Settings = () => {
                   </div>
                   <Switch
                     id="dark-mode"
-                    checked={isDarkMode}
-                    onCheckedChange={setIsDarkMode}
+                    checked={settings.dark_mode}
+                    onCheckedChange={(checked) => saveSettings({ dark_mode: checked })}
                   />
                 </div>
 
@@ -470,9 +537,9 @@ const Settings = () => {
                     {['blue', 'purple', 'green', 'orange'].map((color) => (
                       <button
                         key={color}
-                        onClick={() => setColorScheme(color)}
+                        onClick={() => saveSettings({ theme: color })}
                         className={`p-4 rounded-lg border-2 transition-all ${
-                          colorScheme === color ? 'border-primary' : 'border-border'
+                          settings.theme === color ? 'border-primary' : 'border-border'
                         }`}
                       >
                         <div
@@ -489,7 +556,7 @@ const Settings = () => {
                   </div>
                 </div>
 
-                <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+                <Button onClick={() => saveSettings({})}>ذخیره تنظیمات</Button>
               </CardContent>
             </Card>
 
@@ -503,8 +570,8 @@ const Settings = () => {
                   <Label htmlFor="notifications">اعلان‌های دسکتاپ</Label>
                   <Switch
                     id="notifications"
-                    checked={desktopNotifications}
-                    onCheckedChange={setDesktopNotifications}
+                    checked={settings.notifications_enabled}
+                    onCheckedChange={(checked) => saveSettings({ notifications_enabled: checked })}
                   />
                 </div>
 
@@ -512,16 +579,16 @@ const Settings = () => {
                   <Label htmlFor="sounds">صدای هشدارها</Label>
                   <Switch
                     id="sounds"
-                    checked={alertSounds}
-                    onCheckedChange={setAlertSounds}
+                    checked={settings.alert_sounds}
+                    onCheckedChange={(checked) => saveSettings({ alert_sounds: checked })}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>اندازه فونت: {fontSize}px</Label>
+                  <Label>اندازه فونت: {settings.font_size}px</Label>
                   <Slider
-                    value={fontSize}
-                    onValueChange={setFontSize}
+                    value={[settings.font_size]}
+                    onValueChange={(value) => saveSettings({ font_size: value[0] })}
                     min={12}
                     max={20}
                     step={1}
@@ -533,8 +600,8 @@ const Settings = () => {
                   <Label htmlFor="tooltips">نمایش راهنماها</Label>
                   <Switch
                     id="tooltips"
-                    checked={showTooltips}
-                    onCheckedChange={setShowTooltips}
+                    checked={settings.show_tooltips}
+                    onCheckedChange={(checked) => saveSettings({ show_tooltips: checked })}
                   />
                 </div>
 
@@ -542,12 +609,12 @@ const Settings = () => {
                   <Label htmlFor="animations">انیمیشن‌ها</Label>
                   <Switch
                     id="animations"
-                    checked={animationsEnabled}
-                    onCheckedChange={setAnimationsEnabled}
+                    checked={settings.animations_enabled}
+                    onCheckedChange={(checked) => saveSettings({ animations_enabled: checked })}
                   />
                 </div>
 
-                <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+                <Button onClick={() => saveSettings({})}>ذخیره تنظیمات</Button>
               </CardContent>
             </Card>
 
@@ -560,22 +627,22 @@ const Settings = () => {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label>نمایش کارت‌های KPI</Label>
-                  <Switch checked={showKpiCards} onCheckedChange={setShowKpiCards} />
+                  <Switch checked={settings.show_kpi_cards} onCheckedChange={(checked) => saveSettings({ show_kpi_cards: checked })} />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>نمایش نمودارها</Label>
-                  <Switch checked={showCharts} onCheckedChange={setShowCharts} />
+                  <Switch checked={settings.show_charts} onCheckedChange={(checked) => saveSettings({ show_charts: checked })} />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>نمایش پست‌های اخیر</Label>
-                  <Switch checked={showRecentPosts} onCheckedChange={setShowRecentPosts} />
+                  <Switch checked={settings.show_recent_posts} onCheckedChange={(checked) => saveSettings({ show_recent_posts: checked })} />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>نمایش هشدارهای اخیر</Label>
-                  <Switch checked={showRecentAlerts} onCheckedChange={setShowRecentAlerts} />
+                  <Switch checked={settings.show_recent_alerts} onCheckedChange={(checked) => saveSettings({ show_recent_alerts: checked })} />
                 </div>
 
-                <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+                <Button onClick={() => saveSettings({})}>ذخیره تنظیمات</Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -596,18 +663,18 @@ const Settings = () => {
                   </div>
                   <Switch
                     id="auto-analysis"
-                    checked={autoAnalysis}
-                    onCheckedChange={setAutoAnalysis}
+                    checked={settings.auto_analysis}
+                    onCheckedChange={(checked) => saveSettings({ auto_analysis: checked })}
                   />
                 </div>
 
-                {autoAnalysis && (
+                {settings.auto_analysis && (
                   <>
                     <div className="space-y-2">
-                      <Label>تاخیر قبل از تحلیل: {analysisDelay} دقیقه</Label>
+                      <Label>تاخیر قبل از تحلیل: {settings.analysis_delay} دقیقه</Label>
                       <Slider
-                        value={analysisDelay}
-                        onValueChange={setAnalysisDelay}
+                        value={[settings.analysis_delay]}
+                        onValueChange={(value) => saveSettings({ analysis_delay: value[0] })}
                         min={1}
                         max={60}
                         step={1}
@@ -619,8 +686,8 @@ const Settings = () => {
                       <Input
                         id="batch-size"
                         type="number"
-                        value={batchSize}
-                        onChange={(e) => setBatchSize(e.target.value)}
+                        value={settings.batch_size}
+                        onChange={(e) => setSettings({...settings, batch_size: e.target.value})}
                         min="1"
                         max="100"
                       />
@@ -628,7 +695,7 @@ const Settings = () => {
                   </>
                 )}
 
-                <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+                <Button onClick={() => saveSettings({})}>ذخیره تنظیمات</Button>
               </CardContent>
             </Card>
 
@@ -643,18 +710,18 @@ const Settings = () => {
                   <Label htmlFor="auto-sync">همگام‌سازی خودکار</Label>
                   <Switch
                     id="auto-sync"
-                    checked={autoSync}
-                    onCheckedChange={setAutoSync}
+                    checked={settings.auto_sync}
+                    onCheckedChange={(checked) => saveSettings({ auto_sync: checked })}
                   />
                 </div>
 
-                {autoSync && (
+                {settings.auto_sync && (
                   <div className="space-y-2">
                     <Label htmlFor="sync-interval">فاصله زمانی</Label>
                     <select
                       id="sync-interval"
-                      value={syncInterval}
-                      onChange={(e) => setSyncInterval(e.target.value)}
+                      value={settings.sync_interval}
+                      onChange={(e) => saveSettings({ sync_interval: e.target.value })}
                       className="w-full h-10 rounded-md border border-input bg-background px-3"
                     >
                       <option value="5">هر 5 دقیقه</option>
@@ -665,7 +732,7 @@ const Settings = () => {
                   </div>
                 )}
 
-                <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+                <Button onClick={() => saveSettings({})}>ذخیره تنظیمات</Button>
               </CardContent>
             </Card>
 
@@ -677,7 +744,7 @@ const Settings = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Button onClick={handleExportData} variant="outline" className="w-full">
-                  <Download className="h-4 w-4 ml-2" />
+                  <Download className="h-4 w-4 ms-2" />
                   دانلود پشتیبان از تمام داده‌ها
                 </Button>
 
@@ -685,8 +752,8 @@ const Settings = () => {
                   <Label htmlFor="auto-backup">پشتیبان‌گیری خودکار</Label>
                   <select
                     id="auto-backup"
-                    value={autoBackup}
-                    onChange={(e) => setAutoBackup(e.target.value)}
+                    value={settings.auto_backup}
+                    onChange={(e) => saveSettings({ auto_backup: e.target.value })}
                     className="w-full h-10 rounded-md border border-input bg-background px-3"
                   >
                     <option value="never">هرگز</option>
