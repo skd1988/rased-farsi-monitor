@@ -1157,18 +1157,18 @@ const Settings = () => {
                 if (result) return result;
               }
 
-              // Format 3: "Oct 31, 2025" or "31 Oct 2025"
-              if (cleaned.match(/[A-Za-z]{3,}/)) {
-                const d = new Date(cleaned);
-                const result = safeToISO(d, 'English format');
-                if (result) return result;
-              }
-
-              // Format 4: Timestamp "Oct 31, 2025 at 11:10PM"
+              // Format 3: Timestamp "Oct 31, 2025 at 11:10PM" - check FIRST (more specific)
               if (cleaned.includes(" at ")) {
                 const [datePart] = cleaned.split(" at ");
                 const d = new Date(datePart);
                 const result = safeToISO(d, 'Timestamp format');
+                if (result) return result;
+              }
+
+              // Format 4: "Oct 31, 2025" or "31 Oct 2025" - check AFTER (more general)
+              if (cleaned.match(/[A-Za-z]{3,}/)) {
+                const d = new Date(cleaned);
+                const result = safeToISO(d, 'English format');
                 if (result) return result;
               }
 
