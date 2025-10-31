@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 import { 
   Loader2, 
   Key, 
@@ -22,8 +24,11 @@ import {
   XCircle, 
   Download,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw,
+  Settings as SettingsIcon
 } from 'lucide-react';
+import Papa from 'papaparse';
 
 const Settings = () => {
   const { toast } = useToast();
@@ -32,6 +37,13 @@ const Settings = () => {
   const [apiKeyStatus, setApiKeyStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [lastTestedTime, setLastTestedTime] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncStats, setSyncStats] = useState({
+    sheetRows: 0,
+    dbPosts: 0,
+    lastSynced: 0,
+    pendingRows: 0,
+  });
 
   // Initialize settings from localStorage
   const [settings, setSettings] = useState(() => {
@@ -125,6 +137,54 @@ const Settings = () => {
     saveSettings({ deepseek_api_key: settings.deepseek_api_key });
   };
 
+  // Check sync status
+  const checkSyncStatus = async () => {
+    if (!settings.google_sheet_id || !settings.google_sheet_name) return;
+
+    try {
+      // Get sheet row count
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
+      const response = await fetch(sheetUrl);
+      const csvText = await response.text();
+      const sheetRows = csvText.split('\n').filter(line => line.trim()).length - 1; // Exclude header
+
+      // Get database post count
+      const { count: dbPosts } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true });
+
+      // Get last synced from localStorage
+      const lastSynced = parseInt(localStorage.getItem('lastSyncedRow') || '0');
+
+      // Calculate pending
+      const pendingRows = sheetRows - Math.max(lastSynced, dbPosts || 0);
+
+      setSyncStats({
+        sheetRows,
+        dbPosts: dbPosts || 0,
+        lastSynced,
+        pendingRows: Math.max(0, pendingRows),
+      });
+
+      console.log('📊 Sync Status:', {
+        sheetRows,
+        dbPosts,
+        lastSynced,
+        pendingRows,
+      });
+
+    } catch (error) {
+      console.error('Error checking sync status:', error);
+    }
+  };
+
+  // Call on mount and when sheet settings change
+  useEffect(() => {
+    if (settings.google_sheet_id) {
+      checkSyncStatus();
+    }
+  }, [settings.google_sheet_id, settings.google_sheet_name]);
+
   const handleTestConnection = async () => {
     if (!settings.deepseek_api_key) {
       toast({
@@ -185,34 +245,146 @@ const Settings = () => {
     }
 
     setIsSyncing(true);
+    setSyncProgress(0);
+    
     try {
       toast({
         title: 'در حال همگام‌سازی...',
         description: 'لطفا صبر کنید',
       });
 
-      // Simulate sync
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Get database post count to determine where to start
+      const { count: dbPostCount } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true });
+
+      const lastSyncedRow = dbPostCount || 0;
+      console.log(`📊 Database has ${dbPostCount} posts, syncing from row ${lastSyncedRow + 1}`);
+
+      // Fetch Google Sheet data
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
+      const response = await fetch(sheetUrl);
       
-      const now = new Date().toISOString();
-      saveSettings({ 
-        last_sync_time: now,
-        sync_status: 'success' 
+      if (!response.ok) {
+        throw new Error('خطا در دسترسی به Google Sheet');
+      }
+
+      const csvText = await response.text();
+      
+      // Parse CSV
+      Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          const rows = results.data;
+          const totalRows = rows.length;
+          
+          // Only sync rows after lastSyncedRow
+          const rowsToSync = rows.slice(lastSyncedRow);
+          
+          if (rowsToSync.length === 0) {
+            toast({
+              title: 'همگام‌سازی کامل',
+              description: 'تمام ردیف‌ها قبلاً وارد شده‌اند',
+            });
+            setIsSyncing(false);
+            return;
+          }
+
+          console.log(`🔄 Syncing ${rowsToSync.length} new rows...`);
+          
+          let importedCount = 0;
+          let skippedCount = 0;
+          
+          for (let i = 0; i < rowsToSync.length; i++) {
+            const row = rowsToSync[i];
+            
+            // Update progress
+            setSyncProgress(((i + 1) / rowsToSync.length) * 100);
+            
+            try {
+              // Map CSV columns to database columns
+              const post = {
+                title: row['عنوان'] || row['title'] || 'بدون عنوان',
+                contents: row['متن'] || row['contents'] || row['content'] || '',
+                source: row['منبع'] || row['source'] || 'نامشخص',
+                author: row['نویسنده'] || row['author'] || null,
+                published_at: row['تاریخ'] || row['published_at'] || new Date().toISOString(),
+                source_url: row['لینک'] || row['source_url'] || row['url'] || null,
+                language: row['زبان'] || row['language'] || 'فارسی',
+                status: 'جدید',
+              };
+
+              // Check for duplicates
+              const { data: existingPost } = await supabase
+                .from('posts')
+                .select('id')
+                .eq('title', post.title)
+                .eq('published_at', post.published_at)
+                .maybeSingle();
+
+              if (existingPost) {
+                console.log('⚠️ Post already exists, skipping:', post.title);
+                skippedCount++;
+                continue;
+              }
+
+              // Insert post
+              const { error } = await supabase
+                .from('posts')
+                .insert([post]);
+
+              if (error) {
+                console.error('Error inserting post:', error);
+                skippedCount++;
+              } else {
+                importedCount++;
+              }
+              
+            } catch (error) {
+              console.error('Error processing row:', error);
+              skippedCount++;
+            }
+          }
+          
+          // Update sync stats
+          const newLastSyncedRow = lastSyncedRow + importedCount;
+          localStorage.setItem('lastSyncedRow', String(newLastSyncedRow));
+          localStorage.setItem('totalRowsInSheet', String(totalRows));
+          
+          const now = new Date().toISOString();
+          saveSettings({ 
+            last_sync_time: now,
+            sync_status: 'success' 
+          });
+          
+          // Refresh stats
+          await checkSyncStatus();
+          
+          toast({
+            title: '✅ همگام‌سازی موفق',
+            description: `${importedCount} پست جدید وارد شد${skippedCount > 0 ? ` • ${skippedCount} ردیف رد شد` : ''}`,
+          });
+          
+          setIsSyncing(false);
+          setSyncProgress(0);
+        },
+        error: (error) => {
+          console.error('CSV Parse Error:', error);
+          throw new Error('خطا در پردازش CSV');
+        }
       });
       
-      toast({
-        title: 'همگام‌سازی موفق',
-        description: 'داده‌ها با موفقیت از Google Sheets وارد شد',
-      });
     } catch (error) {
+      console.error('Sync error:', error);
       saveSettings({ sync_status: 'error' });
       toast({
-        title: 'خطا در همگام‌سازی',
+        title: '❌ خطا در همگام‌سازی',
         description: error.message,
         variant: 'destructive',
       });
-    } finally {
       setIsSyncing(false);
+      setSyncProgress(0);
     }
   };
 
@@ -378,15 +550,7 @@ const Settings = () => {
                   />
                 </div>
 
-                <div className="flex gap-3">
-                  <Button onClick={handleManualSync} disabled={isSyncing}>
-                    {isSyncing ? (
-                      <Loader2 className="h-4 w-4 animate-spin ms-2" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 ms-2" />
-                    )}
-                    وارد کردن از Google Sheets
-                  </Button>
+                <div className="flex gap-2">
                   <Button variant="outline" onClick={() => saveSettings({ 
                     google_sheet_id: settings.google_sheet_id,
                     google_sheet_name: settings.google_sheet_name 
@@ -394,19 +558,128 @@ const Settings = () => {
                     ذخیره
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
 
-                {settings.last_sync_time && (
-                  <div className="flex items-center gap-2 text-sm pt-2 border-t">
-                    {settings.sync_status === 'success' ? (
-                      <CheckCircle className="h-4 w-4 text-success" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-danger" />
-                    )}
-                    <span className="text-muted-foreground">
-                      آخرین همگام‌سازی: {new Date(settings.last_sync_time).toLocaleString('fa-IR')}
-                    </span>
+            {/* Sync Status Dashboard */}
+            <Card className="border-2">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center justify-between">
+                  <span>📊 وضعیت همگام‌سازی</span>
+                  <Button variant="ghost" size="sm" onClick={checkSyncStatus}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{syncStats.sheetRows}</div>
+                    <div className="text-xs text-muted-foreground">ردیف در Sheet</div>
+                  </div>
+                  
+                  <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{syncStats.dbPosts}</div>
+                    <div className="text-xs text-muted-foreground">پست در دیتابیس</div>
+                  </div>
+                  
+                  <div className="text-center p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{syncStats.lastSynced}</div>
+                    <div className="text-xs text-muted-foreground">ردیف آخر (localStorage)</div>
+                  </div>
+                  
+                  <div className="text-center p-3 bg-orange-50 dark:bg-orange-950 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600">{syncStats.pendingRows}</div>
+                    <div className="text-xs text-muted-foreground">در انتظار import</div>
+                  </div>
+                </div>
+
+                {syncStats.pendingRows > 0 && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>توجه</AlertTitle>
+                    <AlertDescription>
+                      {syncStats.pendingRows} ردیف جدید در Google Sheet وجود دارد که هنوز وارد نشده است.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="mt-4 text-xs text-muted-foreground">
+                  آخرین همگام‌سازی: {
+                    settings.last_sync_time
+                      ? new Date(settings.last_sync_time).toLocaleString('fa-IR')
+                      : 'هنوز انجام نشده'
+                  }
+                </div>
+
+                {/* Sync Progress */}
+                {isSyncing && (
+                  <div className="space-y-2">
+                    <Progress value={syncProgress} className="h-2" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>در حال پردازش...</span>
+                      <span>{Math.round(syncProgress)}%</span>
+                    </div>
                   </div>
                 )}
+
+                {/* Sync Buttons */}
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                  {/* Incremental Sync - Default */}
+                  <Button 
+                    onClick={handleManualSync}
+                    disabled={isSyncing || syncStats.pendingRows === 0}
+                    className="flex-1"
+                  >
+                    {isSyncing ? (
+                      <>
+                        <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+                        در حال همگام‌سازی...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="ms-2 h-4 w-4" />
+                        همگام‌سازی ({syncStats.pendingRows} ردیف جدید)
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Fix localStorage */}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      localStorage.setItem('lastSyncedRow', String(syncStats.dbPosts));
+                      localStorage.setItem('totalRowsInSheet', String(syncStats.sheetRows));
+                      checkSyncStatus();
+                      toast({
+                        title: 'تنظیمات اصلاح شد',
+                        description: 'localStorage با دیتابیس همگام شد',
+                      });
+                    }}
+                    className="flex-1"
+                  >
+                    <SettingsIcon className="ms-2 h-4 w-4" />
+                    اصلاح localStorage
+                  </Button>
+
+                  {/* Full Resync - Dangerous */}
+                  <Button
+                    variant="destructive"
+                    onClick={async () => {
+                      if (!confirm(`آیا مطمئن هستید؟ این عملیات تمام ${syncStats.sheetRows} ردیف را دوباره وارد می‌کند و ممکن است مطالب تکراری ایجاد کند.`)) {
+                        return;
+                      }
+                      localStorage.setItem('lastSyncedRow', '0');
+                      await checkSyncStatus();
+                      await handleManualSync();
+                    }}
+                    disabled={isSyncing}
+                    className="flex-1"
+                  >
+                    <RotateCcw className="ms-2 h-4 w-4" />
+                    همگام‌سازی کامل (خطرناک)
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
