@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Download } from 'lucide-react';
-import StatsCard from '@/components/analysis/StatsCard';
-import AnalysisCard from '@/components/analysis/AnalysisCard';
-import AnalysisDetailModal from '@/components/analysis/AnalysisDetailModal';
-import BulkAnalysisModal from '@/components/analysis/BulkAnalysisModal';
+import React, { useState, useEffect, useRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FileText, Download } from "lucide-react";
+import StatsCard from "@/components/analysis/StatsCard";
+import AnalysisCard from "@/components/analysis/AnalysisCard";
+import AnalysisDetailModal from "@/components/analysis/AnalysisDetailModal";
+import BulkAnalysisModal from "@/components/analysis/BulkAnalysisModal";
 
 interface AnalyzedPost {
   id: string;
@@ -40,12 +40,13 @@ const AIAnalysis = () => {
   const [posts, setPosts] = useState<AnalyzedPost[]>([]);
   const [filteredPosts, setFilteredPosts] = useState<AnalyzedPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [threatFilter, setThreatFilter] = useState<string>('all');
-  const [sentimentFilter, setSentimentFilter] = useState<string>('all');
-  const [topicFilter, setTopicFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('threat');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [threatFilter, setThreatFilter] = useState<string>("all");
+  const [sentimentFilter, setSentimentFilter] = useState<string>("all");
+  const [topicFilter, setTopicFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("threat");
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const modalOpenRef = useRef(false);
   const [selectedPost, setSelectedPost] = useState<AnalyzedPost | null>(null);
   const { toast } = useToast();
 
@@ -57,23 +58,27 @@ const AIAnalysis = () => {
     applyFilters();
   }, [posts, searchQuery, threatFilter, sentimentFilter, topicFilter, sortBy]);
 
+  useEffect(() => {
+    console.log("🎯 showBulkModal changed to:", showBulkModal);
+  }, [showBulkModal]);
+
   const fetchAnalyzedPosts = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('posts')
-        .select('*')
-        .not('analyzed_at', 'is', null)
-        .order('analyzed_at', { ascending: false });
+        .from("posts")
+        .select("*")
+        .not("analyzed_at", "is", null)
+        .order("analyzed_at", { ascending: false });
 
       if (error) throw error;
       setPosts(data || []);
     } catch (error) {
-      console.error('Error fetching analyzed posts:', error);
+      console.error("Error fetching analyzed posts:", error);
       toast({
-        title: 'خطا در بارگذاری تحلیل‌ها',
-        description: 'لطفا دوباره تلاش کنید',
-        variant: 'destructive',
+        title: "خطا در بارگذاری تحلیل‌ها",
+        description: "لطفا دوباره تلاش کنید",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
@@ -85,35 +90,36 @@ const AIAnalysis = () => {
 
     // Search filter
     if (searchQuery) {
-      filtered = filtered.filter(post =>
-        post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        post.analysis_summary?.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (post) =>
+          post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          post.analysis_summary?.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
     // Threat level filter
-    if (threatFilter !== 'all') {
-      filtered = filtered.filter(post => post.threat_level === threatFilter);
+    if (threatFilter !== "all") {
+      filtered = filtered.filter((post) => post.threat_level === threatFilter);
     }
 
     // Sentiment filter
-    if (sentimentFilter !== 'all') {
-      filtered = filtered.filter(post => post.sentiment === sentimentFilter);
+    if (sentimentFilter !== "all") {
+      filtered = filtered.filter((post) => post.sentiment === sentimentFilter);
     }
 
     // Topic filter
-    if (topicFilter !== 'all') {
-      filtered = filtered.filter(post => post.main_topic === topicFilter);
+    if (topicFilter !== "all") {
+      filtered = filtered.filter((post) => post.main_topic === topicFilter);
     }
 
     // Sort
     filtered.sort((a, b) => {
-      if (sortBy === 'threat') {
+      if (sortBy === "threat") {
         const threatOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
         return threatOrder[a.threat_level] - threatOrder[b.threat_level];
-      } else if (sortBy === 'newest') {
+      } else if (sortBy === "newest") {
         return new Date(b.analyzed_at).getTime() - new Date(a.analyzed_at).getTime();
-      } else if (sortBy === 'oldest') {
+      } else if (sortBy === "oldest") {
         return new Date(a.analyzed_at).getTime() - new Date(b.analyzed_at).getTime();
       }
       return 0;
@@ -124,12 +130,12 @@ const AIAnalysis = () => {
 
   const stats = {
     analyzed: posts.length,
-    critical: posts.filter(p => p.threat_level === 'Critical').length,
-    high: posts.filter(p => p.threat_level === 'High').length,
-    negative: posts.filter(p => p.sentiment === 'Negative').length,
+    critical: posts.filter((p) => p.threat_level === "Critical").length,
+    high: posts.filter((p) => p.threat_level === "High").length,
+    negative: posts.filter((p) => p.sentiment === "Negative").length,
   };
 
-  const allTopics = Array.from(new Set(posts.map(p => p.main_topic).filter(Boolean)));
+  const allTopics = Array.from(new Set(posts.map((p) => p.main_topic).filter(Boolean)));
 
   if (loading) {
     return (
@@ -138,7 +144,7 @@ const AIAnalysis = () => {
           <div className="h-8 bg-muted rounded w-1/4"></div>
           <div className="h-4 bg-muted rounded w-1/3"></div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8">
-            {[1, 2, 3, 4].map(i => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-24 bg-muted rounded"></div>
             ))}
           </div>
@@ -154,18 +160,18 @@ const AIAnalysis = () => {
           <div className="text-6xl">🤖</div>
           <h3 className="text-2xl font-bold">هنوز هیچ مطلبی تحلیل نشده</h3>
           <p className="text-muted-foreground">برای شروع، از دکمه زیر استفاده کنید</p>
-          <Button 
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('🔵 دکمه شروع تحلیل کلیک شد');
-    setShowBulkModal(true);
-    console.log('🟢 showBulkModal set to true');
-    console.log('🟢 Current state:', showBulkModal);
-  }} 
-  size="lg"
-  type="button"
->
+          <Button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log("🔵 دکمه شروع تحلیل کلیک شد");
+              setShowBulkModal(true);
+              console.log("🟢 showBulkModal set to true");
+              console.log("🟢 Current state:", showBulkModal);
+            }}
+            size="lg"
+            type="button"
+          >
             <FileText className="ml-2 h-5 w-5" />
             شروع تحلیل
           </Button>
@@ -183,48 +189,22 @@ const AIAnalysis = () => {
           <p className="text-muted-foreground mt-2">تحلیل محتوا با هوش مصنوعی و شناسایی تهدیدها</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('🔵 دکمه تحلیل گروهی کلیک شد');
-    setShowBulkModal(true);
-    console.log('🟢 showBulkModal set to true');
-  }}
-  type="button"
->
-```
-
-**تغییر:** همون تغییرات قبلی
-
----
-
-## 🎯 خلاصه تغییرات:
-
-| فایل | تعداد تغییر | اهمیت |
-|------|------------|-------|
-| `BulkAnalysisModal.tsx` | 3 تغییر | ⭐⭐⭐ بالا |
-| `AIAnalysis.tsx` | 2 تغییر | ⭐⭐ متوسط |
-
----
-
-## ✅ بعد از اعمال تغییرات:
-
-1. **Save کن** همه فایل‌ها
-2. **Refresh کن** صفحه (F5)
-3. **F12 بزن** → Console
-4. **کلیک کن** روی "شروع تحلیل"
-5. **ببین** Console چی می‌گه
-
----
-
-## 📊 چیزی که باید ببینی:
-```
-🔵 دکمه شروع تحلیل کلیک شد
-🟢 showBulkModal set to true
-🟡 BulkAnalysisModal useEffect - open: true
-🟢 Modal opened - fetching posts
-🟣 Dialog onOpenChange called - isOpen: true
+          <Button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log("🔵 دکمه تحلیل گروهی کلیک شد");
+              setShowBulkModal(true);
+              console.log("🟢 showBulkModal set to true");
+            }}
+            type="button"
+          >
+            ``` **تغییر:** همون تغییرات قبلی --- ## 🎯 خلاصه تغییرات: | فایل | تعداد تغییر | اهمیت |
+            |------|------------|-------| | `BulkAnalysisModal.tsx` | 3 تغییر | ⭐⭐⭐ بالا | | `AIAnalysis.tsx` | 2
+            تغییر | ⭐⭐ متوسط | --- ## ✅ بعد از اعمال تغییرات: 1. **Save کن** همه فایل‌ها 2. **Refresh کن** صفحه (F5)
+            3. **F12 بزن** → Console 4. **کلیک کن** روی "شروع تحلیل" 5. **ببین** Console چی می‌گه --- ## 📊 چیزی که باید
+            ببینی: ``` 🔵 دکمه شروع تحلیل کلیک شد 🟢 showBulkModal set to true 🟡 BulkAnalysisModal useEffect - open:
+            true 🟢 Modal opened - fetching posts 🟣 Dialog onOpenChange called - isOpen: true
             <FileText className="ml-2 h-4 w-4" />
             تحلیل گروهی
           </Button>
@@ -237,31 +217,10 @@ const AIAnalysis = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatsCard
-          title="تحلیل شده"
-          value={stats.analyzed}
-          icon="🤖"
-          color="blue"
-        />
-        <StatsCard
-          title="تهدید بحرانی"
-          value={stats.critical}
-          icon="🔴"
-          color="red"
-          pulse={stats.critical > 0}
-        />
-        <StatsCard
-          title="نیازمند بررسی"
-          value={stats.high}
-          icon="⚠️"
-          color="orange"
-        />
-        <StatsCard
-          title="احساسات منفی"
-          value={stats.negative}
-          icon="😟"
-          color="yellow"
-        />
+        <StatsCard title="تحلیل شده" value={stats.analyzed} icon="🤖" color="blue" />
+        <StatsCard title="تهدید بحرانی" value={stats.critical} icon="🔴" color="red" pulse={stats.critical > 0} />
+        <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
+        <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
       </div>
 
       {/* Filters */}
@@ -273,7 +232,7 @@ const AIAnalysis = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="md:col-span-2"
           />
-          
+
           <Select value={threatFilter} onValueChange={setThreatFilter}>
             <SelectTrigger>
               <SelectValue placeholder="سطح تهدید" />
@@ -305,8 +264,10 @@ const AIAnalysis = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">همه</SelectItem>
-              {allTopics.map(topic => (
-                <SelectItem key={topic} value={topic}>{topic}</SelectItem>
+              {allTopics.map((topic) => (
+                <SelectItem key={topic} value={topic}>
+                  {topic}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -326,7 +287,7 @@ const AIAnalysis = () => {
 
       {/* Analysis Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredPosts.map(post => (
+        {filteredPosts.map((post) => (
           <AnalysisCard
             key={post.id}
             post={post}
@@ -339,23 +300,13 @@ const AIAnalysis = () => {
       </div>
 
       {filteredPosts.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          هیچ نتیجه‌ای با این فیلترها یافت نشد
-        </div>
+        <div className="text-center py-12 text-muted-foreground">هیچ نتیجه‌ای با این فیلترها یافت نشد</div>
       )}
 
-      <BulkAnalysisModal
-        open={showBulkModal}
-        onClose={() => setShowBulkModal(false)}
-        onComplete={fetchAnalyzedPosts}
-      />
+      <BulkAnalysisModal open={showBulkModal} onClose={() => setShowBulkModal(false)} onComplete={fetchAnalyzedPosts} />
 
       {selectedPost && (
-        <AnalysisDetailModal
-          post={selectedPost}
-          open={!!selectedPost}
-          onClose={() => setSelectedPost(null)}
-        />
+        <AnalysisDetailModal post={selectedPost} open={!!selectedPost} onClose={() => setSelectedPost(null)} />
       )}
     </div>
   );
