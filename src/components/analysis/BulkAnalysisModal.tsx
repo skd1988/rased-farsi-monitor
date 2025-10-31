@@ -216,13 +216,13 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   console.log('🔴 BulkAnalysisModal rendering - open:', open);
   
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { 
-      console.log('🟣 Dialog onOpenChange called - isOpen:', isOpen);
-      if (!isOpen) {
-        console.log('🔴 Closing modal');
-        onClose();
-      }
-    }}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+  console.log('🟣 Dialog onOpenChange called - isOpen:', isOpen);
+  if (!isOpen && !isAnalyzing) {
+    console.log('🔴 Closing modal');
+    onClose();
+  }
+}}>
       <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-2xl">تحلیل گروهی مطالب</DialogTitle>
