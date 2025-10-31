@@ -176,9 +176,30 @@ const Settings = () => {
       const csvText = await response.text();
 
       const allLines = csvText.split("\n");
-      const nonEmptyLines = allLines.filter((line) => {
+      const nonEmptyLines = allLines.filter((line, index) => {
+        // Skip header
+        if (index === 0) return true;
+
         const cleaned = line.replace(/"/g, "").trim();
-        return cleaned && !cleaned.match(/^,+$/) && cleaned.split(",").some((v) => v.trim().length > 0);
+
+        // Skip completely empty lines
+        if (!cleaned || cleaned.match(/^,+$/)) return false;
+
+        // Parse the line and check if it has meaningful content
+        const values = cleaned.split(",").map((v) => v.trim());
+
+        // Count non-empty values
+        const meaningfulValues = values.filter((v) => {
+          if (!v || v.length === 0) return false;
+          // Skip if looks like HTML
+          if (v.includes("<") || v.includes(">")) return false;
+          // Skip if too short (likely garbage)
+          if (v.length < 3) return false;
+          return true;
+        });
+
+        // Need at least 3 meaningful values (title, content, source)
+        return meaningfulValues.length >= 3;
       });
 
       const sheetRows = nonEmptyLines.length - 1;
@@ -529,11 +550,26 @@ const Settings = () => {
       setSyncProgress(50);
 
       const allLines = csvText.split("\n");
-      const dataLines = allLines.filter((line) => {
+      const dataLines = allLines.filter((line, index) => {
+        // Always keep header
+        if (index === 0) return true;
+
         const cleaned = line.replace(/"/g, "").trim();
+
+        // Skip completely empty
         if (!cleaned || cleaned.match(/^,+$/)) return false;
-        const values = cleaned.split(",");
-        return values.some((v) => v.trim().length > 0);
+
+        // Parse and check for meaningful content
+        const values = cleaned.split(",").map((v) => v.trim());
+        const meaningfulValues = values.filter((v) => {
+          if (!v || v.length === 0) return false;
+          if (v.includes("<") || v.includes(">")) return false;
+          if (v.length < 3) return false;
+          return true;
+        });
+
+        // Need at least 3 meaningful values
+        return meaningfulValues.length >= 3;
       });
 
       console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty lines: ${dataLines.length}`);
