@@ -96,6 +96,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     
     const startTime = Date.now();
     let successCount = 0;
+    let alertsCreated = 0;
 
     for (let i = 0; i < postsToAnalyze.length; i++) {
       const post = postsToAnalyze[i];
@@ -154,6 +155,34 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           throw updateError;
         }
 
+        // Auto-create alert for critical/high threat posts
+        if (analysis.threat_level === 'Critical' || analysis.threat_level === 'High') {
+          const alertType = 
+            analysis.main_topic === 'جنگ روانی' ? 'Psychological Warfare' :
+            analysis.main_topic === 'کمپین' ? 'Coordinated Campaign' :
+            analysis.main_topic === 'اتهام' ? 'Direct Attack' :
+            analysis.main_topic === 'شبهه' ? 'Fake News' :
+            analysis.main_topic?.includes('محور') ? 'Propaganda' :
+            'Viral Content';
+
+          const triggeredReason = `تهدید سطح ${analysis.threat_level} - احساسات: ${analysis.sentiment} - موضوع اصلی: ${analysis.main_topic} - اطمینان: ${analysis.confidence}%`;
+
+          const { error: alertError } = await supabase.from('alerts').insert({
+            post_id: post.id,
+            alert_type: alertType,
+            severity: analysis.threat_level,
+            status: 'New',
+            triggered_reason: triggeredReason,
+            assigned_to: null,
+            notes: null
+          });
+          
+          if (!alertError) {
+            alertsCreated++;
+            console.log(`🚨 Alert created for post ${post.id} - ${analysis.threat_level}`);
+          }
+        }
+
         setResults(prev => ({ ...prev, [post.id]: 'success' }));
         successCount++;
 
@@ -170,7 +199,9 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     
     toast({
       title: 'تحلیل گروهی تکمیل شد',
-      description: `${successCount} از ${total} مطلب با موفقیت تحلیل شد`,
+      description: alertsCreated > 0 
+        ? `${successCount} مطلب تحلیل شد و ${alertsCreated} هشدار ایجاد شد`
+        : `${successCount} از ${total} مطلب با موفقیت تحلیل شد`,
     });
 
     setTimeout(() => {

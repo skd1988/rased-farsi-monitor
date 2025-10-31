@@ -106,6 +106,33 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         throw updateError;
       }
 
+      // Auto-create alert for critical/high threat posts
+      if (analysis.threat_level === 'Critical' || analysis.threat_level === 'High') {
+        const alertType = 
+          analysis.main_topic === 'جنگ روانی' ? 'Psychological Warfare' :
+          analysis.main_topic === 'کمپین' ? 'Coordinated Campaign' :
+          analysis.main_topic === 'اتهام' ? 'Direct Attack' :
+          analysis.main_topic === 'شبهه' ? 'Fake News' :
+          analysis.main_topic?.includes('محور') ? 'Propaganda' :
+          'Viral Content';
+
+        const triggeredReason = `تهدید سطح ${analysis.threat_level} - احساسات: ${analysis.sentiment} - موضوع اصلی: ${analysis.main_topic} - اطمینان: ${analysis.confidence}%`;
+
+        const { error: alertError } = await supabase.from('alerts').insert({
+          post_id: post.id,
+          alert_type: alertType,
+          severity: analysis.threat_level,
+          status: 'New',
+          triggered_reason: triggeredReason,
+          assigned_to: null,
+          notes: null
+        });
+        
+        if (!alertError) {
+          console.log(`🚨 Alert created for post ${post.id} - ${analysis.threat_level}`);
+        }
+      }
+
       toast({
         title: "تحلیل به‌روزرسانی شد",
         description: "تحلیل مطلب با موفقیت به‌روزرسانی شد",
