@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, CheckSquare } from 'lucide-react';
+import { formatPersianDateTime } from '@/lib/dateUtils';
 
 interface BulkAnalysisModalProps {
   open: boolean;
@@ -330,7 +331,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                       </TableCell>
                       <TableCell>{post.source}</TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {new Date(post.published_at).toLocaleDateString('fa-IR')}
+                        {formatPersianDateTime(post.published_at)}
                       </TableCell>
                     </TableRow>
                   ))}
