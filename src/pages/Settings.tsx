@@ -574,8 +574,14 @@ const Settings = () => {
           console.log(`🔄 Syncing ${rowsToSync.length} new rows...`);
           
           let importedCount = 0;
-          let skippedCount = 0;
           let errorCount = 0;
+          
+          // 🔍 Track validation skip reasons
+          const validationSkips = {
+            noTitle: 0,
+            placeholderTitle: 0,
+            duplicate: 0,
+          };
           
           for (let i = 0; i < rowsToSync.length; i++) {
             const row = rowsToSync[i];
@@ -584,53 +590,51 @@ const Settings = () => {
             setSyncProgress(50 + ((i + 1) / rowsToSync.length) * 40);
             
             try {
-              // Extract and validate title
-              const title = (row['عنوان'] || row['title'] || '').trim();
-              const contents = (row['متن'] || row['contents'] || row['content'] || '').trim();
-              const source = (row['منبع'] || row['source'] || '').trim();
+              // Extract fields with multiple fallbacks
+              const title = (row['عنوان'] || row['title'] || row['headline'] || row['subject'] || '').trim();
+              const contents = (row['متن'] || row['contents'] || row['content'] || row['محتوا'] || row['description'] || row['text'] || '').trim();
+              const source = (row['منبع'] || row['source'] || row['publisher'] || row['site'] || '').trim();
               
-              // ✅ CRITICAL: Validate row has actual data
-              // Skip if title is missing or too short
-              if (!title || title.length < 10) {
-                console.log('⚠️ Skipping row - invalid title:', title);
-                skippedCount++;
+              // 🔍 DEBUG: Log first few rows to see what we're getting
+              if (i < 3) {
+                console.log(`📋 Row ${lastSyncedRow + i + 1} sample:`, {
+                  title: title.substring(0, 50),
+                  content: contents.substring(0, 50),
+                  source: source.substring(0, 30),
+                  hasTitle: !!title,
+                  titleLength: title.length,
+                });
+              }
+              
+              // ✅ RELAXED VALIDATION - Only skip truly invalid rows
+              
+              // Skip if NO title at all
+              if (!title || title.trim().length === 0) {
+                validationSkips.noTitle++;
+                if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: No title`);
                 continue;
               }
-
-              // Skip if both title AND content are suspiciously short
-              if (title.length < 10 && contents.length < 10) {
-                console.log('⚠️ Skipping row - insufficient data');
-                skippedCount++;
+              
+              // Skip ONLY if title is exactly a placeholder value
+              if (title === 'بدون عنوان' || title === 'undefined' || title === 'null') {
+                validationSkips.placeholderTitle++;
+                if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: Placeholder title: ${title}`);
                 continue;
               }
-
-              // Skip invalid/placeholder title values
-              if (title === 'undefined' || title === 'null' || title === 'بدون عنوان') {
-                console.log('⚠️ Skipping row - placeholder title');
-                skippedCount++;
-                continue;
-              }
-
-              // Skip invalid/placeholder source values
-              if (source === 'نامشخص' || source === 'undefined' || !source) {
-                console.log('⚠️ Skipping row - no valid source');
-                skippedCount++;
-                continue;
-              }
+              
+              // ✅ Valid row - no more length checks or source validation!
 
               // Map CSV columns to database columns
               const post = {
                 title: title,
                 contents: contents || 'محتوا موجود نیست',
-                source: source,
-                author: (row['نویسنده'] || row['author'] || '').trim() || null,
-                published_at: row['تاریخ'] || row['published_at'] || new Date().toISOString(),
-                source_url: (row['لینک'] || row['source_url'] || row['url'] || '').trim() || null,
-                language: row['زبان'] || row['language'] || 'فارسی',
+                source: source || 'نامشخص',
+                author: (row['نویسنده'] || row['author'] || row['writer'] || '').trim() || null,
+                published_at: row['تاریخ'] || row['published_at'] || row['date'] || row['pubdate'] || new Date().toISOString(),
+                source_url: (row['لینک'] || row['source_url'] || row['url'] || row['link'] || row['href'] || '').trim() || null,
+                language: row['زبان'] || row['language'] || row['lang'] || 'فارسی',
                 status: 'جدید',
               };
-
-              console.log(`✅ Valid post: "${post.title.substring(0, 40)}..."`);
 
               // Check for duplicates
               const { data: existingPost } = await supabase
@@ -641,8 +645,8 @@ const Settings = () => {
                 .maybeSingle();
 
               if (existingPost) {
-                console.log('⚠️ Post already exists, skipping:', post.title);
-                skippedCount++;
+                validationSkips.duplicate++;
+                if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: Duplicate - ${post.title.substring(0, 40)}`);
                 continue;
               }
 
@@ -652,10 +656,20 @@ const Settings = () => {
                 .insert([post]);
 
               if (error) {
-                console.error('Insert error:', error);
+                console.error(`❌ Insert error for row ${lastSyncedRow + i + 1}:`, error.message);
                 errorCount++;
+                
+                // Log first few errors in detail
+                if (errorCount <= 3) {
+                  console.error('Failed post:', post);
+                }
               } else {
                 importedCount++;
+                
+                // Log progress every 10 posts
+                if (importedCount % 10 === 0) {
+                  console.log(`✅ Imported ${importedCount}/${rowsToSync.length}`);
+                }
               }
               
             } catch (error) {
@@ -666,12 +680,17 @@ const Settings = () => {
           
           setSyncProgress(90);
           
-          // Log statistics
-          console.log('📊 Import Statistics:', {
-            total: rowsToSync.length,
+          // Calculate total skipped
+          const totalSkipped = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate;
+          
+          // Log detailed statistics
+          console.log('📊 Validation Summary:', {
+            totalRows: rowsToSync.length,
+            validRows: importedCount + totalSkipped,
             imported: importedCount,
-            skipped: skippedCount,
+            skipped: totalSkipped,
             errors: errorCount,
+            skipReasons: validationSkips,
           });
 
           // Update sync stats with ACTUAL row count (not CSV line count)
@@ -686,13 +705,15 @@ const Settings = () => {
           });
           
           // Save sync history
+          const totalSkippedForHistory = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate;
           const syncHistory = JSON.parse(localStorage.getItem('syncHistory') || '[]');
           syncHistory.push({
             timestamp: now,
             rowsImported: importedCount,
-            rowsSkipped: skippedCount,
+            rowsSkipped: totalSkippedForHistory,
             errors: errorCount,
             totalRows: actualRowCount,
+            validationSkips: validationSkips,
           });
           localStorage.setItem('syncHistory', JSON.stringify(syncHistory.slice(-10)));
           
@@ -701,17 +722,19 @@ const Settings = () => {
           // Refresh stats
           await checkSyncStatus();
           
+          const totalSkippedForToast = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate;
+          
           toast({
             title: '✅ همگام‌سازی کامل شد',
-            description: `✅ ${importedCount} مطلب وارد شد\n⚠️ ${skippedCount} ردیف رد شد${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ''}`,
+            description: `✅ ${importedCount} مطلب وارد شد${totalSkippedForToast > 0 ? `\n⚠️ ${totalSkippedForToast} ردیف رد شد` : ''}${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ''}`,
           });
           
           console.log('✅ Sync completed:', {
             imported: importedCount,
-            skipped: skippedCount,
+            skipped: totalSkippedForToast,
             errors: errorCount,
             totalInDB: actualRowCount,
-            actualSheetRows: totalRows,
+            validationSkips: validationSkips,
           });
           
           setIsSyncing(false);
