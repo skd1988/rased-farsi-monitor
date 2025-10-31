@@ -26,8 +26,10 @@ import {
   RefreshCw,
   AlertTriangle,
   RotateCcw,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Trash2
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Papa from 'papaparse';
 
 const Settings = () => {
@@ -38,6 +40,9 @@ const Settings = () => {
   const [lastTestedTime, setLastTestedTime] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
+  const [cleaning, setCleaning] = useState(false);
+  const [previewData, setPreviewData] = useState<any[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
   const [syncStats, setSyncStats] = useState({
     sheetRows: 0,
     dbPosts: 0,
@@ -234,6 +239,110 @@ const Settings = () => {
     }
   };
 
+  const cleanupEmptyPosts = async () => {
+    const confirmMsg = 'این عملیات تمام مطالب خالی (بدون عنوان یا با عنوان نامعتبر) را حذف می‌کند. ادامه می‌دهید؟';
+    
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    try {
+      setCleaning(true);
+      
+      toast({
+        title: 'شروع پاکسازی...',
+        description: 'در حال حذف مطالب خالی',
+      });
+
+      // Delete posts where title is null, empty, or invalid
+      const { data: deleted, error } = await supabase
+        .from('posts')
+        .delete()
+        .or('title.is.null,title.eq.,title.eq.بدون عنوان,title.eq.undefined,title.eq.null')
+        .select('id');
+
+      if (error) throw error;
+
+      const count = deleted?.length || 0;
+
+      toast({
+        title: '✅ پاکسازی کامل شد',
+        description: `${count} مطلب خالی حذف شد`,
+      });
+
+      console.log(`🗑️ Deleted ${count} empty posts`);
+      
+      // Refresh sync status
+      await checkSyncStatus();
+      
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      toast({
+        title: 'خطا در پاکسازی',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  const previewNextRows = async () => {
+    if (!settings.google_sheet_id || !settings.google_sheet_name) {
+      toast({
+        title: 'اطلاعات ناقص',
+        description: 'لطفا Sheet ID و نام Sheet را وارد کنید',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
+      
+      const response = await fetch(sheetUrl);
+      const csvText = await response.text();
+      
+      Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          const rows = results.data;
+          
+          // Get current DB count
+          const { count } = await supabase
+            .from('posts')
+            .select('*', { count: 'exact', head: true });
+          
+          const startRow = (count || 0);
+          const preview = [];
+          
+          for (let i = startRow; i < Math.min(startRow + 10, rows.length); i++) {
+            const row = rows[i];
+            preview.push({
+              rowNumber: i + 1,
+              title: row['عنوان'] || row['title'] || '(خالی)',
+              source: row['منبع'] || row['source'] || '(خالی)',
+              isValid: (row['عنوان'] || row['title'] || '').length >= 5,
+            });
+          }
+          
+          setPreviewData(preview);
+          setShowPreview(true);
+          
+          console.log('🔍 Preview of next 10 rows:', preview);
+        }
+      });
+      
+    } catch (error) {
+      toast({
+        title: 'خطا در پیش‌نمایش',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleManualSync = async () => {
     if (!settings.google_sheet_id || !settings.google_sheet_name) {
       toast({
@@ -295,6 +404,7 @@ const Settings = () => {
           
           let importedCount = 0;
           let skippedCount = 0;
+          let errorCount = 0;
           
           for (let i = 0; i < rowsToSync.length; i++) {
             const row = rowsToSync[i];
@@ -303,17 +413,46 @@ const Settings = () => {
             setSyncProgress(((i + 1) / rowsToSync.length) * 100);
             
             try {
+              // Extract and validate title
+              const title = (row['عنوان'] || row['title'] || '').trim();
+              const contents = (row['متن'] || row['contents'] || row['content'] || '').trim();
+              const source = (row['منبع'] || row['source'] || '').trim();
+              
+              // ✅ CRITICAL: Validate row has actual data
+              // Skip if title is missing or too short
+              if (!title || title.length < 5) {
+                console.log('⚠️ Skipping row - invalid title:', title);
+                skippedCount++;
+                continue;
+              }
+
+              // Skip if both title AND content are suspiciously short
+              if (title.length < 10 && contents.length < 10) {
+                console.log('⚠️ Skipping row - insufficient data');
+                skippedCount++;
+                continue;
+              }
+
+              // Skip invalid values
+              if (title === 'undefined' || title === 'null' || title === 'بدون عنوان') {
+                console.log('⚠️ Skipping row - placeholder title');
+                skippedCount++;
+                continue;
+              }
+
               // Map CSV columns to database columns
               const post = {
-                title: row['عنوان'] || row['title'] || 'بدون عنوان',
-                contents: row['متن'] || row['contents'] || row['content'] || '',
-                source: row['منبع'] || row['source'] || 'نامشخص',
-                author: row['نویسنده'] || row['author'] || null,
+                title: title,
+                contents: contents || 'محتوا موجود نیست',
+                source: source || 'نامشخص',
+                author: (row['نویسنده'] || row['author'] || '').trim() || null,
                 published_at: row['تاریخ'] || row['published_at'] || new Date().toISOString(),
-                source_url: row['لینک'] || row['source_url'] || row['url'] || null,
+                source_url: (row['لینک'] || row['source_url'] || row['url'] || '').trim() || null,
                 language: row['زبان'] || row['language'] || 'فارسی',
                 status: 'جدید',
               };
+
+              console.log(`✅ Valid post: "${post.title.substring(0, 40)}..."`);
 
               // Check for duplicates
               const { data: existingPost } = await supabase
@@ -335,18 +474,26 @@ const Settings = () => {
                 .insert([post]);
 
               if (error) {
-                console.error('Error inserting post:', error);
-                skippedCount++;
+                console.error('Insert error:', error);
+                errorCount++;
               } else {
                 importedCount++;
               }
               
             } catch (error) {
               console.error('Error processing row:', error);
-              skippedCount++;
+              errorCount++;
             }
           }
           
+          // Log statistics
+          console.log('📊 Import Statistics:', {
+            total: rowsToSync.length,
+            imported: importedCount,
+            skipped: skippedCount,
+            errors: errorCount,
+          });
+
           // Update sync stats
           const newLastSyncedRow = lastSyncedRow + importedCount;
           localStorage.setItem('lastSyncedRow', String(newLastSyncedRow));
@@ -362,8 +509,8 @@ const Settings = () => {
           await checkSyncStatus();
           
           toast({
-            title: '✅ همگام‌سازی موفق',
-            description: `${importedCount} پست جدید وارد شد${skippedCount > 0 ? ` • ${skippedCount} ردیف رد شد` : ''}`,
+            title: '✅ همگام‌سازی کامل شد',
+            description: `✅ ${importedCount} مطلب وارد شد\n⚠️ ${skippedCount} ردیف رد شد${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ''}`,
           });
           
           setIsSyncing(false);
@@ -1042,6 +1189,41 @@ const Settings = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-2xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>پیش‌نمایش ردیف‌های بعدی</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {previewData.map(row => (
+              <div 
+                key={row.rowNumber} 
+                className={`p-3 border rounded text-sm ${!row.isValid ? 'border-destructive bg-destructive/10' : ''}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-mono text-xs text-muted-foreground">
+                    ردیف {row.rowNumber}
+                  </div>
+                  {!row.isValid && (
+                    <span className="text-xs text-destructive font-medium">
+                      ⚠️ نامعتبر
+                    </span>
+                  )}
+                </div>
+                <div className="font-medium">{row.title}</div>
+                <div className="text-xs text-muted-foreground mt-1">{row.source}</div>
+              </div>
+            ))}
+          </div>
+          {previewData.length === 0 && (
+            <div className="text-center text-muted-foreground py-8">
+              ردیف جدیدی برای نمایش وجود ندارد
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
