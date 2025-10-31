@@ -62,6 +62,25 @@ const parseCSVLine = (line: string): string[] => {
   return result;
 };
 
+// Helper function to clean HTML content
+const cleanHTML = (text: string): string => {
+  if (!text) return "";
+
+  return text
+    .replace(/<iframe[^>]*>.*?<\/iframe>/gi, "") // Remove iframes
+    .replace(/<script[^>]*>.*?<\/script>/gi, "") // Remove scripts
+    .replace(/<style[^>]*>.*?<\/style>/gi, "") // Remove styles
+    .replace(/<[^>]+>/g, "") // Remove all HTML tags
+    .replace(/&nbsp;/g, " ") // Replace &nbsp;
+    .replace(/&amp;/g, "&") // Replace &amp;
+    .replace(/&lt;/g, "<") // Replace &lt;
+    .replace(/&gt;/g, ">") // Replace &gt;
+    .replace(/&quot;/g, '"') // Replace &quot;
+    .replace(/&#39;/g, "'") // Replace &#39;
+    .replace(/\s+/g, " ") // Replace multiple spaces
+    .trim();
+};
+
 // Helper function to detect language
 const detectLanguage = (text: string): string => {
   if (!text || text.length < 5) return "فارسی";
@@ -185,24 +204,7 @@ const detectSourceType = (source: string, url: string = ""): "social" | "news" =
   return "news";
 };
 
-// Helper function to clean HTML content
-const cleanHTML = (text: string): string => {
-  if (!text) return "";
-
-  return text
-    .replace(/<iframe[^>]*>.*?<\/iframe>/gi, "") // Remove iframes
-    .replace(/<script[^>]*>.*?<\/script>/gi, "") // Remove scripts
-    .replace(/<style[^>]*>.*?<\/style>/gi, "") // Remove styles
-    .replace(/<[^>]+>/g, "") // Remove all HTML tags
-    .replace(/&nbsp;/g, " ") // Replace &nbsp;
-    .replace(/&amp;/g, "&") // Replace &amp;
-    .replace(/&lt;/g, "<") // Replace &lt;
-    .replace(/&gt;/g, ">") // Replace &gt;
-    .replace(/&quot;/g, '"') // Replace &quot;
-    .replace(/&#39;/g, "'") // Replace &#39;
-    .replace(/\s+/g, " ") // Replace multiple spaces
-    .trim();
-};
+// Helper function to parse dates properly
 const parseDate = (dateStr: any): string => {
   if (!dateStr || typeof dateStr !== "string") {
     return new Date().toISOString();
@@ -918,11 +920,47 @@ const Settings = () => {
           const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
           const url = (row["url"] || row["لینک"] || row["source_url"] || row["article url"] || "").trim();
 
+          // Clean and validate source
+          let cleanSource = source;
+
+          // If source is a URL, try to extract domain name
+          if (source.includes("http")) {
+            try {
+              const urlObj = new URL(source);
+              let domain = urlObj.hostname.replace("www.", "");
+
+              // Map known domains to clean names
+              const domainMap: Record<string, string> = {
+                "arabic.rt.com": "RT Arabic",
+                "aljazeera.net": "الجزیرة",
+                "bbc.com": "BBC Arabic",
+                "enabbaladi.net": "عنب بلدي",
+                "jadidouna.com": "جديدونا",
+                "skynewsarabia.com": "سكاي نيوز عربية",
+                "alarabiya.net": "العربية",
+                "independentarabia.com": "اندبندنت عربية",
+                "asharq.com": "الشرق",
+              };
+
+              cleanSource = domainMap[domain] || domain;
+            } catch (e) {
+              // If URL parsing fails, use first part before .com
+              cleanSource = source.split(".com")[0].split("//").pop() || "منبع ناشناخته";
+            }
+          }
+
+          // Skip if source is still unknown/empty after processing
+          if (!cleanSource || cleanSource === "نامشخص" || cleanSource === "منبع ناشناخته" || cleanSource.length < 3) {
+            validationSkips.noTitle++;
+            if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: Unknown source (${cleanSource})`);
+            continue;
+          }
+
           if (i < 3) {
             console.log(`\n📋 Row ${lastSyncedRow + i + 1} AFTER PROCESSING:`, {
               title: title.substring(0, 60),
               contents: contents.substring(0, 60),
-              source: source.substring(0, 30),
+              source: cleanSource.substring(0, 30),
               url: url.substring(0, 30),
               hasTitle: !!title,
               titleLength: title.length,
@@ -958,7 +996,7 @@ const Settings = () => {
           const post = {
             title: title,
             contents: contents || "محتوا موجود نیست",
-            source: source || "نامشخص",
+            source: cleanSource,
             author: (row["author"] || row["نویسنده"] || "").trim() || null,
             published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
             source_url: url || null,
