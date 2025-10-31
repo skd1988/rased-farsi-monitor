@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      alerts: {
+        Row: {
+          alert_type: string
+          assigned_to: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          post_id: string
+          resolved_at: string | null
+          severity: string
+          status: string
+          triggered_reason: string
+          updated_at: string
+        }
+        Insert: {
+          alert_type: string
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          post_id: string
+          resolved_at?: string | null
+          severity: string
+          status?: string
+          triggered_reason: string
+          updated_at?: string
+        }
+        Update: {
+          alert_type?: string
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          post_id?: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          triggered_reason?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           analysis_model: string | null
