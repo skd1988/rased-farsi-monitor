@@ -551,7 +551,7 @@ const Settings = () => {
               
               // ✅ CRITICAL: Validate row has actual data
               // Skip if title is missing or too short
-              if (!title || title.length < 5) {
+              if (!title || title.length < 10) {
                 console.log('⚠️ Skipping row - invalid title:', title);
                 skippedCount++;
                 continue;
@@ -564,9 +564,16 @@ const Settings = () => {
                 continue;
               }
 
-              // Skip invalid values
+              // Skip invalid/placeholder title values
               if (title === 'undefined' || title === 'null' || title === 'بدون عنوان') {
                 console.log('⚠️ Skipping row - placeholder title');
+                skippedCount++;
+                continue;
+              }
+
+              // Skip invalid/placeholder source values
+              if (source === 'نامشخص' || source === 'undefined' || !source) {
+                console.log('⚠️ Skipping row - no valid source');
                 skippedCount++;
                 continue;
               }

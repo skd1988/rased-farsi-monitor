@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -81,6 +82,7 @@ const PostsExplorer = () => {
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
+  const [hideEmptyPosts, setHideEmptyPosts] = useState(true);
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
   const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set());
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set());
@@ -154,6 +156,20 @@ const PostsExplorer = () => {
   const filteredPosts = useMemo(() => {
     let filtered = posts;
 
+    // Hide empty posts filter
+    if (hideEmptyPosts) {
+      filtered = filtered.filter(post => {
+        // Filter out posts with placeholder values
+        return post.title && 
+               post.title !== 'بدون عنوان' && 
+               post.title !== '' &&
+               post.title !== 'undefined' &&
+               post.title !== 'null' &&
+               post.source !== 'نامشخص' &&
+               post.source !== 'undefined';
+      });
+    }
+
     // Search filter
     if (searchQuery) {
       filtered = filtered.filter(post =>
@@ -209,7 +225,7 @@ const PostsExplorer = () => {
     }
 
     return filtered;
-  }, [posts, searchQuery, selectedSources, selectedLanguages, selectedStatuses, selectedKeywords, dateFrom, dateTo, sortBy]);
+  }, [posts, searchQuery, hideEmptyPosts, selectedSources, selectedLanguages, selectedStatuses, selectedKeywords, dateFrom, dateTo, sortBy]);
 
   // Pagination
   const totalPages = Math.ceil(filteredPosts.length / itemsPerPage);
@@ -278,6 +294,7 @@ const PostsExplorer = () => {
 
   const clearAllFilters = () => {
     setSearchQuery('');
+    setHideEmptyPosts(true);
     setSelectedSources(new Set());
     setSelectedLanguages(new Set());
     setSelectedStatuses(new Set());
@@ -288,6 +305,7 @@ const PostsExplorer = () => {
 
   const activeFiltersCount = 
     (searchQuery ? 1 : 0) +
+    (hideEmptyPosts ? 1 : 0) +
     selectedSources.size +
     selectedLanguages.size +
     selectedStatuses.size +
@@ -308,6 +326,22 @@ const PostsExplorer = () => {
           <div>
             <h3 className="text-lg font-bold mb-4">فیلترهای پیشرفته</h3>
             
+            {/* Hide Empty Posts Toggle */}
+            <div className="mb-6 p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <span className="text-sm font-medium">مخفی کردن مطالب خالی</span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    حذف مطالب با عنوان "بدون عنوان" یا منبع "نامشخص"
+                  </p>
+                </div>
+                <Switch
+                  checked={hideEmptyPosts}
+                  onCheckedChange={setHideEmptyPosts}
+                />
+              </div>
+            </div>
+
             {/* Search */}
             <div className="relative mb-6">
               <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none" />

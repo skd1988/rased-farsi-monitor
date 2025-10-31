@@ -18,6 +18,50 @@ const Debug = () => {
   const [syncing, setSyncing] = useState(false);
   const { toast } = useToast();
 
+  // Helper function to detect empty/placeholder posts
+  const isPostEmpty = (post: any): boolean => {
+    const hasPlaceholderTitle = 
+      !post.title || 
+      post.title === '' || 
+      post.title === 'بدون عنوان' ||
+      post.title === 'undefined' ||
+      post.title === 'null';
+    
+    const hasPlaceholderSource =
+      !post.source ||
+      post.source === '' ||
+      post.source === 'نامشخص' ||
+      post.source === 'undefined';
+    
+    const hasNoContent =
+      !post.contents ||
+      post.contents === '' ||
+      post.contents === 'محتوا موجود نیست';
+    
+    // A post is empty if it has placeholder title AND (no source OR no content)
+    if (hasPlaceholderTitle && (hasPlaceholderSource || hasNoContent)) {
+      return true;
+    }
+    
+    // Also check if very few meaningful fields
+    const values = Object.entries(post);
+    const meaningful = values.filter(([key, val]) => {
+      // Skip system fields
+      if (['id', 'created_at', 'updated_at'].includes(key)) return false;
+      
+      // Skip empty values
+      if (!val || val === '' || val === null) return false;
+      
+      // Skip placeholder values
+      if (val === 'بدون عنوان' || val === 'نامشخص' || val === 'محتوا موجود نیست') return false;
+      if (val === 'undefined' || val === 'null') return false;
+      
+      return true;
+    });
+    
+    return meaningful.length <= 2;
+  };
+
   const loadStats = async () => {
     try {
       setLoading(true);
@@ -32,16 +76,8 @@ const Debug = () => {
         .from('posts')
         .select('*');
 
-      // Count empty posts
-      const emptyCount = allPosts?.filter(post => {
-        const values = Object.entries(post);
-        const meaningful = values.filter(([key, val]) => {
-          if (['id', 'created_at', 'updated_at'].includes(key)) return false;
-          if (!val || val === '' || val === null) return false;
-          return true;
-        });
-        return meaningful.length <= 2;
-      }).length || 0;
+      // Count empty posts using our helper function
+      const emptyCount = allPosts?.filter(isPostEmpty).length || 0;
 
       // Get sheet info from localStorage
       const sheetId = localStorage.getItem('sheetId') || '';
@@ -86,20 +122,10 @@ const Debug = () => {
         .from('posts')
         .select('*');
 
-      // Find empty IDs
-      const emptyIds = allPosts
-        ?.filter(post => {
-          const values = Object.entries(post);
-          const meaningful = values.filter(([key, val]) => {
-            if (['id', 'created_at', 'updated_at'].includes(key)) return false;
-            if (!val || val === '' || val === null) return false;
-            return true;
-          });
-          return meaningful.length <= 2;
-        })
-        .map(p => p.id) || [];
+      // Find empty IDs using our helper function
+      const emptyIds = allPosts?.filter(isPostEmpty).map(p => p.id) || [];
 
-      console.log('Deleting IDs:', emptyIds);
+      console.log('Deleting IDs:', emptyIds.slice(0, 10), `... (total: ${emptyIds.length})`);
 
       // Delete in batches
       let deleted = 0;
