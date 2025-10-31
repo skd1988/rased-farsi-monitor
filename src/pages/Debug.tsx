@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Trash2, RefreshCw, Database, AlertTriangle } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, Trash2, RefreshCw, Database, AlertTriangle } from "lucide-react";
 
 const Debug = () => {
   const [stats, setStats] = useState({
@@ -20,45 +20,39 @@ const Debug = () => {
 
   // Helper function to detect empty/placeholder posts
   const isPostEmpty = (post: any): boolean => {
-    const hasPlaceholderTitle = 
-      !post.title || 
-      post.title === '' || 
-      post.title === 'بدون عنوان' ||
-      post.title === 'undefined' ||
-      post.title === 'null';
-    
+    const hasPlaceholderTitle =
+      !post.title ||
+      post.title === "" ||
+      post.title === "بدون عنوان" ||
+      post.title === "undefined" ||
+      post.title === "null";
+
     const hasPlaceholderSource =
-      !post.source ||
-      post.source === '' ||
-      post.source === 'نامشخص' ||
-      post.source === 'undefined';
-    
-    const hasNoContent =
-      !post.contents ||
-      post.contents === '' ||
-      post.contents === 'محتوا موجود نیست';
-    
+      !post.source || post.source === "" || post.source === "نامشخص" || post.source === "undefined";
+
+    const hasNoContent = !post.contents || post.contents === "" || post.contents === "محتوا موجود نیست";
+
     // A post is empty if it has placeholder title AND (no source OR no content)
     if (hasPlaceholderTitle && (hasPlaceholderSource || hasNoContent)) {
       return true;
     }
-    
+
     // Also check if very few meaningful fields
     const values = Object.entries(post);
     const meaningful = values.filter(([key, val]) => {
       // Skip system fields
-      if (['id', 'created_at', 'updated_at'].includes(key)) return false;
-      
+      if (["id", "created_at", "updated_at"].includes(key)) return false;
+
       // Skip empty values
-      if (!val || val === '' || val === null) return false;
-      
+      if (!val || val === "" || val === null) return false;
+
       // Skip placeholder values
-      if (val === 'بدون عنوان' || val === 'نامشخص' || val === 'محتوا موجود نیست') return false;
-      if (val === 'undefined' || val === 'null') return false;
-      
+      if (val === "بدون عنوان" || val === "نامشخص" || val === "محتوا موجود نیست") return false;
+      if (val === "undefined" || val === "null") return false;
+
       return true;
     });
-    
+
     return meaningful.length <= 2;
   };
 
@@ -67,22 +61,18 @@ const Debug = () => {
       setLoading(true);
 
       // Get total posts
-      const { count: totalCount } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true });
+      const { count: totalCount } = await supabase.from("posts").select("*", { count: "exact", head: true });
 
       // Get all posts to count empty ones
-      const { data: allPosts } = await supabase
-        .from('posts')
-        .select('*');
+      const { data: allPosts } = await supabase.from("posts").select("*");
 
       // Count empty posts using our helper function
       const emptyCount = allPosts?.filter(isPostEmpty).length || 0;
 
       // Get sheet info from localStorage
-      const sheetId = localStorage.getItem('sheetId') || '';
-      const sheetName = localStorage.getItem('sheetName') || 'Sheet1';
-      const lastSyncedRow = parseInt(localStorage.getItem('lastSyncedRow') || '0');
+      const sheetId = localStorage.getItem("sheetId") || "";
+      const sheetName = localStorage.getItem("sheetName") || "Sheet1";
+      const lastSyncedRow = parseInt(localStorage.getItem("lastSyncedRow") || "0");
 
       // Try to get sheet row count
       let sheetRows = 0;
@@ -91,19 +81,36 @@ const Debug = () => {
           const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
           const response = await fetch(sheetUrl);
           const csv = await response.text();
-          
-          // Count only non-empty lines
-          const lines = csv.split('\n');
-          const nonEmptyLines = lines.filter(line => {
-            const cleaned = line.replace(/"/g, '').trim();
-            return cleaned && !cleaned.match(/^,+$/) && cleaned.split(',').some(v => v.trim().length > 0);
+
+          // Count only non-empty lines with meaningful content
+          const lines = csv.split("\n");
+          const nonEmptyLines = lines.filter((line, index) => {
+            // Keep header
+            if (index === 0) return true;
+
+            const cleaned = line.replace(/"/g, "").trim();
+
+            // Skip completely empty
+            if (!cleaned || cleaned.match(/^,+$/)) return false;
+
+            // Parse and check for meaningful content
+            const values = cleaned.split(",").map((v) => v.trim());
+            const meaningfulValues = values.filter((v) => {
+              if (!v || v.length === 0) return false;
+              if (v.includes("<") || v.includes(">")) return false;
+              if (v.length < 3) return false;
+              return true;
+            });
+
+            // Need at least 3 meaningful values (title, content, source)
+            return meaningfulValues.length >= 3;
           });
-          
+
           sheetRows = nonEmptyLines.length - 1; // Exclude header
-          
+
           console.log(`📊 Total CSV lines: ${lines.length}, Non-empty: ${nonEmptyLines.length}`);
         } catch (e) {
-          console.error('Could not fetch sheet:', e);
+          console.error("Could not fetch sheet:", e);
         }
       }
 
@@ -113,9 +120,8 @@ const Debug = () => {
         sheetRows,
         lastSyncedRow,
       });
-
     } catch (error) {
-      console.error('Error loading stats:', error);
+      console.error("Error loading stats:", error);
     } finally {
       setLoading(false);
     }
@@ -128,40 +134,34 @@ const Debug = () => {
       setCleaning(true);
 
       // Get all posts
-      const { data: allPosts } = await supabase
-        .from('posts')
-        .select('*');
+      const { data: allPosts } = await supabase.from("posts").select("*");
 
       // Find empty IDs using our helper function
-      const emptyIds = allPosts?.filter(isPostEmpty).map(p => p.id) || [];
+      const emptyIds = allPosts?.filter(isPostEmpty).map((p) => p.id) || [];
 
-      console.log('Deleting IDs:', emptyIds.slice(0, 10), `... (total: ${emptyIds.length})`);
+      console.log("Deleting IDs:", emptyIds.slice(0, 10), `... (total: ${emptyIds.length})`);
 
       // Delete in batches
       let deleted = 0;
       for (let i = 0; i < emptyIds.length; i += 50) {
         const batch = emptyIds.slice(i, i + 50);
-        const { error } = await supabase
-          .from('posts')
-          .delete()
-          .in('id', batch);
+        const { error } = await supabase.from("posts").delete().in("id", batch);
 
         if (!error) deleted += batch.length;
       }
 
       toast({
-        title: 'حذف موفق',
+        title: "حذف موفق",
         description: `${deleted} مطلب حذف شد`,
       });
 
       await loadStats();
-
     } catch (error) {
       console.error(error);
       toast({
-        title: 'خطا',
+        title: "خطا",
         description: error.message,
-        variant: 'destructive',
+        variant: "destructive",
       });
     } finally {
       setCleaning(false);
@@ -169,15 +169,15 @@ const Debug = () => {
   };
 
   const resetAndSync = async () => {
-    if (!confirm('همگام‌سازی از ابتدا؟ این ممکن است مطالب تکراری ایجاد کند.')) return;
+    if (!confirm("همگام‌سازی از ابتدا؟ این ممکن است مطالب تکراری ایجاد کند.")) return;
 
     try {
       setSyncing(true);
-      localStorage.setItem('lastSyncedRow', '0');
-      
+      localStorage.setItem("lastSyncedRow", "0");
+
       toast({
-        title: 'localStorage پاک شد',
-        description: 'حالا می‌توانید از صفحه تنظیمات همگام‌سازی کنید',
+        title: "localStorage پاک شد",
+        description: "حالا می‌توانید از صفحه تنظیمات همگام‌سازی کنید",
       });
 
       await loadStats();
@@ -249,7 +249,8 @@ const Debug = () => {
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            {stats.emptyPosts} مطلب خالی در دیتابیس وجود دارد ({Math.round((stats.emptyPosts / stats.totalPosts) * 100)}%)
+            {stats.emptyPosts} مطلب خالی در دیتابیس وجود دارد ({Math.round((stats.emptyPosts / stats.totalPosts) * 100)}
+            %)
           </AlertDescription>
         </Alert>
       )}
@@ -275,11 +276,7 @@ const Debug = () => {
               بارگذاری مجدد آمار
             </Button>
 
-            <Button
-              onClick={deleteEmptyPosts}
-              variant="destructive"
-              disabled={cleaning || stats.emptyPosts === 0}
-            >
+            <Button onClick={deleteEmptyPosts} variant="destructive" disabled={cleaning || stats.emptyPosts === 0}>
               {cleaning ? (
                 <>
                   <Loader2 className="ml-2 h-4 w-4 animate-spin" />
@@ -293,17 +290,14 @@ const Debug = () => {
               )}
             </Button>
 
-            <Button
-              onClick={resetAndSync}
-              disabled={syncing}
-            >
+            <Button onClick={resetAndSync} disabled={syncing}>
               {syncing ? (
                 <>
                   <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                   در حال ریست...
                 </>
               ) : (
-                'ریست و آماده‌سازی Sync'
+                "ریست و آماده‌سازی Sync"
               )}
             </Button>
           </div>
@@ -323,13 +317,17 @@ const Debug = () => {
         </CardHeader>
         <CardContent>
           <pre className="text-xs bg-muted p-4 rounded overflow-auto">
-{JSON.stringify({
-  sheetId: localStorage.getItem('sheetId'),
-  sheetName: localStorage.getItem('sheetName'),
-  lastSyncTime: localStorage.getItem('lastSyncTime'),
-  lastSyncedRow: localStorage.getItem('lastSyncedRow'),
-  totalRowsInSheet: localStorage.getItem('totalRowsInSheet'),
-}, null, 2)}
+            {JSON.stringify(
+              {
+                sheetId: localStorage.getItem("sheetId"),
+                sheetName: localStorage.getItem("sheetName"),
+                lastSyncTime: localStorage.getItem("lastSyncTime"),
+                lastSyncedRow: localStorage.getItem("lastSyncedRow"),
+                totalRowsInSheet: localStorage.getItem("totalRowsInSheet"),
+              },
+              null,
+              2,
+            )}
           </pre>
         </CardContent>
       </Card>
