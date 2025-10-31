@@ -774,11 +774,19 @@ const Settings = () => {
       console.log("📋 Headers found:", headers);
       console.log("📋 Total headers:", headers.length);
 
-      // Debug: Show actual header mapping
-      console.log("📋 Header mapping check:");
+      // Debug: Show actual header mapping with indexes
+      console.log("📋 COMPLETE Header mapping:");
       headers.forEach((header, index) => {
-        console.log(`  ${index}: "${header}"`);
+        console.log(`  [${index}]: "${header}"`);
       });
+
+      // Also show possible variations of headers
+      console.log("📋 Looking for these field patterns:");
+      console.log("  - Source fields: source, منبع, publisher, site, website, domain");
+      console.log("  - URL fields: url, لینک, source_url, article url, link, href");
+      console.log("  - Author fields: author, نویسنده, writer, کاتب");
+      console.log("  - Title fields: title, عنوان, headline, subject");
+      console.log("  - Content fields: contents, محتوا, content, description, body");
 
       const rows: any[] = [];
       for (let i = 1; i < dataLines.length; i++) {
@@ -842,96 +850,158 @@ const Settings = () => {
         setSyncProgress(50 + ((i + 1) / rowsToSync.length) * 40);
 
         try {
-          // Debug: Log raw row structure first
-          if (i < 2) {
-            console.log(
-              `\n🔍 Raw Row ${i + 1} structure:`,
-              Object.keys(row).map((k) => `${k}: "${String(row[k]).substring(0, 40)}..."`),
-            );
-          }
-
-          // Try different field combinations - it seems the columns might be swapped
-          let rawTitle = "";
-          let rawContents = "";
-
-          // Check all possible title fields
-          const titleCandidates = [
-            row["title"],
-            row["عنوان"],
-            row["headline"],
-            row["contents"],
-            row["محتوا"],
-            row["content"],
-          ].filter(Boolean);
-
-          const contentsCandidates = [
-            row["contents"],
-            row["محتوا"],
-            row["content"],
-            row["title"],
-            row["عنوان"],
-            row["headline"],
-          ].filter(Boolean);
-
-          // Find the field that looks like actual content (not timestamp)
-          for (const candidate of titleCandidates) {
-            const cleaned = String(candidate).trim();
-            // Skip timestamps and HTML-heavy content
-            if (
-              !cleaned.match(/^\w+ \d{1,2}, \d{4} at \d{1,2}:\d{2}[AP]M$/) &&
-              !cleaned.includes("<iframe") &&
-              cleaned.length > 10
-            ) {
-              rawTitle = cleaned;
-              break;
-            }
-          }
-
-          // If no good title found, try contents field
-          if (!rawTitle) {
-            for (const candidate of contentsCandidates) {
-              const cleaned = String(candidate).trim();
-              if (
-                !cleaned.match(/^\w+ \d{1,2}, \d{4} at \d{1,2}:\d{2}[AP]M$/) &&
-                !cleaned.includes("<iframe") &&
-                cleaned.length > 10
-              ) {
-                rawContents = cleaned;
-                // Use first 100 chars as title
-                rawTitle = cleaned.substring(0, 100);
-                break;
+          // Comprehensive field mapping - check ALL possible variations
+          const getAllVariations = (row: any, patterns: string[]) => {
+            for (const pattern of patterns) {
+              const value = row[pattern];
+              if (value && typeof value === "string" && value.trim().length > 0) {
+                return value.trim();
               }
             }
-          } else {
-            // Find contents that's different from title
-            for (const candidate of contentsCandidates) {
-              const cleaned = String(candidate).trim();
-              if (cleaned !== rawTitle && cleaned.length > rawTitle.length) {
-                rawContents = cleaned;
-                break;
-              }
-            }
+            return "";
+          };
+
+          // Debug: Log complete row structure for first few rows
+          if (i < 3) {
+            console.log(`\n🔍 COMPLETE Row ${i + 1} structure:`);
+            Object.keys(row).forEach((key, index) => {
+              const value = String(row[key]).substring(0, 60);
+              console.log(`  [${index}] "${key}": "${value}"`);
+            });
+          }
+
+          // Try ALL possible field patterns
+          const sourcePatterns = [
+            "source",
+            "منبع",
+            "publisher",
+            "site",
+            "website",
+            "domain",
+            "منبع خبر",
+            "Source",
+            "Publisher",
+            "Website",
+            "Domain",
+            "News Source",
+          ];
+
+          const urlPatterns = [
+            "url",
+            "لینک",
+            "source_url",
+            "article url",
+            "link",
+            "href",
+            "website_url",
+            "news_url",
+            "URL",
+            "Link",
+            "Source URL",
+            "Article URL",
+            "Website URL",
+            "News URL",
+          ];
+
+          const authorPatterns = [
+            "author",
+            "نویسنده",
+            "writer",
+            "کاتب",
+            "نگارنده",
+            "reporter",
+            "journalist",
+            "Author",
+            "Writer",
+            "Reporter",
+            "Journalist",
+            "By",
+          ];
+
+          const titlePatterns = [
+            "title",
+            "عنوان",
+            "headline",
+            "subject",
+            "خبر",
+            "سرخط",
+            "Title",
+            "Headline",
+            "Subject",
+            "News Title",
+          ];
+
+          const contentPatterns = [
+            "contents",
+            "محتوا",
+            "content",
+            "description",
+            "body",
+            "متن",
+            "شرح",
+            "Contents",
+            "Content",
+            "Description",
+            "Body",
+            "Text",
+            "Article",
+          ];
+
+          // Extract all fields with comprehensive mapping
+          const rawSource = getAllVariations(row, sourcePatterns);
+          const rawUrl = getAllVariations(row, urlPatterns);
+          const rawAuthor = getAllVariations(row, authorPatterns);
+          const rawTitle = getAllVariations(row, titlePatterns);
+          const rawContents = getAllVariations(row, contentPatterns);
+
+          // Debug: Show what we found
+          if (i < 3) {
+            console.log(`\n📋 Field extraction results for Row ${i + 1}:`);
+            console.log(`  📝 Title: "${rawTitle.substring(0, 50)}"`);
+            console.log(`  📄 Contents: "${rawContents.substring(0, 50)}"`);
+            console.log(`  🌐 Source: "${rawSource.substring(0, 40)}"`);
+            console.log(`  🔗 URL: "${rawUrl.substring(0, 40)}"`);
+            console.log(`  ✍️ Author: "${rawAuthor.substring(0, 30)}"`);
+          }
+
+          // Smart content detection: title vs contents
+          let finalTitle = "";
+          let finalContents = "";
+
+          // Skip fields that look like timestamps
+          const isTimestamp = (text: string) => {
+            return text.match(/^\w+ \d{1,2}, \d{4} at \d{1,2}:\d{2}[AP]M$/);
+          };
+
+          if (rawTitle && !isTimestamp(rawTitle)) {
+            finalTitle = rawTitle;
+          } else if (rawContents && !isTimestamp(rawContents)) {
+            finalTitle = rawContents.substring(0, 100); // Use first part as title
+          }
+
+          if (rawContents && rawContents !== finalTitle) {
+            finalContents = rawContents;
+          } else if (rawTitle && rawTitle !== finalTitle) {
+            finalContents = rawTitle;
           }
 
           // Clean HTML from both fields
-          const title = cleanHTML(rawTitle).trim();
-          const contents = cleanHTML(rawContents || rawTitle).trim();
+          const title = cleanHTML(finalTitle).trim();
+          const contents = cleanHTML(finalContents || finalTitle).trim();
 
-          const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
-          const url = (row["url"] || row["لینک"] || row["source_url"] || row["article url"] || "").trim();
-
-          // Smart source detection: prioritize URL field for source extraction
+          // SMART SOURCE DETECTION - This is the most important part!
           let cleanSource = "";
           let finalUrl = "";
 
-          // First, try to extract source from URL field (most reliable)
-          if (url && url.includes("http")) {
+          // Strategy 1: If we have a clean URL, extract domain from it
+          if (rawUrl && rawUrl.includes("http")) {
             try {
-              const urlObj = new URL(url);
+              const urlObj = new URL(rawUrl);
               const domain = urlObj.hostname.replace("www.", "");
 
-              // Map known domains to clean names
+              // Comprehensive domain mapping
               const domainMap: Record<string, string> = {
+                // Arabic sources
                 "arabic.rt.com": "RT Arabic",
                 "aljazeera.net": "الجزیرة",
                 "bbc.com": "BBC Arabic",
@@ -941,7 +1011,6 @@ const Settings = () => {
                 "alarabiya.net": "العربية",
                 "independentarabia.com": "اندبندنت عربية",
                 "asharq.com": "الشرق",
-                "independentarabia.com": "اندبندنت عربية",
                 "alaraby.co.uk": "العربي الجديد",
                 "alquds.co.uk": "القدس العربي",
                 "aawsat.com": "الشرق الأوسط",
@@ -949,26 +1018,57 @@ const Settings = () => {
                 "almustaqbal.com": "المستقبل",
                 "annahar.com": "النهار",
                 "almadenahnews.com": "المدينة",
+                "youm7.com": "اليوم السابع",
+                "masrawy.com": "مصراوي",
+                "dostor.org": "الدستور",
+                "elkhabar.com": "الخبر",
+                "echorouk.com": "الشروق",
+                "hespress.com": "هسبريس",
+                "le360.ma": "لو360",
+                "alittihad.ae": "الاتحاد",
+                "gulftimes.com": "Gulf Times",
+                "thenational.ae": "The National",
+
+                // Persian/Iranian sources
+                "isna.ir": "ایسنا",
+                "mehrnews.com": "مهر",
+                "tasnimnews.com": "تسنیم",
+                "farsnews.ir": "فارس",
+                "irna.ir": "ایرنا",
+                "khabaronline.ir": "خبرآنلاین",
+                "tabnak.ir": "تابناک",
+                "yjc.ir": "باشگاه خبرنگاران",
+                "shafaqna.com": "شفقنا",
+                "rokna.net": "رکنا",
+
+                // International
+                "reuters.com": "Reuters",
+                "cnn.com": "CNN",
+                "bbc.co.uk": "BBC",
+                "apnews.com": "Associated Press",
+                "france24.com": "France 24",
+                "dw.com": "Deutsche Welle",
               };
 
               cleanSource = domainMap[domain] || domain;
-              finalUrl = url;
+              finalUrl = rawUrl;
 
               if (i < 3) {
-                console.log(`🔍 URL-based source detection: ${domain} → ${cleanSource}`);
+                console.log(`✅ Source from URL: ${domain} → ${cleanSource}`);
               }
             } catch (e) {
-              console.log(`⚠️ URL parsing failed for: ${url}`);
-              cleanSource = url.split(".com")[0].split("//").pop() || url;
-              finalUrl = url;
+              if (i < 3) console.log(`⚠️ URL parsing failed: ${rawUrl}`);
+              cleanSource = rawUrl.replace("https://", "").replace("http://", "").split("/")[0];
+              finalUrl = rawUrl;
             }
           }
 
-          // If URL extraction failed, try source field
-          if (!cleanSource && source) {
-            if (source.includes("http")) {
+          // Strategy 2: If URL method didn't work, check rawSource field
+          if (!cleanSource && rawSource) {
+            if (rawSource.includes("http")) {
+              // rawSource is actually a URL
               try {
-                const urlObj = new URL(source);
+                const urlObj = new URL(rawSource);
                 const domain = urlObj.hostname.replace("www.", "");
 
                 const domainMap: Record<string, string> = {
@@ -984,41 +1084,72 @@ const Settings = () => {
                 };
 
                 cleanSource = domainMap[domain] || domain;
-                finalUrl = source; // Use source as URL if no separate URL field
+                finalUrl = rawSource;
+
+                if (i < 3) {
+                  console.log(`✅ Source from rawSource URL: ${domain} → ${cleanSource}`);
+                }
               } catch (e) {
-                cleanSource = source.split(".com")[0].split("//").pop() || source;
-                finalUrl = source;
+                cleanSource = rawSource.replace("https://", "").replace("http://", "").split("/")[0];
+                finalUrl = rawSource;
               }
             } else {
-              // Source is already a clean name
-              cleanSource = source;
-              finalUrl = url || ""; // Use URL field if available
+              // rawSource is already a clean name
+              cleanSource = rawSource;
+              finalUrl = rawUrl || "";
+
+              if (i < 3) {
+                console.log(`✅ Source from rawSource name: ${cleanSource}`);
+              }
             }
           }
 
-          // Last resort fallback
-          if (!cleanSource || cleanSource.length < 2) {
-            cleanSource = source || url || "منبع نامشخص";
-            finalUrl = url || source || "";
+          // Strategy 3: Try to extract from any URL-like field
+          if (!cleanSource) {
+            const allFields = Object.values(row);
+            for (const field of allFields) {
+              if (typeof field === "string" && field.includes("http") && field.includes(".")) {
+                try {
+                  const urlObj = new URL(field);
+                  const domain = urlObj.hostname.replace("www.", "");
+                  cleanSource = domain;
+                  finalUrl = field;
+
+                  if (i < 3) {
+                    console.log(`✅ Source from scan: ${domain}`);
+                  }
+                  break;
+                } catch (e) {
+                  continue;
+                }
+              }
+            }
+          }
+
+          // Strategy 4: Last resort - use any non-empty field that looks like a source
+          if (!cleanSource) {
+            cleanSource = rawSource || rawUrl || "منبع نامعین";
+            finalUrl = rawUrl || rawSource || "";
+
+            if (i < 3) {
+              console.log(`⚠️ Fallback source: ${cleanSource}`);
+            }
           }
 
           if (i < 3) {
-            console.log(`\n📋 Row ${lastSyncedRow + i + 1} AFTER PROCESSING:`, {
-              title: title.substring(0, 60),
-              contents: contents.substring(0, 60),
-              source: cleanSource.substring(0, 30),
-              url: finalUrl.substring(0, 40),
-              hasTitle: !!title,
-              titleLength: title.length,
-              contentsLength: contents.length,
-              rawSource: source.substring(0, 20),
-              rawUrl: url.substring(0, 20),
-            });
+            console.log(`\n📋 FINAL Row ${lastSyncedRow + i + 1} results:`);
+            console.log(`  📝 Title: "${title.substring(0, 60)}"`);
+            console.log(`  📄 Contents: "${contents.substring(0, 60)}"`);
+            console.log(`  🌐 Source: "${cleanSource}"`);
+            console.log(`  🔗 URL: "${finalUrl.substring(0, 50)}"`);
+            console.log(`  ✍️ Author: "${rawAuthor}"`);
+            console.log(`  🌍 Language: ${detectedLanguage}`);
+            console.log(`  📊 Validation: Title=${!!title}, Source=${!!cleanSource}, URL=${!!finalUrl}`);
           }
 
           if (!title || title.trim().length < 10) {
             validationSkips.noTitle++;
-            if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: No meaningful title (length: ${title.length})`);
+            if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: Title too short (${title.length} chars)`);
             continue;
           }
 
@@ -1045,7 +1176,7 @@ const Settings = () => {
             title: title,
             contents: contents || "محتوا موجود نیست",
             source: cleanSource,
-            author: (row["author"] || row["نویسنده"] || "").trim() || null,
+            author: rawAuthor || null,
             published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
             source_url: finalUrl || null,
             language: detectedLanguage,
