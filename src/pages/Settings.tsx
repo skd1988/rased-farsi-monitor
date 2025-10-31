@@ -145,13 +145,24 @@ function cleanHTMLContent(content: string): string {
 }
 
 function parseDate(dateString: string | undefined): string {
-  if (!dateString) return new Date().toISOString();
+  console.log('📅 parseDate input:', dateString);
+  
+  if (!dateString || dateString.trim() === '') {
+    console.log('⚠️ Empty date, using current time');
+    return new Date().toISOString();
+  }
+  
   try {
     const parsed = new Date(dateString);
     if (!isNaN(parsed.getTime())) {
+      console.log('✅ Parsed date:', parsed.toISOString());
       return parsed.toISOString();
     }
-  } catch {}
+  } catch (e) {
+    console.log('❌ Date parse error:', e);
+  }
+  
+  console.log('⚠️ Invalid date format, using current time');
   return new Date().toISOString();
 }
 
@@ -308,6 +319,8 @@ const importFromGoogleSheets = async (startFromRow: number | null = null, silent
           const language = row['Language'];
           const status = row['Status'];
           const keywords = row['Keywords'];
+          
+          console.log(`📊 Row ${actualRowNumber} - Raw Date from CSV:`, date);
           
           if (!articleUrl) {
             console.warn(`Row ${actualRowNumber}: Missing URL, skipping`);
