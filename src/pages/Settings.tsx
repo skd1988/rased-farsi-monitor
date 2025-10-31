@@ -62,6 +62,144 @@ const parseCSVLine = (line: string): string[] => {
   return result;
 };
 
+// Helper function to detect language
+const detectLanguage = (text: string): string => {
+  if (!text || text.length < 3) return "فارسی";
+
+  // Count different character types
+  const persianChars = text.match(/[\u0600-\u06FF]/g)?.length || 0;
+  const arabicChars = text.match(/[\u0750-\u077F\u08A0-\u08FF]/g)?.length || 0;
+  const englishChars = text.match(/[a-zA-Z]/g)?.length || 0;
+
+  const total = persianChars + arabicChars + englishChars;
+  if (total === 0) return "فارسی";
+
+  const persianRatio = persianChars / total;
+  const arabicRatio = arabicChars / total;
+  const englishRatio = englishChars / total;
+
+  if (englishRatio > 0.6) return "English";
+  if (arabicRatio > 0.4) return "عربی";
+  return "فارسی";
+};
+
+// Helper function to detect source type
+const detectSourceType = (source: string, url: string = ""): "social" | "news" => {
+  const socialPlatforms = [
+    "twitter",
+    "facebook",
+    "instagram",
+    "youtube",
+    "tiktok",
+    "telegram",
+    "linkedin",
+    "snapchat",
+    "whatsapp",
+    "x.com",
+    "t.me",
+    "fb.com",
+  ];
+
+  const newsKeywords = [
+    "news",
+    "خبر",
+    "اخبار",
+    "الاخبار",
+    "الجزيرة",
+    "bbc",
+    "cnn",
+    "reuters",
+    "ایسنا",
+    "مهر",
+    "تسنیم",
+    "فارس",
+    "ایرنا",
+    "الشرق",
+    "العربية",
+  ];
+
+  const checkText = `${source} ${url}`.toLowerCase();
+
+  // Check social platforms first
+  for (const platform of socialPlatforms) {
+    if (checkText.includes(platform)) {
+      return "social";
+    }
+  }
+
+  // Check news keywords
+  for (const keyword of newsKeywords) {
+    if (checkText.includes(keyword)) {
+      return "news";
+    }
+  }
+
+  // Default to news for unknown sources
+  return "news";
+};
+
+// Helper function to parse dates properly
+const parseDate = (dateStr: any): string => {
+  if (!dateStr || typeof dateStr !== "string") {
+    return new Date().toISOString();
+  }
+
+  let cleaned = dateStr.trim();
+
+  // Skip if obviously not a date (HTML, URLs, etc.)
+  if (
+    cleaned.includes("<") ||
+    cleaned.includes(">") ||
+    cleaned.includes("http") ||
+    cleaned.includes("www.") ||
+    cleaned.startsWith("Al Jazeera") ||
+    cleaned.includes("Network") ||
+    cleaned.includes("Doha") ||
+    cleaned.length < 8
+  ) {
+    return new Date().toISOString();
+  }
+
+  // Try to clean common date formats
+  cleaned = cleaned
+    .replace(/\s+/g, " ")
+    .replace(/[^\d\-\/\:\s]/g, "")
+    .trim();
+
+  if (cleaned.length < 8) {
+    return new Date().toISOString();
+  }
+
+  try {
+    // Try different date formats
+    const patterns = [
+      /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/, // YYYY-MM-DD or YYYY/MM/DD
+      /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/, // MM-DD-YYYY or DD-MM-YYYY
+      /(\d{4})(\d{2})(\d{2})/, // YYYYMMDD
+    ];
+
+    for (const pattern of patterns) {
+      const match = cleaned.match(pattern);
+      if (match) {
+        const parsed = new Date(cleaned);
+        if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2030) {
+          return parsed.toISOString();
+        }
+      }
+    }
+
+    // Fallback: try direct parsing
+    const parsed = new Date(cleaned);
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2030) {
+      return parsed.toISOString();
+    }
+
+    return new Date().toISOString();
+  } catch (e) {
+    return new Date().toISOString();
+  }
+};
+
 const Settings = () => {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
@@ -177,28 +315,19 @@ const Settings = () => {
 
       const allLines = csvText.split("\n");
       const nonEmptyLines = allLines.filter((line, index) => {
-        // Skip header
-        if (index === 0) return true;
+        if (index === 0) return true; // Keep header
 
         const cleaned = line.replace(/"/g, "").trim();
-
-        // Skip completely empty lines
         if (!cleaned || cleaned.match(/^,+$/)) return false;
 
-        // Parse the line and check if it has meaningful content
         const values = cleaned.split(",").map((v) => v.trim());
-
-        // Count non-empty values
         const meaningfulValues = values.filter((v) => {
           if (!v || v.length === 0) return false;
-          // Skip if looks like HTML
           if (v.includes("<") || v.includes(">")) return false;
-          // Skip if too short (likely garbage)
           if (v.length < 3) return false;
           return true;
         });
 
-        // Need at least 3 meaningful values (title, content, source)
         return meaningfulValues.length >= 3;
       });
 
@@ -551,15 +680,11 @@ const Settings = () => {
 
       const allLines = csvText.split("\n");
       const dataLines = allLines.filter((line, index) => {
-        // Always keep header
-        if (index === 0) return true;
+        if (index === 0) return true; // Keep header
 
         const cleaned = line.replace(/"/g, "").trim();
-
-        // Skip completely empty
         if (!cleaned || cleaned.match(/^,+$/)) return false;
 
-        // Parse and check for meaningful content
         const values = cleaned.split(",").map((v) => v.trim());
         const meaningfulValues = values.filter((v) => {
           if (!v || v.length === 0) return false;
@@ -568,7 +693,6 @@ const Settings = () => {
           return true;
         });
 
-        // Need at least 3 meaningful values
         return meaningfulValues.length >= 3;
       });
 
@@ -649,6 +773,7 @@ const Settings = () => {
           const title = (row["title"] || row["عنوان"] || row["headline"] || "").trim();
           const contents = (row["contents"] || row["محتوا"] || row["content"] || "").trim();
           const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
+          const url = (row["url"] || row["لینک"] || row["source_url"] || "").trim();
 
           if (i < 3) {
             console.log(`\n📋 Row ${lastSyncedRow + i + 1} sample:`, {
@@ -672,38 +797,9 @@ const Settings = () => {
             continue;
           }
 
-          // Parse date safely
-          const parseDate = (dateStr: any): string => {
-            if (!dateStr || typeof dateStr !== "string") {
-              return new Date().toISOString();
-            }
-
-            const cleaned = dateStr.trim();
-
-            // Skip if too short or contains HTML/invalid characters
-            if (
-              cleaned.length < 8 ||
-              cleaned.includes("<") ||
-              cleaned.includes(">") ||
-              cleaned.includes("http") ||
-              cleaned.includes("www.") ||
-              cleaned.startsWith("Al Jazeera") ||
-              cleaned.includes("Network") ||
-              cleaned.includes("Doha")
-            ) {
-              return new Date().toISOString();
-            }
-
-            try {
-              const parsed = new Date(cleaned);
-              if (isNaN(parsed.getTime())) {
-                return new Date().toISOString();
-              }
-              return parsed.toISOString();
-            } catch (e) {
-              return new Date().toISOString();
-            }
-          };
+          // Detect language and source type
+          const detectedLanguage = detectLanguage(title + " " + contents);
+          const sourceType = detectSourceType(source, url);
 
           const post = {
             title: title,
@@ -711,11 +807,13 @@ const Settings = () => {
             source: source || "نامشخص",
             author: (row["author"] || row["نویسنده"] || "").trim() || null,
             published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
-            source_url: (row["url"] || row["لینک"] || row["source_url"] || "").trim() || null,
-            language: row["language"] || row["زبان"] || "فارسی",
+            source_url: url || null,
+            language: detectedLanguage,
+            source_type: sourceType,
             status: "جدید",
           };
 
+          // Check duplicates only by title
           const { data: existingPost } = await supabase
             .from("posts")
             .select("id")
