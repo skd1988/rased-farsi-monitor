@@ -91,7 +91,17 @@ const Debug = () => {
           const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
           const response = await fetch(sheetUrl);
           const csv = await response.text();
-          sheetRows = csv.split('\n').length - 1;
+          
+          // Count only non-empty lines
+          const lines = csv.split('\n');
+          const nonEmptyLines = lines.filter(line => {
+            const cleaned = line.replace(/"/g, '').trim();
+            return cleaned && !cleaned.match(/^,+$/) && cleaned.split(',').some(v => v.trim().length > 0);
+          });
+          
+          sheetRows = nonEmptyLines.length - 1; // Exclude header
+          
+          console.log(`📊 Total CSV lines: ${lines.length}, Non-empty: ${nonEmptyLines.length}`);
         } catch (e) {
           console.error('Could not fetch sheet:', e);
         }

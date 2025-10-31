@@ -154,7 +154,17 @@ const Settings = () => {
       const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
       const response = await fetch(sheetUrl);
       const csvText = await response.text();
-      const sheetRows = csvText.split('\n').filter(line => line.trim()).length - 1; // Exclude header
+      
+      // Count only non-empty lines
+      const allLines = csvText.split('\n');
+      const nonEmptyLines = allLines.filter(line => {
+        const cleaned = line.replace(/"/g, '').trim();
+        return cleaned && !cleaned.match(/^,+$/) && cleaned.split(',').some(v => v.trim().length > 0);
+      });
+      
+      const sheetRows = nonEmptyLines.length - 1; // Exclude header
+      
+      console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty: ${nonEmptyLines.length}`);
 
       // Get database post count
       const { count: dbPosts } = await supabase
@@ -485,13 +495,49 @@ const Settings = () => {
     }
 
     setIsSyncing(true);
-    setSyncProgress(0);
+    setSyncProgress(10);
     
     try {
       toast({
-        title: 'در حال همگام‌سازی...',
-        description: 'لطفا صبر کنید',
+        title: 'شروع همگام‌سازی...',
+        description: 'در حال اتصال به Google Sheets',
       });
+
+      // Fetch Google Sheet data
+      const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
+      
+      console.log('🔗 Fetching from:', sheetUrl);
+      setSyncProgress(30);
+      
+      const response = await fetch(sheetUrl);
+      
+      if (!response.ok) {
+        throw new Error('خطا در دریافت داده‌ها. لطفا Sheet ID و دسترسی عمومی را بررسی کنید');
+      }
+
+      const csvText = await response.text();
+      console.log('📄 CSV fetched, raw size:', csvText.length);
+      setSyncProgress(50);
+
+      // ✅ CRITICAL: Filter out empty lines BEFORE processing
+      const allLines = csvText.split('\n');
+      const dataLines = allLines.filter(line => {
+        // Remove quotes and trim
+        const cleaned = line.replace(/"/g, '').trim();
+        
+        // Skip if line is empty or only commas
+        if (!cleaned || cleaned.match(/^,+$/)) {
+          return false;
+        }
+        
+        // Check if line has at least one non-empty value
+        const values = cleaned.split(',');
+        const hasContent = values.some(v => v.trim().length > 0);
+        
+        return hasContent;
+      });
+
+      console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty lines: ${dataLines.length}`);
 
       // Get database post count to determine where to start
       const { count: dbPostCount } = await supabase
@@ -501,23 +547,17 @@ const Settings = () => {
       const lastSyncedRow = dbPostCount || 0;
       console.log(`📊 Database has ${dbPostCount} posts, syncing from row ${lastSyncedRow + 1}`);
 
-      // Fetch Google Sheet data
-      const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
-      const response = await fetch(sheetUrl);
+      // Parse CSV with Papa Parse using filtered lines
+      const filteredCSV = dataLines.join('\n');
       
-      if (!response.ok) {
-        throw new Error('خطا در دسترسی به Google Sheet');
-      }
-
-      const csvText = await response.text();
-      
-      // Parse CSV
-      Papa.parse(csvText, {
+      Papa.parse(filteredCSV, {
         header: true,
         skipEmptyLines: true,
         complete: async (results) => {
           const rows = results.data;
           const totalRows = rows.length;
+          
+          console.log(`📋 Parsed ${totalRows} rows from CSV`);
           
           // Only sync rows after lastSyncedRow
           const rowsToSync = rows.slice(lastSyncedRow);
@@ -541,7 +581,7 @@ const Settings = () => {
             const row = rowsToSync[i];
             
             // Update progress
-            setSyncProgress(((i + 1) / rowsToSync.length) * 100);
+            setSyncProgress(50 + ((i + 1) / rowsToSync.length) * 40);
             
             try {
               // Extract and validate title
@@ -582,7 +622,7 @@ const Settings = () => {
               const post = {
                 title: title,
                 contents: contents || 'محتوا موجود نیست',
-                source: source || 'نامشخص',
+                source: source,
                 author: (row['نویسنده'] || row['author'] || '').trim() || null,
                 published_at: row['تاریخ'] || row['published_at'] || new Date().toISOString(),
                 source_url: (row['لینک'] || row['source_url'] || row['url'] || '').trim() || null,
@@ -624,6 +664,8 @@ const Settings = () => {
             }
           }
           
+          setSyncProgress(90);
+          
           // Log statistics
           console.log('📊 Import Statistics:', {
             total: rowsToSync.length,
@@ -632,10 +674,10 @@ const Settings = () => {
             errors: errorCount,
           });
 
-          // Update sync stats
-          const newLastSyncedRow = lastSyncedRow + importedCount;
-          localStorage.setItem('lastSyncedRow', String(newLastSyncedRow));
-          localStorage.setItem('totalRowsInSheet', String(totalRows));
+          // Update sync stats with ACTUAL row count (not CSV line count)
+          const actualRowCount = dbPostCount + importedCount;
+          localStorage.setItem('lastSyncedRow', String(actualRowCount));
+          localStorage.setItem('totalRowsInSheet', String(totalRows)); // Use cleaned count
           
           const now = new Date().toISOString();
           saveSettings({ 
@@ -643,12 +685,33 @@ const Settings = () => {
             sync_status: 'success' 
           });
           
+          // Save sync history
+          const syncHistory = JSON.parse(localStorage.getItem('syncHistory') || '[]');
+          syncHistory.push({
+            timestamp: now,
+            rowsImported: importedCount,
+            rowsSkipped: skippedCount,
+            errors: errorCount,
+            totalRows: actualRowCount,
+          });
+          localStorage.setItem('syncHistory', JSON.stringify(syncHistory.slice(-10)));
+          
+          setSyncProgress(100);
+          
           // Refresh stats
           await checkSyncStatus();
           
           toast({
             title: '✅ همگام‌سازی کامل شد',
             description: `✅ ${importedCount} مطلب وارد شد\n⚠️ ${skippedCount} ردیف رد شد${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ''}`,
+          });
+          
+          console.log('✅ Sync completed:', {
+            imported: importedCount,
+            skipped: skippedCount,
+            errors: errorCount,
+            totalInDB: actualRowCount,
+            actualSheetRows: totalRows,
           });
           
           setIsSyncing(false);
