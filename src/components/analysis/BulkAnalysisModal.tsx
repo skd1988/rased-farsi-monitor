@@ -134,13 +134,30 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         let analysis;
         
         try {
-          const response = await supabase.functions.invoke('analyze-post', {
-            body: {
-              postId: post.id,
-              postTitle: post.title,
-              postContent: post.contents
-            }
-          });
+  console.log(`🔵 Calling edge function for post ${i + 1}`);
+  const response = await supabase.functions.invoke('analyze-post', {
+    body: {
+      postId: post.id,
+      postTitle: post.title,
+      postContent: post.contents
+    }
+  });
+
+  console.log('📦 Edge function response:', response);
+
+  if (response.error) {
+    console.error('❌ Edge function error:', response.error);
+    throw response.error;
+  }
+  
+  // ✅ CRITICAL FIX: Check if response.data exists and has analysis
+  if (!response.data || !response.data.analysis) {
+    console.error('❌ Invalid response structure:', response.data);
+    throw new Error('Invalid response from edge function');
+  }
+  
+  analysis = response.data.analysis;
+  console.log('✅ Analysis received:', analysis.threat_level);
 
           if (response.error) throw response.error;
           analysis = response.data.analysis;
