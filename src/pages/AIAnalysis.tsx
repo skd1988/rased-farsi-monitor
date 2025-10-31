@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,6 @@ const AIAnalysis = () => {
   const [topicFilter, setTopicFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("threat");
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const modalOpenRef = useRef(false);
   const [selectedPost, setSelectedPost] = useState<AnalyzedPost | null>(null);
   const { toast } = useToast();
 
@@ -57,10 +56,6 @@ const AIAnalysis = () => {
   useEffect(() => {
     applyFilters();
   }, [posts, searchQuery, threatFilter, sentimentFilter, topicFilter, sortBy]);
-
-  useEffect(() => {
-    console.log("🎯 showBulkModal changed to:", showBulkModal);
-  }, [showBulkModal]);
 
   const fetchAnalyzedPosts = async () => {
     try {
@@ -88,7 +83,6 @@ const AIAnalysis = () => {
   const applyFilters = () => {
     let filtered = [...posts];
 
-    // Search filter
     if (searchQuery) {
       filtered = filtered.filter(
         (post) =>
@@ -97,22 +91,18 @@ const AIAnalysis = () => {
       );
     }
 
-    // Threat level filter
     if (threatFilter !== "all") {
       filtered = filtered.filter((post) => post.threat_level === threatFilter);
     }
 
-    // Sentiment filter
     if (sentimentFilter !== "all") {
       filtered = filtered.filter((post) => post.sentiment === sentimentFilter);
     }
 
-    // Topic filter
     if (topicFilter !== "all") {
       filtered = filtered.filter((post) => post.main_topic === topicFilter);
     }
 
-    // Sort
     filtered.sort((a, b) => {
       if (sortBy === "threat") {
         const threatOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
@@ -153,162 +143,163 @@ const AIAnalysis = () => {
     );
   }
 
+  // Empty state
   if (posts.length === 0) {
     return (
-      <div className="p-8">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-          <div className="text-6xl">🤖</div>
-          <h3 className="text-2xl font-bold">هنوز هیچ مطلبی تحلیل نشده</h3>
-          <p className="text-muted-foreground">برای شروع، از دکمه زیر استفاده کنید</p>
-          <Button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log("🔵 دکمه شروع تحلیل کلیک شد");
-              setShowBulkModal(true);
-              console.log("🟢 showBulkModal set to true");
-              console.log("🟢 Current state:", showBulkModal);
-            }}
-            size="lg"
-            type="button"
-          >
-            <FileText className="ml-2 h-5 w-5" />
-            شروع تحلیل
-          </Button>
+      <>
+        <div className="p-8">
+          <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+            <div className="text-6xl">🤖</div>
+            <h3 className="text-2xl font-bold">هنوز هیچ مطلبی تحلیل نشده</h3>
+            <p className="text-muted-foreground">برای شروع، از دکمه زیر استفاده کنید</p>
+            <Button
+              onClick={() => {
+                console.log("🔵 Opening bulk modal");
+                setShowBulkModal(true);
+              }}
+              size="lg"
+            >
+              <FileText className="ml-2 h-5 w-5" />
+              شروع تحلیل
+            </Button>
+          </div>
         </div>
-      </div>
+
+        {/* Modal must be rendered even in empty state */}
+        <BulkAnalysisModal
+          open={showBulkModal}
+          onClose={() => setShowBulkModal(false)}
+          onComplete={fetchAnalyzedPosts}
+        />
+      </>
     );
   }
 
+  // Main content
   return (
-    <div className="p-8 space-y-6" dir="rtl">
-      {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">تحلیل هوشمند</h1>
-          <p className="text-muted-foreground mt-2">تحلیل محتوا با هوش مصنوعی و شناسایی تهدیدها</p>
+    <>
+      <div className="p-8 space-y-6" dir="rtl">
+        {/* Header */}
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold">تحلیل هوشمند</h1>
+            <p className="text-muted-foreground mt-2">تحلیل محتوا با هوش مصنوعی و شناسایی تهدیدها</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => {
+                console.log("🔵 Opening bulk modal");
+                setShowBulkModal(true);
+              }}
+            >
+              <FileText className="ml-2 h-4 w-4" />
+              تحلیل گروهی
+            </Button>
+            <Button variant="outline">
+              <Download className="ml-2 h-4 w-4" />
+              خروجی گزارش PDF
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log("🔵 دکمه تحلیل گروهی کلیک شد");
-              setShowBulkModal(true);
-              console.log("🟢 showBulkModal set to true");
-            }}
-            type="button"
-          >
-            ``` **تغییر:** همون تغییرات قبلی --- ## 🎯 خلاصه تغییرات: | فایل | تعداد تغییر | اهمیت |
-            |------|------------|-------| | `BulkAnalysisModal.tsx` | 3 تغییر | ⭐⭐⭐ بالا | | `AIAnalysis.tsx` | 2
-            تغییر | ⭐⭐ متوسط | --- ## ✅ بعد از اعمال تغییرات: 1. **Save کن** همه فایل‌ها 2. **Refresh کن** صفحه (F5)
-            3. **F12 بزن** → Console 4. **کلیک کن** روی "شروع تحلیل" 5. **ببین** Console چی می‌گه --- ## 📊 چیزی که باید
-            ببینی: ``` 🔵 دکمه شروع تحلیل کلیک شد 🟢 showBulkModal set to true 🟡 BulkAnalysisModal useEffect - open:
-            true 🟢 Modal opened - fetching posts 🟣 Dialog onOpenChange called - isOpen: true
-            <FileText className="ml-2 h-4 w-4" />
-            تحلیل گروهی
-          </Button>
-          <Button variant="outline">
-            <Download className="ml-2 h-4 w-4" />
-            خروجی گزارش PDF
-          </Button>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <StatsCard title="تحلیل شده" value={stats.analyzed} icon="🤖" color="blue" />
+          <StatsCard title="تهدید بحرانی" value={stats.critical} icon="🔴" color="red" pulse={stats.critical > 0} />
+          <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
+          <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
         </div>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatsCard title="تحلیل شده" value={stats.analyzed} icon="🤖" color="blue" />
-        <StatsCard title="تهدید بحرانی" value={stats.critical} icon="🔴" color="red" pulse={stats.critical > 0} />
-        <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
-        <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
-      </div>
+        {/* Filters */}
+        <div className="bg-card border rounded-lg p-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <Input
+              placeholder="جستجو در نتایج..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="md:col-span-2"
+            />
 
-      {/* Filters */}
-      <div className="bg-card border rounded-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <Input
-            placeholder="جستجو در نتایج..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="md:col-span-2"
-          />
+            <Select value={threatFilter} onValueChange={setThreatFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="سطح تهدید" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">همه</SelectItem>
+                <SelectItem value="Critical">بحرانی</SelectItem>
+                <SelectItem value="High">بالا</SelectItem>
+                <SelectItem value="Medium">متوسط</SelectItem>
+                <SelectItem value="Low">پایین</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={threatFilter} onValueChange={setThreatFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="سطح تهدید" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">همه</SelectItem>
-              <SelectItem value="Critical">بحرانی</SelectItem>
-              <SelectItem value="High">بالا</SelectItem>
-              <SelectItem value="Medium">متوسط</SelectItem>
-              <SelectItem value="Low">پایین</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="احساسات" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">همه</SelectItem>
+                <SelectItem value="Positive">مثبت</SelectItem>
+                <SelectItem value="Neutral">خنثی</SelectItem>
+                <SelectItem value="Negative">منفی</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="احساسات" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">همه</SelectItem>
-              <SelectItem value="Positive">مثبت</SelectItem>
-              <SelectItem value="Neutral">خنثی</SelectItem>
-              <SelectItem value="Negative">منفی</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={topicFilter} onValueChange={setTopicFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="موضوع" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">همه</SelectItem>
+                {allTopics.map((topic) => (
+                  <SelectItem key={topic} value={topic}>
+                    {topic}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select value={topicFilter} onValueChange={setTopicFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="موضوع" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">همه</SelectItem>
-              {allTopics.map((topic) => (
-                <SelectItem key={topic} value={topic}>
-                  {topic}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger>
-              <SelectValue placeholder="مرتب‌سازی" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="threat">تهدید بحرانی → پایین</SelectItem>
-              <SelectItem value="newest">جدیدترین</SelectItem>
-              <SelectItem value="oldest">قدیمی‌ترین</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger>
+                <SelectValue placeholder="مرتب‌سازی" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="threat">تهدید بحرانی → پایین</SelectItem>
+                <SelectItem value="newest">جدیدترین</SelectItem>
+                <SelectItem value="oldest">قدیمی‌ترین</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+
+        {/* Analysis Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredPosts.map((post) => (
+            <AnalysisCard
+              key={post.id}
+              post={post}
+              onViewDetails={() => setSelectedPost(post)}
+              onReanalyze={fetchAnalyzedPosts}
+            />
+          ))}
+        </div>
+
+        {filteredPosts.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">هیچ نتیجه‌ای با این فیلترها یافت نشد</div>
+        )}
       </div>
 
-      {/* Analysis Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredPosts.map((post) => (
-          <AnalysisCard
-            key={post.id}
-            post={post}
-            onViewDetails={() => setSelectedPost(post)}
-            onReanalyze={() => {
-              // Re-analyze logic will be handled in AnalysisCard
-            }}
-          />
-        ))}
-      </div>
-
-      {filteredPosts.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">هیچ نتیجه‌ای با این فیلترها یافت نشد</div>
-      )}
-
-      <BulkAnalysisModal open={showBulkModal} onClose={() => setShowBulkModal(false)} onComplete={fetchAnalyzedPosts} />
+      {/* Modals - Always rendered */}
+      <BulkAnalysisModal
+        open={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        onComplete={fetchAnalyzedPosts}
+      />
 
       {selectedPost && (
         <AnalysisDetailModal post={selectedPost} open={!!selectedPost} onClose={() => setSelectedPost(null)} />
       )}
-    </div>
+    </>
   );
 };
 
