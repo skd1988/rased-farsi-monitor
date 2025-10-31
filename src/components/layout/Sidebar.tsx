@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, FileText, Brain, AlertTriangle, TrendingUp, Settings, Newspaper } from 'lucide-react';
+import { Home, FileText, Brain, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const menuItems = [
@@ -10,6 +10,7 @@ const menuItems = [
   { icon: AlertTriangle, label: 'هشدارها', path: '/alerts' },
   { icon: TrendingUp, label: 'ترندها', path: '/trends' },
   { icon: Settings, label: 'تنظیمات', path: '/settings' },
+  { icon: Wrench, label: 'Debug', path: '/debug' },
 ];
 
 const Sidebar = () => {
