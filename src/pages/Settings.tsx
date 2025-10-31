@@ -989,12 +989,72 @@ const Settings = () => {
           const title = cleanHTML(finalTitle).trim();
           const contents = cleanHTML(finalContents || finalTitle).trim();
 
-          // SMART SOURCE DETECTION - This is the most important part!
+          // SMART SOURCE DETECTION - Multi-strategy approach
           let cleanSource = "";
           let finalUrl = "";
 
-          // Strategy 1: If we have a clean URL, extract domain from it
-          if (rawUrl && rawUrl.includes("http")) {
+          // Helper: Extract source from content text
+          const extractSourceFromText = (text: string): string => {
+            if (!text) return "";
+            
+            // Pattern 1: "به گزارش [منبع]" or "وفق [منبع]"
+            const reportPatterns = [
+              /به گزارش\s+([^\s،.]+)/,
+              /وفق\s+([^\s،.]+)/,
+              /به نقل از\s+([^\s،.]+)/,
+              /منبع:\s*([^\s،.]+)/,
+              /نقل از\s+([^\s،.]+)/,
+            ];
+            
+            for (const pattern of reportPatterns) {
+              const match = text.match(pattern);
+              if (match && match[1]) {
+                return match[1].trim();
+              }
+            }
+            
+            // Pattern 2: Known source names in text
+            const knownSources = [
+              { pattern: /الجزيرة|الجزیرة/i, name: "الجزیرة" },
+              { pattern: /العربية|العربیة/i, name: "العربية" },
+              { pattern: /بي بي سي|BBC/i, name: "BBC Arabic" },
+              { pattern: /سكاي نيوز|Sky News/i, name: "سكاي نيوز عربية" },
+              { pattern: /رويترز|Reuters/i, name: "Reuters" },
+              { pattern: /فرانس 24|France 24/i, name: "France 24" },
+              { pattern: /سي ان ان|CNN/i, name: "CNN" },
+              { pattern: /الشرق الأوسط/i, name: "الشرق الأوسط" },
+              { pattern: /اليوم السابع/i, name: "اليوم السابع" },
+              { pattern: /القدس العربي/i, name: "القدس العربي" },
+              { pattern: /العربي الجديد/i, name: "العربي الجديد" },
+              { pattern: /ایسنا|ISNA/i, name: "ایسنا" },
+              { pattern: /مهر|Mehr/i, name: "مهر" },
+              { pattern: /تسنیم|Tasnim/i, name: "تسنیم" },
+              { pattern: /فارس|Fars/i, name: "فارس" },
+              { pattern: /ایرنا|IRNA/i, name: "ایرنا" },
+              { pattern: /RT Arabic|آر تي/i, name: "RT Arabic" },
+              { pattern: /عنب بلدي/i, name: "عنب بلدي" },
+            ];
+            
+            for (const source of knownSources) {
+              if (source.pattern.test(text)) {
+                return source.name;
+              }
+            }
+            
+            return "";
+          };
+
+          // Strategy 1: Try to extract from content first
+          const sourceFromContent = extractSourceFromText(title + " " + contents);
+          if (sourceFromContent) {
+            cleanSource = sourceFromContent;
+            if (i < 3) {
+              console.log(`✅ Source extracted from content: ${cleanSource}`);
+            }
+          }
+
+          // Strategy 2: If we have a clean URL, extract domain from it
+          if (!cleanSource && rawUrl && rawUrl.includes("http")) {
             try {
               const urlObj = new URL(rawUrl);
               const domain = urlObj.hostname.replace("www.", "");
@@ -1063,7 +1123,7 @@ const Settings = () => {
             }
           }
 
-          // Strategy 2: If URL method didn't work, check rawSource field
+          // Strategy 3: If URL method didn't work, check rawSource field
           if (!cleanSource && rawSource) {
             if (rawSource.includes("http")) {
               // rawSource is actually a URL
@@ -1104,7 +1164,7 @@ const Settings = () => {
             }
           }
 
-          // Strategy 3: Try to extract from any URL-like field
+          // Strategy 4: Try to extract from any URL-like field
           if (!cleanSource) {
             const allFields = Object.values(row);
             for (const field of allFields) {
@@ -1126,13 +1186,26 @@ const Settings = () => {
             }
           }
 
-          // Strategy 4: Last resort - use any non-empty field that looks like a source
+          // Strategy 5: Infer from language and content patterns
           if (!cleanSource) {
-            cleanSource = rawSource || rawUrl || "منبع نامعین";
+            const isArabic = (title + contents).match(/[\u0600-\u06FF]/);
+            const isPersian = (title + contents).match(/[پچژگیئ]/);
+            const isEnglish = (title + contents).match(/[a-zA-Z]{10,}/);
+            
+            if (isArabic && !isPersian) {
+              cleanSource = "منبع عربی";
+            } else if (isPersian) {
+              cleanSource = "منبع فارسی";
+            } else if (isEnglish) {
+              cleanSource = "English Source";
+            } else {
+              cleanSource = rawSource || rawUrl || "منبع نامعین";
+            }
+            
             finalUrl = rawUrl || rawSource || "";
 
             if (i < 3) {
-              console.log(`⚠️ Fallback source: ${cleanSource}`);
+              console.log(`⚠️ Inferred source: ${cleanSource}`);
             }
           }
 
