@@ -1101,13 +1101,29 @@ const Settings = () => {
               return new Date().toISOString();
             }
 
+            // Helper to validate date
+            const isValidDate = (d: Date): boolean => {
+              return d instanceof Date && !isNaN(d.getTime());
+            };
+            
+            // Helper to safely convert to ISO
+            const safeToISO = (d: Date, context: string): string | null => {
+              if (isValidDate(d)) {
+                return d.toISOString();
+              }
+              console.warn(`⚠️ Invalid date in ${context}:`, dateStr);
+              return null;
+            };
+
             try {
               // Clean the date string
               const cleaned = dateStr.trim();
 
               // Format 1: ISO format (2025-10-31 or 2025-10-31T23:10:53)
               if (cleaned.match(/^\d{4}-\d{2}-\d{2}/)) {
-                return new Date(cleaned).toISOString();
+                const d = new Date(cleaned);
+                const result = safeToISO(d, 'ISO format');
+                if (result) return result;
               }
 
               // Format 2: Persian/Arabic date "۱۴۰۳/۰۸/۱۰" or "1403/08/10"
@@ -1130,22 +1146,30 @@ const Settings = () => {
                   
                   // Simple conversion: Jalali 1403 ≈ Gregorian 2024-2025
                   const gregorianYear = jalaliYear - 621 + (jalaliMonth >= 10 ? 1 : 0);
-                  return new Date(gregorianYear, jalaliMonth - 1, jalaliDay).toISOString();
+                  const d = new Date(gregorianYear, jalaliMonth - 1, jalaliDay);
+                  const result = safeToISO(d, 'Jalali format');
+                  if (result) return result;
                 }
                 
                 // Otherwise treat as Gregorian
-                return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])).toISOString();
+                const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                const result = safeToISO(d, 'Persian Gregorian');
+                if (result) return result;
               }
 
               // Format 3: "Oct 31, 2025" or "31 Oct 2025"
               if (cleaned.match(/[A-Za-z]{3,}/)) {
-                return new Date(cleaned).toISOString();
+                const d = new Date(cleaned);
+                const result = safeToISO(d, 'English format');
+                if (result) return result;
               }
 
               // Format 4: Timestamp "Oct 31, 2025 at 11:10PM"
               if (cleaned.includes(" at ")) {
                 const [datePart] = cleaned.split(" at ");
-                return new Date(datePart).toISOString();
+                const d = new Date(datePart);
+                const result = safeToISO(d, 'Timestamp format');
+                if (result) return result;
               }
 
               // Format 5: "31/10/2025" or "2025/10/31"
@@ -1155,22 +1179,28 @@ const Settings = () => {
                 // Check which format
                 if (parseInt(parts[0]) > 1900) {
                   // YYYY/MM/DD
-                  return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])).toISOString();
+                  const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                  const result = safeToISO(d, 'YYYY/MM/DD');
+                  if (result) return result;
                 } else {
                   // DD/MM/YYYY
-                  return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).toISOString();
+                  const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                  const result = safeToISO(d, 'DD/MM/YYYY');
+                  if (result) return result;
                 }
               }
 
               // Fallback: try direct parse
               const parsed = new Date(cleaned);
-              if (!isNaN(parsed.getTime())) {
-                return parsed.toISOString();
-              }
+              const result = safeToISO(parsed, 'direct parse');
+              if (result) return result;
 
+              // All parsing failed - return current date
+              console.warn(`⚠️ Could not parse date string: "${dateStr}"`);
               return new Date().toISOString();
+              
             } catch (e) {
-              console.error('Date parsing error:', e);
+              console.error('❌ Date parsing exception:', e, 'for date:', dateStr);
               return new Date().toISOString();
             }
           };
