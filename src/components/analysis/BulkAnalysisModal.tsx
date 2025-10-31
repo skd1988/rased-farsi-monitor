@@ -1,20 +1,13 @@
-import React, { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, XCircle, CheckSquare } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2, CheckCircle, XCircle, CheckSquare } from 'lucide-react';
 
 interface BulkAnalysisModalProps {
   open: boolean;
@@ -28,8 +21,8 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentPost, setCurrentPost] = useState(0);
-  const [currentPostTitle, setCurrentPostTitle] = useState("");
-  const [results, setResults] = useState<Record<string, "success" | "error">>({});
+  const [currentPostTitle, setCurrentPostTitle] = useState('');
+  const [results, setResults] = useState<Record<string, 'success' | 'error'>>({});
   const [showManualSelection, setShowManualSelection] = useState(false);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0);
   const { toast } = useToast();
@@ -48,20 +41,20 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const fetchUnanalyzedPosts = async () => {
     try {
       const { data, error } = await supabase
-        .from("posts")
-        .select("id, title, contents, published_at, source")
-        .is("analyzed_at", null)
-        .order("published_at", { ascending: false })
+        .from('posts')
+        .select('id, title, contents, published_at, source')
+        .is('analyzed_at', null)
+        .order('published_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;
       setPosts(data || []);
     } catch (error) {
-      console.error("Error fetching posts:", error);
+      console.error('Error fetching posts:', error);
       toast({
-        title: "خطا در بارگذاری مطالب",
-        description: "لطفا دوباره تلاش کنید",
-        variant: "destructive",
+        title: 'خطا در بارگذاری مطالب',
+        description: 'لطفا دوباره تلاش کنید',
+        variant: 'destructive',
       });
     }
   };
@@ -80,16 +73,16 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     if (selectedPosts.size === posts.length) {
       setSelectedPosts(new Set());
     } else {
-      setSelectedPosts(new Set(posts.map((p) => p.id)));
+      setSelectedPosts(new Set(posts.map(p => p.id)));
     }
   };
 
   const analyzeSelected = async (postsToAnalyze: any[]) => {
     if (postsToAnalyze.length === 0) {
       toast({
-        title: "هیچ مطلبی انتخاب نشده",
-        description: "لطفا حداقل یک مطلب را انتخاب کنید",
-        variant: "destructive",
+        title: 'هیچ مطلبی انتخاب نشده',
+        description: 'لطفا حداقل یک مطلب را انتخاب کنید',
+        variant: 'destructive',
       });
       return;
     }
@@ -100,7 +93,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     setResults({});
     const total = postsToAnalyze.length;
     setEstimatedTimeRemaining(total * 3);
-
+    
     const startTime = Date.now();
     let successCount = 0;
 
@@ -108,7 +101,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       const post = postsToAnalyze[i];
       setCurrentPost(i + 1);
       setCurrentPostTitle(post.title);
-
+      
       const elapsed = (Date.now() - startTime) / 1000;
       const avgTimePerPost = elapsed / (i + 1);
       const remaining = Math.ceil(avgTimePerPost * (total - i - 1));
@@ -116,31 +109,31 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
 
       try {
         console.log(`🔵 Analyzing post ${i + 1}/${total}: ${post.id}`);
-
-        const response = await supabase.functions.invoke("analyze-post", {
+        
+        const response = await supabase.functions.invoke('analyze-post', {
           body: {
             postId: post.id,
             postTitle: post.title,
-            postContent: post.contents,
-          },
+            postContent: post.contents
+          }
         });
 
         if (response.error) {
-          console.error("❌ Edge function error:", response.error);
+          console.error('❌ Edge function error:', response.error);
           throw response.error;
         }
-
+        
         if (!response.data || !response.data.analysis) {
-          console.error("❌ Invalid response structure:", response.data);
-          throw new Error("Invalid response from edge function");
+          console.error('❌ Invalid response structure:', response.data);
+          throw new Error('Invalid response from edge function');
         }
-
+        
         const analysis = response.data.analysis;
         console.log(`✅ Analysis received for post ${post.id}`);
 
         // Save to database with correct field names
         const { error: updateError } = await supabase
-          .from("posts")
+          .from('posts')
           .update({
             analysis_summary: analysis.summary,
             sentiment: analysis.sentiment,
@@ -152,30 +145,31 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
             recommended_action: analysis.recommended_action,
             analyzed_at: analysis.analyzed_at,
             analysis_model: analysis.analysis_model,
-            processing_time: analysis.processing_time,
+            processing_time: analysis.processing_time
           })
-          .eq("id", post.id);
+          .eq('id', post.id);
 
         if (updateError) {
-          console.error("❌ Database update error:", updateError);
+          console.error('❌ Database update error:', updateError);
           throw updateError;
         }
 
-        setResults((prev) => ({ ...prev, [post.id]: "success" }));
+        setResults(prev => ({ ...prev, [post.id]: 'success' }));
         successCount++;
+
       } catch (error) {
         console.error(`❌ Error analyzing post ${post.id}:`, error);
-        setResults((prev) => ({ ...prev, [post.id]: "error" }));
+        setResults(prev => ({ ...prev, [post.id]: 'error' }));
       }
 
       setProgress(((i + 1) / total) * 100);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     setIsAnalyzing(false);
-
+    
     toast({
-      title: "تحلیل گروهی تکمیل شد",
+      title: 'تحلیل گروهی تکمیل شد',
       description: `${successCount} از ${total} مطلب با موفقیت تحلیل شد`,
     });
 
@@ -199,13 +193,13 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   };
 
   const handleStartManualAnalysis = () => {
-    const selected = posts.filter((p) => selectedPosts.has(p.id));
+    const selected = posts.filter(p => selectedPosts.has(p.id));
     analyzeSelected(selected);
   };
 
   return (
-    <Dialog
-      open={open}
+    <Dialog 
+      open={open} 
       onOpenChange={(isOpen) => {
         if (!isOpen && !isAnalyzing) {
           onClose();
@@ -218,7 +212,8 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           <DialogDescription>
             {isAnalyzing
               ? `در حال تحلیل: ${currentPost} از ${posts.length}`
-              : `${posts.length} مطلب تحلیل نشده یافت شد`}
+              : `${posts.length} مطلب تحلیل نشده یافت شد`
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -226,39 +221,37 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           <div className="space-y-6 py-6">
             <div className="space-y-2">
               <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                <span>
-                  پیشرفت: {currentPost} از {posts.length}
-                </span>
+                <span>پیشرفت: {currentPost} از {posts.length}</span>
                 <span>زمان تخمینی: {estimatedTimeRemaining} ثانیه</span>
               </div>
               <Progress value={progress} className="w-full h-3" />
             </div>
-
+            
             <div className="bg-muted p-4 rounded-lg">
               <div className="flex items-center gap-3 mb-2">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
                 <span className="font-medium">در حال تحلیل:</span>
               </div>
-              <p className="text-sm truncate">{currentPostTitle}</p>
+              <p className="text-sm break-words">{currentPostTitle}</p>
             </div>
 
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               <h4 className="font-semibold mb-2">نتایج ({Object.keys(results).length}):</h4>
               {Object.entries(results).map(([postId, status]) => {
-                const post = posts.find((p) => p.id === postId);
+                const post = posts.find(p => p.id === postId);
                 return (
-                  <div key={postId} className="flex items-center justify-between p-3 border rounded-lg bg-card">
-                    <span className="text-sm truncate flex-1">{post?.title}</span>
-                    {status === "success" && (
-                      <div className="flex items-center gap-2 text-green-600">
+                  <div key={postId} className="flex items-start justify-between gap-3 p-3 border rounded-lg bg-card">
+                    <span className="text-sm flex-1 line-clamp-2 break-words leading-relaxed">{post?.title}</span>
+                    {status === 'success' && (
+                      <div className="flex items-center gap-2 text-green-600 shrink-0">
                         <CheckCircle className="h-4 w-4" />
-                        <span className="text-xs">موفق</span>
+                        <span className="text-xs whitespace-nowrap">موفق</span>
                       </div>
                     )}
-                    {status === "error" && (
-                      <div className="flex items-center gap-2 text-red-600">
+                    {status === 'error' && (
+                      <div className="flex items-center gap-2 text-red-600 shrink-0">
                         <XCircle className="h-4 w-4" />
-                        <span className="text-xs">خطا</span>
+                        <span className="text-xs whitespace-nowrap">خطا</span>
                       </div>
                     )}
                   </div>
@@ -269,7 +262,9 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         ) : showManualSelection ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">{selectedPosts.size} مطلب انتخاب شده</p>
+              <p className="text-sm text-muted-foreground">
+                {selectedPosts.size} مطلب انتخاب شده
+              </p>
               <Button variant="ghost" size="sm" onClick={() => setShowManualSelection(false)}>
                 بازگشت
               </Button>
@@ -291,14 +286,21 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {posts.map((post) => (
+                  {posts.map(post => (
                     <TableRow key={post.id}>
                       <TableCell>
-                        <Checkbox checked={selectedPosts.has(post.id)} onCheckedChange={() => togglePost(post.id)} />
+                        <Checkbox
+                          checked={selectedPosts.has(post.id)}
+                          onCheckedChange={() => togglePost(post.id)}
+                        />
                       </TableCell>
-                      <TableCell className="max-w-md truncate">{post.title}</TableCell>
+                      <TableCell className="max-w-md">
+                        <div className="line-clamp-2 break-words">{post.title}</div>
+                      </TableCell>
                       <TableCell>{post.source}</TableCell>
-                      <TableCell>{new Date(post.published_at).toLocaleDateString("fa-IR")}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {new Date(post.published_at).toLocaleDateString('fa-IR')}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -306,14 +308,19 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
             </div>
 
             {posts.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">همه مطالب قبلاً تحلیل شده‌اند</div>
+              <div className="text-center py-8 text-muted-foreground">
+                همه مطالب قبلاً تحلیل شده‌اند
+              </div>
             )}
 
             <DialogFooter className="gap-2">
               <Button onClick={() => setShowManualSelection(false)} variant="outline">
                 انصراف
               </Button>
-              <Button onClick={handleStartManualAnalysis} disabled={selectedPosts.size === 0}>
+              <Button 
+                onClick={handleStartManualAnalysis} 
+                disabled={selectedPosts.size === 0}
+              >
                 تحلیل ({selectedPosts.size})
               </Button>
             </DialogFooter>
@@ -321,38 +328,48 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card
+              <Card 
                 className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary"
                 onClick={handleAnalyzeAll}
               >
                 <CardContent className="p-6 text-center space-y-3">
                   <div className="text-5xl">🤖</div>
                   <h3 className="font-bold text-lg">تحلیل همه مطالب جدید</h3>
-                  <p className="text-sm text-muted-foreground">تحلیل تمام مطالبی که هنوز تحلیل نشده‌اند</p>
-                  <div className="text-2xl font-bold text-primary">{posts.length} مطلب</div>
+                  <p className="text-sm text-muted-foreground">
+                    تحلیل تمام مطالبی که هنوز تحلیل نشده‌اند
+                  </p>
+                  <div className="text-2xl font-bold text-primary">
+                    {posts.length} مطلب
+                  </div>
                 </CardContent>
               </Card>
 
-              <Card
+              <Card 
                 className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary"
                 onClick={handleAnalyzeLast10}
               >
                 <CardContent className="p-6 text-center space-y-3">
                   <div className="text-5xl">⚡</div>
                   <h3 className="font-bold text-lg">تحلیل 10 مطلب اخیر</h3>
-                  <p className="text-sm text-muted-foreground">تحلیل سریع آخرین مطالب</p>
-                  <div className="text-2xl font-bold text-primary">{Math.min(posts.length, 10)} مطلب</div>
+                  <p className="text-sm text-muted-foreground">
+                    تحلیل سریع آخرین مطالب
+                  </p>
+                  <div className="text-2xl font-bold text-primary">
+                    {Math.min(posts.length, 10)} مطلب
+                  </div>
                 </CardContent>
               </Card>
 
-              <Card
+              <Card 
                 className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary"
                 onClick={handleManualSelection}
               >
                 <CardContent className="p-6 text-center space-y-3">
                   <div className="text-5xl">✅</div>
                   <h3 className="font-bold text-lg">انتخاب دستی مطالب</h3>
-                  <p className="text-sm text-muted-foreground">خودتان مطالب را انتخاب کنید</p>
+                  <p className="text-sm text-muted-foreground">
+                    خودتان مطالب را انتخاب کنید
+                  </p>
                   <Button variant="outline" className="mt-2" asChild>
                     <div>
                       <CheckSquare className="ml-2 h-4 w-4" />
