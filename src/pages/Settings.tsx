@@ -64,22 +64,69 @@ const parseCSVLine = (line: string): string[] => {
 
 // Helper function to detect language
 const detectLanguage = (text: string): string => {
-  if (!text || text.length < 3) return "فارسی";
+  if (!text || text.length < 5) return "فارسی";
 
-  // Count different character types
-  const persianChars = text.match(/[\u0600-\u06FF]/g)?.length || 0;
-  const arabicChars = text.match(/[\u0750-\u077F\u08A0-\u08FF]/g)?.length || 0;
-  const englishChars = text.match(/[a-zA-Z]/g)?.length || 0;
+  // Clean text from numbers and punctuation for better detection
+  const cleanText = text.replace(/[0-9\s\.,\-\(\)\[\]"']/g, "");
 
-  const total = persianChars + arabicChars + englishChars;
+  // Persian-specific characters
+  const persianChars = cleanText.match(/[پچژگیئ]/g)?.length || 0;
+
+  // Arabic-specific characters
+  const arabicChars = cleanText.match(/[ضصثقفغعهخحجد]/g)?.length || 0;
+
+  // General Arabic/Persian script
+  const arabicScript = cleanText.match(/[\u0600-\u06FF\u0750-\u077F]/g)?.length || 0;
+
+  // English characters
+  const englishChars = cleanText.match(/[a-zA-Z]/g)?.length || 0;
+
+  // Calculate ratios
+  const total = cleanText.length;
   if (total === 0) return "فارسی";
 
-  const persianRatio = persianChars / total;
-  const arabicRatio = arabicChars / total;
   const englishRatio = englishChars / total;
+  const arabicRatio = arabicScript / total;
 
-  if (englishRatio > 0.6) return "English";
-  if (arabicRatio > 0.4) return "عربی";
+  // Strong English indicators
+  if (englishRatio > 0.7) return "English";
+
+  // Check for Persian vs Arabic within Arabic script
+  if (arabicRatio > 0.5) {
+    // Persian-specific detection
+    const persianIndicators = [/که/g, /این/g, /آن/g, /می‌/g, /است/g, /باشد/g, /کرد/g, /شد/g, /خواهد/g];
+
+    // Arabic-specific detection
+    const arabicIndicators = [/الذي/g, /التي/g, /هذا/g, /هذه/g, /ذلك/g, /تلك/g, /سوف/g, /لقد/g, /إن/g, /أن/g];
+
+    let persianScore = 0;
+    let arabicScore = 0;
+
+    persianIndicators.forEach((pattern) => {
+      persianScore += (text.match(pattern) || []).length;
+    });
+
+    arabicIndicators.forEach((pattern) => {
+      arabicScore += (text.match(pattern) || []).length;
+    });
+
+    // Add character-specific scoring
+    persianScore += persianChars * 2; // Weight Persian-specific chars more
+    arabicScore += arabicChars;
+
+    if (persianScore > arabicScore) {
+      return "فارسی";
+    } else if (arabicScore > 0) {
+      return "عربی";
+    }
+
+    // Fallback: check for Persian vs Arabic specific characters
+    if (persianChars > arabicChars) return "فارسی";
+    if (arabicChars > persianChars) return "عربی";
+  }
+
+  // Default fallback
+  if (englishRatio > 0.3) return "English";
   return "فارسی";
 };
 
@@ -895,8 +942,18 @@ const Settings = () => {
             continue;
           }
 
-          // Detect language only (source_type removed since column doesn't exist)
+          // Detect language with debugging
           const detectedLanguage = detectLanguage(title + " " + contents);
+
+          if (i < 3) {
+            console.log(`🌐 Language detection for row ${i + 1}:`, {
+              sample: (title + " " + contents).substring(0, 100),
+              detected: detectedLanguage,
+              hasArabicChars: !!(title + contents).match(/[ضصثقفغعهخحجد]/g),
+              hasPersianChars: !!(title + contents).match(/[پچژگیئ]/g),
+              hasEnglishChars: !!(title + contents).match(/[a-zA-Z]/g),
+            });
+          }
 
           const post = {
             title: title,
