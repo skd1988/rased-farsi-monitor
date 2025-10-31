@@ -183,11 +183,48 @@ const AIAnalysis = () => {
           <p className="text-muted-foreground mt-2">تحلیل محتوا با هوش مصنوعی و شناسایی تهدیدها</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => {
-            console.log('🔵 دکمه تحلیل گروهی کلیک شد');
-            setShowBulkModal(true);
-            console.log('🟢 showBulkModal set to true');
-          }}>
+          <Button 
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔵 دکمه تحلیل گروهی کلیک شد');
+    setShowBulkModal(true);
+    console.log('🟢 showBulkModal set to true');
+  }}
+  type="button"
+>
+```
+
+**تغییر:** همون تغییرات قبلی
+
+---
+
+## 🎯 خلاصه تغییرات:
+
+| فایل | تعداد تغییر | اهمیت |
+|------|------------|-------|
+| `BulkAnalysisModal.tsx` | 3 تغییر | ⭐⭐⭐ بالا |
+| `AIAnalysis.tsx` | 2 تغییر | ⭐⭐ متوسط |
+
+---
+
+## ✅ بعد از اعمال تغییرات:
+
+1. **Save کن** همه فایل‌ها
+2. **Refresh کن** صفحه (F5)
+3. **F12 بزن** → Console
+4. **کلیک کن** روی "شروع تحلیل"
+5. **ببین** Console چی می‌گه
+
+---
+
+## 📊 چیزی که باید ببینی:
+```
+🔵 دکمه شروع تحلیل کلیک شد
+🟢 showBulkModal set to true
+🟡 BulkAnalysisModal useEffect - open: true
+🟢 Modal opened - fetching posts
+🟣 Dialog onOpenChange called - isOpen: true
             <FileText className="ml-2 h-4 w-4" />
             تحلیل گروهی
           </Button>
