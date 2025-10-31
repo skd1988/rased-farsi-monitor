@@ -636,12 +636,45 @@ const Settings = () => {
             continue;
           }
 
+          // Parse date safely
+          const parseDate = (dateStr: any): string => {
+            if (!dateStr || typeof dateStr !== "string") {
+              return new Date().toISOString();
+            }
+
+            const cleaned = dateStr.trim();
+
+            // Skip if too short or contains HTML/invalid characters
+            if (
+              cleaned.length < 8 ||
+              cleaned.includes("<") ||
+              cleaned.includes(">") ||
+              cleaned.includes("http") ||
+              cleaned.includes("www.") ||
+              cleaned.startsWith("Al Jazeera") ||
+              cleaned.includes("Network") ||
+              cleaned.includes("Doha")
+            ) {
+              return new Date().toISOString();
+            }
+
+            try {
+              const parsed = new Date(cleaned);
+              if (isNaN(parsed.getTime())) {
+                return new Date().toISOString();
+              }
+              return parsed.toISOString();
+            } catch (e) {
+              return new Date().toISOString();
+            }
+          };
+
           const post = {
             title: title,
             contents: contents || "محتوا موجود نیست",
             source: source || "نامشخص",
             author: (row["author"] || row["نویسنده"] || "").trim() || null,
-            published_at: row["date"] || row["تاریخ"] || row["published_at"] || new Date().toISOString(),
+            published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
             source_url: (row["url"] || row["لینک"] || row["source_url"] || "").trim() || null,
             language: row["language"] || row["زبان"] || "فارسی",
             status: "جدید",
