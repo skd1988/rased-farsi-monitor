@@ -169,10 +169,11 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         }
 
         // Save analysis to database
-        const { error: updateError } = await supabase
-          .from('posts')
-          .update({
-            analysis_summary: analysis.summary,
+console.log(`💾 Saving analysis for post ${post.id}`);
+const { error: updateError } = await supabase
+  .from('posts')
+  .update({
+    analysis_summary: analysis.summary || analysis.analysis_summary,
             sentiment: analysis.sentiment,
             sentiment_score: analysis.sentiment_score,
             main_topic: analysis.main_topic,
