@@ -1136,6 +1136,9 @@ const Settings = () => {
             }
           }
 
+          // Detect language early (before validation logs)
+          const detectedLanguage = detectLanguage(title + " " + contents);
+
           if (i < 3) {
             console.log(`\n📋 FINAL Row ${lastSyncedRow + i + 1} results:`);
             console.log(`  📝 Title: "${title.substring(0, 60)}"`);
@@ -1158,9 +1161,6 @@ const Settings = () => {
             if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: Placeholder title`);
             continue;
           }
-
-          // Detect language with debugging
-          const detectedLanguage = detectLanguage(title + " " + contents);
 
           if (i < 3) {
             console.log(`🌐 Language detection for row ${i + 1}:`, {
