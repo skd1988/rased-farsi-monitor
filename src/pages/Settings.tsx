@@ -686,12 +686,11 @@ const Settings = () => {
             status: "جدید",
           };
 
-          // Check duplicates
+          // Check duplicates by title only (more reliable)
           const { data: existingPost } = await supabase
             .from("posts")
             .select("id")
             .eq("title", post.title)
-            .eq("published_at", post.published_at)
             .maybeSingle();
 
           if (existingPost) {
