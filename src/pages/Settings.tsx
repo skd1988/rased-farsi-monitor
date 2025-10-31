@@ -45,15 +45,12 @@ const parseCSVLine = (line: string): string[] => {
 
     if (char === '"') {
       if (insideQuotes && nextChar === '"') {
-        // Escaped quote
         current += '"';
-        i++; // Skip next quote
+        i++;
       } else {
-        // Toggle quote state
         insideQuotes = !insideQuotes;
       }
     } else if (char === "," && !insideQuotes) {
-      // Field separator
       result.push(current.trim());
       current = "";
     } else {
@@ -61,9 +58,7 @@ const parseCSVLine = (line: string): string[] => {
     }
   }
 
-  // Add last field
   result.push(current.trim());
-
   return result;
 };
 
@@ -87,7 +82,6 @@ const Settings = () => {
   });
   const [cleanupStats, setCleanupStats] = useState({ empty: 0, total: 0 });
 
-  // Initialize settings from localStorage
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem("appSettings");
     if (saved) {
@@ -98,7 +92,6 @@ const Settings = () => {
       }
     }
 
-    // Default settings
     return {
       deepseek_api_key: "",
       google_sheet_id: localStorage.getItem("sheetId") || "11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ",
@@ -135,15 +128,11 @@ const Settings = () => {
     };
   });
 
-  // Save settings function
   const saveSettings = (updates: Partial<typeof settings>) => {
     const newSettings = { ...settings, ...updates };
     setSettings(newSettings);
-
-    // Save to localStorage
     localStorage.setItem("appSettings", JSON.stringify(newSettings));
 
-    // Also save individual keys for backward compatibility
     if (updates.theme) localStorage.setItem("theme", updates.theme);
     if (updates.dark_mode !== undefined) localStorage.setItem("darkMode", String(updates.dark_mode));
     if (updates.google_sheet_id) localStorage.setItem("sheetId", updates.google_sheet_id);
@@ -157,7 +146,6 @@ const Settings = () => {
       description: "تغییرات با موفقیت اعمال شد",
     });
 
-    // Apply theme changes immediately
     if (updates.theme) {
       document.documentElement.setAttribute("data-theme", updates.theme);
     }
@@ -179,34 +167,25 @@ const Settings = () => {
     saveSettings({ deepseek_api_key: settings.deepseek_api_key });
   };
 
-  // Check sync status
   const checkSyncStatus = async () => {
     if (!settings.google_sheet_id || !settings.google_sheet_name) return;
 
     try {
-      // Get sheet row count
       const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
       const response = await fetch(sheetUrl);
       const csvText = await response.text();
 
-      // Count only non-empty lines
       const allLines = csvText.split("\n");
       const nonEmptyLines = allLines.filter((line) => {
         const cleaned = line.replace(/"/g, "").trim();
         return cleaned && !cleaned.match(/^,+$/) && cleaned.split(",").some((v) => v.trim().length > 0);
       });
 
-      const sheetRows = nonEmptyLines.length - 1; // Exclude header
-
+      const sheetRows = nonEmptyLines.length - 1;
       console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty: ${nonEmptyLines.length}`);
 
-      // Get database post count
       const { count: dbPosts } = await supabase.from("posts").select("*", { count: "exact", head: true });
-
-      // Get last synced from localStorage
       const lastSynced = parseInt(localStorage.getItem("lastSyncedRow") || "0");
-
-      // Calculate pending
       const pendingRows = sheetRows - Math.max(lastSynced, dbPosts || 0);
 
       setSyncStats({
@@ -216,25 +195,18 @@ const Settings = () => {
         pendingRows: Math.max(0, pendingRows),
       });
 
-      console.log("📊 Sync Status:", {
-        sheetRows,
-        dbPosts,
-        lastSynced,
-        pendingRows,
-      });
+      console.log("📊 Sync Status:", { sheetRows, dbPosts, lastSynced, pendingRows });
     } catch (error) {
       console.error("Error checking sync status:", error);
     }
   };
 
-  // Call on mount and when sheet settings change
   useEffect(() => {
     if (settings.google_sheet_id) {
       checkSyncStatus();
     }
   }, [settings.google_sheet_id, settings.google_sheet_name]);
 
-  // Check for empty posts on mount
   useEffect(() => {
     checkEmptyPosts();
   }, []);
@@ -252,7 +224,6 @@ const Settings = () => {
     try {
       toast({ title: "در حال تست اتصال..." });
 
-      // Test DeepSeek API
       const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -288,11 +259,9 @@ const Settings = () => {
     }
   };
 
-  // Inspect table schema
   const inspectSchema = async () => {
     try {
       setInspecting(true);
-
       console.log("🔍 Trying to fetch one post to see structure...");
 
       const { data: sample, error } = await supabase.from("posts").select("*").limit(1).maybeSingle();
@@ -319,33 +288,20 @@ const Settings = () => {
     }
   };
 
-  // Check for empty posts
   const checkEmptyPosts = async () => {
     try {
       const { data: allPosts, error } = await supabase.from("posts").select("*");
 
       if (error) throw error;
 
-      // A post is "empty" if it has very few meaningful values
       const emptyPosts = (allPosts || []).filter((post) => {
-        // Get all values
         const allValues = Object.entries(post);
-
-        // Filter out system fields and empty values
         const meaningfulValues = allValues.filter(([key, value]) => {
-          // Skip system fields
           if (["id", "created_at", "updated_at"].includes(key)) return false;
-
-          // Skip empty/null
           if (value === null || value === "" || value === undefined) return false;
-
-          // Skip if it looks like a UUID
           if (typeof value === "string" && value.match(/^[0-9a-f]{8}-[0-9a-f]{4}/i)) return false;
-
           return true;
         });
-
-        // Empty if has 2 or fewer meaningful fields
         return meaningfulValues.length <= 2;
       });
 
@@ -360,7 +316,6 @@ const Settings = () => {
     }
   };
 
-  // Delete empty posts
   const cleanupEmptyPosts = async () => {
     const confirmMsg = `آیا مطمئن هستید که می‌خواهید ${cleanupStats.empty} مطلب خالی را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
 
@@ -376,12 +331,10 @@ const Settings = () => {
         description: "در حال شناسایی و حذف مطالب خالی",
       });
 
-      // Get all posts
       const { data: allPosts, error: fetchError } = await supabase.from("posts").select("*");
 
       if (fetchError) throw fetchError;
 
-      // Find empty posts
       const emptyPostIds = (allPosts || [])
         .filter((post) => {
           const allValues = Object.entries(post);
@@ -406,13 +359,11 @@ const Settings = () => {
         return;
       }
 
-      // Delete in batches of 100
       let totalDeleted = 0;
       const batchSize = 100;
 
       for (let i = 0; i < emptyPostIds.length; i += batchSize) {
         const batch = emptyPostIds.slice(i, i + batchSize);
-
         const { error: deleteError } = await supabase.from("posts").delete().in("id", batch);
 
         if (deleteError) {
@@ -430,13 +381,64 @@ const Settings = () => {
 
       console.log(`🎉 Total deleted: ${totalDeleted} posts`);
 
-      // Refresh stats
       await checkSyncStatus();
       await checkEmptyPosts();
     } catch (error) {
       console.error("Cleanup error:", error);
       toast({
         title: "خطا در پاکسازی",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  const deleteAllPosts = async () => {
+    const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      setCleaning(true);
+
+      toast({
+        title: "شروع حذف...",
+        description: "لطفاً صبر کنید",
+      });
+
+      let deletedTotal = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: batch } = await supabase.from("posts").select("id").limit(100);
+
+        if (!batch || batch.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        const ids = batch.map((p) => p.id);
+        await supabase.from("posts").delete().in("id", ids);
+
+        deletedTotal += batch.length;
+        console.log(`🗑️ Deleted ${deletedTotal}...`);
+      }
+
+      localStorage.setItem("lastSyncedRow", "0");
+
+      toast({
+        title: "✅ حذف کامل شد",
+        description: `${deletedTotal} مطلب حذف شد`,
+      });
+
+      await checkSyncStatus();
+      window.location.reload();
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast({
+        title: "خطا در حذف",
         description: error.message,
         variant: "destructive",
       });
@@ -457,7 +459,6 @@ const Settings = () => {
 
     try {
       const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
-
       const response = await fetch(sheetUrl);
       const csvText = await response.text();
 
@@ -466,10 +467,7 @@ const Settings = () => {
         skipEmptyLines: true,
         complete: async (results) => {
           const rows = results.data;
-
-          // Get current DB count
           const { count } = await supabase.from("posts").select("*", { count: "exact", head: true });
-
           const startRow = count || 0;
           const preview = [];
 
@@ -485,7 +483,6 @@ const Settings = () => {
 
           setPreviewData(preview);
           setShowPreview(true);
-
           console.log("🔍 Preview of next 10 rows:", preview);
         },
       });
@@ -497,40 +494,7 @@ const Settings = () => {
       });
     }
   };
-};
 
-const deleteAllPosts = async () => {
-  const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
-  if (!confirm(confirmMsg)) return;
-  try {
-    setCleaning(true);
-    toast({ title: "شروع حذف...", description: "لطفاً صبر کنید" });
-    let deletedTotal = 0;
-    let hasMore = true;
-    while (hasMore) {
-      const { data: batch } = await supabase.from("posts").select("id").limit(100);
-      if (!batch || batch.length === 0) {
-        hasMore = false;
-        break;
-      }
-      const ids = batch.map((p) => p.id);
-      await supabase.from("posts").delete().in("id", ids);
-      deletedTotal += batch.length;
-      console.log(`🗑️ Deleted ${deletedTotal}...`);
-    }
-    localStorage.setItem("lastSyncedRow", "0");
-    toast({ title: "✅ حذف کامل شد", description: `${deletedTotal} مطلب حذف شد` });
-    await checkSyncStatus();
-    window.location.reload();
-  } catch (error) {
-    console.error("Delete error:", error);
-    toast({ title: "خطا در حذف", description: error.message, variant: "destructive" });
-  } finally {
-    setCleaning(false);
-  }
-};
-
-const handleManualSync = async () => {
   const handleManualSync = async () => {
     if (!settings.google_sheet_id || !settings.google_sheet_name) {
       toast({
@@ -550,9 +514,7 @@ const handleManualSync = async () => {
         description: "در حال اتصال به Google Sheets",
       });
 
-      // Fetch Google Sheet data
       const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
-
       console.log("🔗 Fetching from:", sheetUrl);
       setSyncProgress(30);
 
@@ -566,49 +528,31 @@ const handleManualSync = async () => {
       console.log("📄 CSV fetched, raw size:", csvText.length);
       setSyncProgress(50);
 
-      // ✅ CRITICAL: Filter out empty lines BEFORE processing
       const allLines = csvText.split("\n");
       const dataLines = allLines.filter((line) => {
-        // Remove quotes and trim
         const cleaned = line.replace(/"/g, "").trim();
-
-        // Skip if line is empty or only commas
-        if (!cleaned || cleaned.match(/^,+$/)) {
-          return false;
-        }
-
-        // Check if line has at least one non-empty value
+        if (!cleaned || cleaned.match(/^,+$/)) return false;
         const values = cleaned.split(",");
-        const hasContent = values.some((v) => v.trim().length > 0);
-
-        return hasContent;
+        return values.some((v) => v.trim().length > 0);
       });
 
       console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty lines: ${dataLines.length}`);
 
-      // Get database post count to determine where to start
       const { count: dbPostCount } = await supabase.from("posts").select("*", { count: "exact", head: true });
-
       const lastSyncedRow = dbPostCount || 0;
       console.log(`📊 Database has ${dbPostCount} posts, syncing from row ${lastSyncedRow + 1}`);
 
-      // Parse CSV with Papa Parse using filtered lines
-      const filteredCSV = dataLines.join("\n");
-
-      // Parse CSV manually with proper parsing
       const allLinesRaw = csvText.split("\n");
       const headers = parseCSVLine(allLinesRaw[0]).map((h) => h.replace(/"/g, "").trim());
 
       console.log("📋 Headers found:", headers);
       console.log("📋 Total headers:", headers.length);
 
-      // Parse data rows
       const rows: any[] = [];
       for (let i = 1; i < dataLines.length; i++) {
         const line = dataLines[i];
         const values = parseCSVLine(line).map((v) => v.replace(/"/g, "").trim());
 
-        // Debug first few rows
         if (i <= 3) {
           console.log(`\n🔍 Row ${i}:`);
           console.log("Values count:", values.length, "Headers count:", headers.length);
@@ -618,14 +562,12 @@ const handleManualSync = async () => {
           }
         }
 
-        // Create row object
         const row: any = {};
         headers.forEach((header, index) => {
           const key = header.toLowerCase().trim();
           row[key] = values[index] || "";
         });
 
-        // Debug first few rows
         if (i <= 3) {
           console.log("First 3 fields:", {
             date: row.date?.substring(0, 20) || "empty",
@@ -640,7 +582,6 @@ const handleManualSync = async () => {
       const totalRows = rows.length;
       console.log(`📋 Parsed ${totalRows} rows from CSV`);
 
-      // Only sync rows after lastSyncedRow
       const rowsToSync = rows.slice(lastSyncedRow);
 
       if (rowsToSync.length === 0) {
@@ -658,7 +599,6 @@ const handleManualSync = async () => {
       let importedCount = 0;
       let errorCount = 0;
 
-      // Track validation skip reasons
       const validationSkips = {
         noTitle: 0,
         placeholderTitle: 0,
@@ -667,17 +607,13 @@ const handleManualSync = async () => {
 
       for (let i = 0; i < rowsToSync.length; i++) {
         const row = rowsToSync[i];
-
-        // Update progress
         setSyncProgress(50 + ((i + 1) / rowsToSync.length) * 40);
 
         try {
-          // Extract fields
           const title = (row["title"] || row["عنوان"] || row["headline"] || "").trim();
           const contents = (row["contents"] || row["محتوا"] || row["content"] || "").trim();
           const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
 
-          // Debug first few rows
           if (i < 3) {
             console.log(`\n📋 Row ${lastSyncedRow + i + 1} sample:`, {
               title: title.substring(0, 50),
@@ -686,15 +622,8 @@ const handleManualSync = async () => {
               hasTitle: !!title,
               titleLength: title.length,
             });
-
-            console.log("Extracted title:", {
-              title: title.substring(0, 50) || "EMPTY",
-              hasTitle: !!title,
-              titleLength: title.length,
-            });
           }
 
-          // Validation
           if (!title || title.trim().length === 0) {
             validationSkips.noTitle++;
             if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: No title`);
@@ -707,7 +636,6 @@ const handleManualSync = async () => {
             continue;
           }
 
-          // Create post
           const post = {
             title: title,
             contents: contents || "محتوا موجود نیست",
@@ -719,12 +647,10 @@ const handleManualSync = async () => {
             status: "جدید",
           };
 
-          // Check duplicates
           const { data: existingPost } = await supabase
             .from("posts")
             .select("id")
             .eq("title", post.title)
-            .eq("published_at", post.published_at)
             .maybeSingle();
 
           if (existingPost) {
@@ -733,7 +659,6 @@ const handleManualSync = async () => {
             continue;
           }
 
-          // Insert
           const { error } = await supabase.from("posts").insert([post]);
 
           if (error) {
@@ -764,7 +689,6 @@ const handleManualSync = async () => {
         skipReasons: validationSkips,
       });
 
-      // Update localStorage
       const actualRowCount = lastSyncedRow + importedCount;
       localStorage.setItem("lastSyncedRow", String(actualRowCount));
       localStorage.setItem("totalRowsInSheet", String(totalRows));
@@ -787,7 +711,6 @@ const handleManualSync = async () => {
       localStorage.setItem("syncHistory", JSON.stringify(syncHistory.slice(-10)));
 
       setSyncProgress(100);
-
       await checkSyncStatus();
 
       toast({
@@ -844,13 +767,11 @@ const handleManualSync = async () => {
   return (
     <div className="min-h-screen bg-background p-6" dir="rtl">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-foreground">تنظیمات</h1>
           <p className="text-muted-foreground mt-2">پیکربندی سیستم و تنظیمات پیشرفته</p>
         </div>
 
-        {/* Emergency Cleanup Alert */}
         {cleanupStats.empty > 0 && (
           <Alert variant="destructive" className="border-2">
             <AlertTriangle className="h-4 w-4" />
@@ -883,7 +804,6 @@ const handleManualSync = async () => {
           </Alert>
         )}
 
-        {/* Tabs */}
         <Tabs defaultValue="data-sources" className="w-full">
           <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="data-sources" className="gap-2">
@@ -908,9 +828,7 @@ const handleManualSync = async () => {
             </TabsTrigger>
           </TabsList>
 
-          {/* Tab 1: Data Sources */}
           <TabsContent value="data-sources" className="space-y-6">
-            {/* API Keys Section */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -920,7 +838,6 @@ const handleManualSync = async () => {
                 <CardDescription>پیکربندی کلیدهای API برای سرویس‌های خارجی</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* DeepSeek API */}
                 <div className="space-y-3">
                   <Label htmlFor="deepseek-key">کلید API دیپ‌سیک</Label>
                   <div className="flex gap-2">
@@ -967,7 +884,6 @@ const handleManualSync = async () => {
                   </div>
                 </div>
 
-                {/* Future APIs (Coming Soon) */}
                 <div className="space-y-3 opacity-50">
                   <Label>کلید OpenAI API</Label>
                   <div className="flex gap-2">
@@ -984,7 +900,6 @@ const handleManualSync = async () => {
               </CardContent>
             </Card>
 
-            {/* Google Sheets Integration */}
             <Card>
               <CardHeader>
                 <CardTitle>اتصال به Google Sheets</CardTitle>
@@ -1028,7 +943,6 @@ const handleManualSync = async () => {
               </CardContent>
             </Card>
 
-            {/* Sync Status Dashboard */}
             <Card className="border-2">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center justify-between">
@@ -1078,7 +992,6 @@ const handleManualSync = async () => {
                     : "هنوز انجام نشده"}
                 </div>
 
-                {/* Sync Progress */}
                 {isSyncing && (
                   <div className="space-y-2">
                     <Progress value={syncProgress} className="h-2" />
@@ -1089,9 +1002,7 @@ const handleManualSync = async () => {
                   </div>
                 )}
 
-                {/* Sync Buttons */}
                 <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                  {/* Incremental Sync - Default */}
                   <Button
                     onClick={handleManualSync}
                     disabled={isSyncing || syncStats.pendingRows === 0}
@@ -1110,7 +1021,6 @@ const handleManualSync = async () => {
                     )}
                   </Button>
 
-                  {/* Fix localStorage */}
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -1128,7 +1038,6 @@ const handleManualSync = async () => {
                     اصلاح localStorage
                   </Button>
 
-                  {/* Full Resync - Dangerous */}
                   <Button
                     variant="destructive"
                     onClick={async () => {
@@ -1150,10 +1059,28 @@ const handleManualSync = async () => {
                     همگام‌سازی کامل (خطرناک)
                   </Button>
                 </div>
+
+                <Button
+                  variant="destructive"
+                  onClick={deleteAllPosts}
+                  disabled={cleaning || syncStats.dbPosts === 0}
+                  className="w-full mt-2"
+                >
+                  {cleaning ? (
+                    <>
+                      <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+                      در حال حذف...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="ms-2 h-4 w-4" />
+                      حذف همه پست‌ها ({syncStats.dbPosts})
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
 
-            {/* Connection Status */}
             <Card>
               <CardHeader>
                 <CardTitle>وضعیت اتصالات</CardTitle>
@@ -1189,7 +1116,6 @@ const handleManualSync = async () => {
             </Card>
           </TabsContent>
 
-          {/* Tab 2: Monitoring Rules */}
           <TabsContent value="monitoring" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1220,7 +1146,6 @@ const handleManualSync = async () => {
             </Card>
           </TabsContent>
 
-          {/* Tab 3: Team Management */}
           <TabsContent value="team" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1251,9 +1176,7 @@ const handleManualSync = async () => {
             </Card>
           </TabsContent>
 
-          {/* Tab 4: Appearance */}
           <TabsContent value="appearance" className="space-y-6">
-            {/* Theme */}
             <Card>
               <CardHeader>
                 <CardTitle>تم و رنگ</CardTitle>
@@ -1304,7 +1227,6 @@ const handleManualSync = async () => {
               </CardContent>
             </Card>
 
-            {/* Display Settings */}
             <Card>
               <CardHeader>
                 <CardTitle>تنظیمات نمایش</CardTitle>
@@ -1362,7 +1284,6 @@ const handleManualSync = async () => {
               </CardContent>
             </Card>
 
-            {/* Dashboard Preferences */}
             <Card>
               <CardHeader>
                 <CardTitle>تنظیمات داشبورد</CardTitle>
@@ -1403,9 +1324,7 @@ const handleManualSync = async () => {
             </Card>
           </TabsContent>
 
-          {/* Tab 5: Automation */}
           <TabsContent value="automation" className="space-y-6">
-            {/* Auto Analysis */}
             <Card>
               <CardHeader>
                 <CardTitle>تحلیل خودکار</CardTitle>
@@ -1455,7 +1374,6 @@ const handleManualSync = async () => {
               </CardContent>
             </Card>
 
-            {/* Auto Sync */}
             <Card>
               <CardHeader>
                 <CardTitle>همگام‌سازی خودکار</CardTitle>
@@ -1492,7 +1410,6 @@ const handleManualSync = async () => {
               </CardContent>
             </Card>
 
-            {/* Backup & Export */}
             <Card>
               <CardHeader>
                 <CardTitle>پشتیبان‌گیری و خروجی</CardTitle>
@@ -1526,7 +1443,6 @@ const handleManualSync = async () => {
         </Tabs>
       </div>
 
-      {/* Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
         <DialogContent className="max-w-2xl" dir="rtl">
           <DialogHeader>
