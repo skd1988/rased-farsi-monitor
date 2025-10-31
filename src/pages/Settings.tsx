@@ -49,6 +49,7 @@ const Settings = () => {
     lastSynced: 0,
     pendingRows: 0,
   });
+  const [cleanupStats, setCleanupStats] = useState({ empty: 0, total: 0 });
 
   // Initialize settings from localStorage
   const [settings, setSettings] = useState(() => {
@@ -190,6 +191,11 @@ const Settings = () => {
     }
   }, [settings.google_sheet_id, settings.google_sheet_name]);
 
+  // Check for empty posts on mount
+  useEffect(() => {
+    checkEmptyPosts();
+  }, []);
+
   const handleTestConnection = async () => {
     if (!settings.deepseek_api_key) {
       toast({
@@ -239,10 +245,27 @@ const Settings = () => {
     }
   };
 
+  const checkEmptyPosts = async () => {
+    try {
+      const { count: emptyCount } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true })
+        .or('title.is.null,title.eq.,title.eq.بدون عنوان,title.eq.undefined,title.eq.null');
+      
+      const { count: totalCount } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true });
+      
+      setCleanupStats({ empty: emptyCount || 0, total: totalCount || 0 });
+      
+      console.log(`📊 Found ${emptyCount} empty posts out of ${totalCount} total`);
+    } catch (error) {
+      console.error('Error checking empty posts:', error);
+    }
+  };
+
   const cleanupEmptyPosts = async () => {
-    const confirmMsg = 'این عملیات تمام مطالب خالی (بدون عنوان یا با عنوان نامعتبر) را حذف می‌کند. ادامه می‌دهید؟';
-    
-    if (!confirm(confirmMsg)) {
+    if (!confirm(`آیا می‌خواهید ${cleanupStats.empty} مطلب خالی را حذف کنید؟`)) {
       return;
     }
 
@@ -250,12 +273,12 @@ const Settings = () => {
       setCleaning(true);
       
       toast({
-        title: 'شروع پاکسازی...',
-        description: 'در حال حذف مطالب خالی',
+        title: 'در حال پاکسازی...',
+        description: 'لطفا صبر کنید',
       });
 
       // Delete posts where title is null, empty, or invalid
-      const { data: deleted, error } = await supabase
+      const { data, error } = await supabase
         .from('posts')
         .delete()
         .or('title.is.null,title.eq.,title.eq.بدون عنوان,title.eq.undefined,title.eq.null')
@@ -263,17 +286,18 @@ const Settings = () => {
 
       if (error) throw error;
 
-      const count = deleted?.length || 0;
+      const deleted = data?.length || 0;
 
       toast({
-        title: '✅ پاکسازی کامل شد',
-        description: `${count} مطلب خالی حذف شد`,
+        title: '✅ پاکسازی موفق',
+        description: `${deleted} مطلب خالی حذف شد`,
       });
 
-      console.log(`🗑️ Deleted ${count} empty posts`);
+      console.log(`🗑️ Deleted ${deleted} empty posts`);
       
-      // Refresh sync status
+      // Refresh both sync and cleanup stats
       await checkSyncStatus();
+      await checkEmptyPosts();
       
     } catch (error) {
       console.error('Cleanup error:', error);
@@ -567,6 +591,36 @@ const Settings = () => {
           <h1 className="text-3xl font-bold text-foreground">تنظیمات</h1>
           <p className="text-muted-foreground mt-2">پیکربندی سیستم و تنظیمات پیشرفته</p>
         </div>
+
+        {/* Emergency Cleanup Alert */}
+        {cleanupStats.empty > 0 && (
+          <Alert variant="destructive" className="border-2">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>
+                ⚠️ {cleanupStats.empty} مطلب خالی در دیتابیس شما وجود دارد ({Math.round((cleanupStats.empty / cleanupStats.total) * 100)}% از کل)
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={cleanupEmptyPosts}
+                disabled={cleaning}
+              >
+                {cleaning ? (
+                  <>
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                    در حال حذف...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="ml-2 h-4 w-4" />
+                    حذف همه
+                  </>
+                )}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Tabs */}
         <Tabs defaultValue="data-sources" className="w-full">
