@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { MoreVertical, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
-import { formatPersianDate, getRelativeTime } from '@/lib/dateUtils';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import React, { useState } from "react";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { MoreVertical, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import { formatPersianDate, getRelativeTime } from "@/lib/dateUtils";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface AnalysisCardProps {
   post: any;
@@ -23,60 +28,96 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
   const { toast } = useToast();
 
   const threatConfig = {
-    Critical: { label: 'بحرانی', icon: '🔴', color: 'bg-red-500/10 text-red-500 border-red-500' },
-    High: { label: 'بالا', icon: '🟠', color: 'bg-orange-500/10 text-orange-500 border-orange-500' },
-    Medium: { label: 'متوسط', icon: '🟡', color: 'bg-yellow-500/10 text-yellow-500 border-yellow-500' },
-    Low: { label: 'پایین', icon: '🟢', color: 'bg-green-500/10 text-green-500 border-green-500' },
+    Critical: { label: "بحرانی", icon: "🔴", color: "bg-red-500/10 text-red-500 border-red-500" },
+    High: { label: "بالا", icon: "🟠", color: "bg-orange-500/10 text-orange-500 border-orange-500" },
+    Medium: { label: "متوسط", icon: "🟡", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500" },
+    Low: { label: "پایین", icon: "🟢", color: "bg-green-500/10 text-green-500 border-green-500" },
   };
 
   const sentimentConfig = {
-    Positive: { label: 'مثبت', icon: '😊', color: 'bg-green-500/10 text-green-500' },
-    Neutral: { label: 'خنثی', icon: '😐', color: 'bg-gray-500/10 text-gray-500' },
-    Negative: { label: 'منفی', icon: '😟', color: 'bg-red-500/10 text-red-500' },
+    Positive: { label: "مثبت", icon: "😊", color: "bg-green-500/10 text-green-500" },
+    Neutral: { label: "خنثی", icon: "😐", color: "bg-gray-500/10 text-gray-500" },
+    Negative: { label: "منفی", icon: "😟", color: "bg-red-500/10 text-red-500" },
   };
 
   const topicColors: Record<string, string> = {
-    'جنگ روانی': 'bg-red-500/10 text-red-500 border-red-500',
-    'محور مقاومت': 'bg-green-500/10 text-green-500 border-green-500',
-    'اتهام': 'bg-orange-500/10 text-orange-500 border-orange-500',
-    'شبهه': 'bg-yellow-500/10 text-yellow-500 border-yellow-500',
-    'کمپین': 'bg-purple-500/10 text-purple-500 border-purple-500',
-    'تحلیل سیاسی': 'bg-blue-500/10 text-blue-500 border-blue-500',
-    'اخبار عادی': 'bg-gray-500/10 text-gray-500 border-gray-500',
+    "جنگ روانی": "bg-red-500/10 text-red-500 border-red-500",
+    "محور مقاومت": "bg-green-500/10 text-green-500 border-green-500",
+    اتهام: "bg-orange-500/10 text-orange-500 border-orange-500",
+    شبهه: "bg-yellow-500/10 text-yellow-500 border-yellow-500",
+    کمپین: "bg-purple-500/10 text-purple-500 border-purple-500",
+    "تحلیل سیاسی": "bg-blue-500/10 text-blue-500 border-blue-500",
+    "اخبار عادی": "bg-gray-500/10 text-gray-500 border-gray-500",
   };
 
   const actionConfig = {
-    Critical: { label: 'بررسی فوری', variant: 'destructive' as const },
-    High: { label: 'پاسخ سریع', variant: 'default' as const },
-    Medium: { label: 'رصد کنید', variant: 'secondary' as const },
-    Low: { label: 'آرشیو', variant: 'outline' as const },
+    Critical: { label: "بررسی فوری", variant: "destructive" as const },
+    High: { label: "پاسخ سریع", variant: "default" as const },
+    Medium: { label: "رصد کنید", variant: "secondary" as const },
+    Low: { label: "آرشیو", variant: "outline" as const },
   };
 
   const handleReanalyze = async () => {
     setIsAnalyzing(true);
+
     try {
-      const response = await supabase.functions.invoke('analyze-post', {
+      console.log(`🔄 Re-analyzing post: ${post.id}`);
+
+      const response = await supabase.functions.invoke("analyze-post", {
         body: {
           postId: post.id,
           postTitle: post.title,
-          postContent: post.contents
-        }
+          postContent: post.contents,
+        },
       });
 
-      if (response.error) throw response.error;
+      if (response.error) {
+        console.error("❌ Edge function error:", response.error);
+        throw response.error;
+      }
+
+      if (!response.data || !response.data.analysis) {
+        console.error("❌ Invalid response:", response.data);
+        throw new Error("Invalid response from edge function");
+      }
+
+      const analysis = response.data.analysis;
+
+      // Update database
+      const { error: updateError } = await supabase
+        .from("posts")
+        .update({
+          analysis_summary: analysis.summary,
+          sentiment: analysis.sentiment,
+          sentiment_score: analysis.sentiment_score,
+          main_topic: analysis.main_topic,
+          threat_level: analysis.threat_level,
+          confidence: analysis.confidence,
+          key_points: analysis.key_points,
+          recommended_action: analysis.recommended_action,
+          analyzed_at: analysis.analyzed_at,
+          analysis_model: analysis.analysis_model,
+          processing_time: analysis.processing_time,
+        })
+        .eq("id", post.id);
+
+      if (updateError) {
+        console.error("❌ Database error:", updateError);
+        throw updateError;
+      }
 
       toast({
-        title: 'تحلیل به‌روزرسانی شد',
-        description: 'تحلیل مطلب با موفقیت به‌روزرسانی شد',
+        title: "تحلیل به‌روزرسانی شد",
+        description: "تحلیل مطلب با موفقیت به‌روزرسانی شد",
       });
 
       onReanalyze();
     } catch (error) {
-      console.error('Error re-analyzing:', error);
+      console.error("Error re-analyzing:", error);
       toast({
-        title: 'خطا در تحلیل مجدد',
-        description: 'لطفا دوباره تلاش کنید',
-        variant: 'destructive',
+        title: "خطا در تحلیل مجدد",
+        description: "لطفا دوباره تلاش کنید",
+        variant: "destructive",
       });
     } finally {
       setIsAnalyzing(false);
@@ -86,7 +127,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
   const handleDelete = async () => {
     try {
       const { error } = await supabase
-        .from('posts')
+        .from("posts")
         .update({
           analysis_summary: null,
           sentiment: null,
@@ -99,22 +140,22 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
           analyzed_at: null,
           processing_time: null,
         })
-        .eq('id', post.id);
+        .eq("id", post.id);
 
       if (error) throw error;
 
       toast({
-        title: 'تحلیل حذف شد',
-        description: 'تحلیل مطلب با موفقیت حذف شد',
+        title: "تحلیل حذف شد",
+        description: "تحلیل مطلب با موفقیت حذف شد",
       });
 
       onReanalyze();
     } catch (error) {
-      console.error('Error deleting analysis:', error);
+      console.error("Error deleting analysis:", error);
       toast({
-        title: 'خطا در حذف تحلیل',
-        description: 'لطفا دوباره تلاش کنید',
-        variant: 'destructive',
+        title: "خطا در حذف تحلیل",
+        description: "لطفا دوباره تلاش کنید",
+        variant: "destructive",
       });
     }
   };
@@ -129,7 +170,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
     <Card className="hover:shadow-lg transition-shadow" dir="rtl">
       <CardHeader>
         <div className="flex justify-between items-start gap-2">
-          <CardTitle 
+          <CardTitle
             className="text-lg cursor-pointer hover:text-primary transition-colors line-clamp-2"
             onClick={onViewDetails}
           >
@@ -170,7 +211,10 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
 
       <CardContent className="space-y-4">
         {/* Threat Level */}
-        <div className="flex items-center justify-between p-4 border rounded-lg" style={{ borderColor: threat.color.split(' ')[2] }}>
+        <div
+          className="flex items-center justify-between p-4 border rounded-lg"
+          style={{ borderColor: threat.color.split(" ")[2] }}
+        >
           <div className="flex items-center gap-2">
             <span className="text-2xl">{threat.icon}</span>
             <div>
@@ -187,9 +231,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
               <Badge className={sentiment.color}>
                 {sentiment.icon} {sentiment.label}
               </Badge>
-              <span className="text-sm text-muted-foreground">
-                {post.sentiment_score?.toFixed(2)}
-              </span>
+              <span className="text-sm text-muted-foreground">{post.sentiment_score?.toFixed(2)}</span>
             </div>
           </div>
           <Progress value={sentimentProgress} className="h-2" />
@@ -198,7 +240,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         {/* Main Topic */}
         {post.main_topic && (
           <div>
-            <Badge className={cn("text-sm py-1 px-3", topicColors[post.main_topic] || topicColors['اخبار عادی'])}>
+            <Badge className={cn("text-sm py-1 px-3", topicColors[post.main_topic] || topicColors["اخبار عادی"])}>
               {post.main_topic}
             </Badge>
           </div>
@@ -229,9 +271,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">
-                {post.analysis_summary}
-              </p>
+              <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">{post.analysis_summary}</p>
             </CollapsibleContent>
           </Collapsible>
         )}
@@ -251,7 +291,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         <span>تحلیل شده: {getRelativeTime(post.analyzed_at)}</span>
         <span>•</span>
         <Badge variant="outline" className="text-xs">
-          {post.analysis_model || 'DeepSeek'}
+          {post.analysis_model || "DeepSeek"}
         </Badge>
         {post.processing_time && (
           <>
