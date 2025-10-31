@@ -947,12 +947,154 @@ const Settings = () => {
             "Article",
           ];
 
+          const datePatterns = [
+            "date",
+            "تاریخ",
+            "published_at",
+            "published_date",
+            "pubdate",
+            "تاریخ انتشار",
+            "Publication Date",
+            "Date",
+            "Pubdate",
+            "timestamp",
+            "Timestamp",
+          ];
+
           // Extract all fields with comprehensive mapping
           const rawSource = getAllVariations(row, sourcePatterns);
           const rawUrl = getAllVariations(row, urlPatterns);
           const rawAuthor = getAllVariations(row, authorPatterns);
           const rawTitle = getAllVariations(row, titlePatterns);
           const rawContents = getAllVariations(row, contentPatterns);
+
+          // Helper: Intelligent date parsing
+          const parseDate = (dateStr: string): string => {
+            if (!dateStr || dateStr.trim() === "") {
+              return new Date().toISOString();
+            }
+
+            try {
+              // Clean the date string
+              const cleaned = dateStr.trim();
+
+              // Format 1: ISO format (2025-10-31 or 2025-10-31T23:10:53)
+              if (cleaned.match(/^\d{4}-\d{2}-\d{2}/)) {
+                return new Date(cleaned).toISOString();
+              }
+
+              // Format 2: Persian/Arabic date "۱۴۰۳/۰۸/۱۰" or "1403/08/10"
+              if (cleaned.match(/^[\d۰-۹]+[\/\-][\d۰-۹]+[\/\-][\d۰-۹]+$/)) {
+                // Convert Persian digits to English
+                const englishDate = cleaned
+                  .replace(/۰/g, '0').replace(/۱/g, '1').replace(/۲/g, '2')
+                  .replace(/۳/g, '3').replace(/۴/g, '4').replace(/۵/g, '5')
+                  .replace(/۶/g, '6').replace(/۷/g, '7').replace(/۸/g, '8')
+                  .replace(/۹/g, '9');
+                
+                const parts = englishDate.split(/[\/\-]/);
+                
+                // Assume it's Persian calendar if year > 1400
+                if (parseInt(parts[0]) > 1400) {
+                  // Convert Jalali to Gregorian (approximate)
+                  const jalaliYear = parseInt(parts[0]);
+                  const jalaliMonth = parseInt(parts[1]);
+                  const jalaliDay = parseInt(parts[2]);
+                  
+                  // Simple conversion: Jalali 1403 ≈ Gregorian 2024-2025
+                  const gregorianYear = jalaliYear - 621 + (jalaliMonth >= 10 ? 1 : 0);
+                  return new Date(gregorianYear, jalaliMonth - 1, jalaliDay).toISOString();
+                }
+                
+                // Otherwise treat as Gregorian
+                return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])).toISOString();
+              }
+
+              // Format 3: "Oct 31, 2025" or "31 Oct 2025"
+              if (cleaned.match(/[A-Za-z]{3,}/)) {
+                return new Date(cleaned).toISOString();
+              }
+
+              // Format 4: Timestamp "Oct 31, 2025 at 11:10PM"
+              if (cleaned.includes(" at ")) {
+                const [datePart] = cleaned.split(" at ");
+                return new Date(datePart).toISOString();
+              }
+
+              // Format 5: "31/10/2025" or "2025/10/31"
+              if (cleaned.match(/^\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}$/)) {
+                const parts = cleaned.split(/[\/\-]/);
+                
+                // Check which format
+                if (parseInt(parts[0]) > 1900) {
+                  // YYYY/MM/DD
+                  return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])).toISOString();
+                } else {
+                  // DD/MM/YYYY
+                  return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).toISOString();
+                }
+              }
+
+              // Fallback: try direct parse
+              const parsed = new Date(cleaned);
+              if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString();
+              }
+
+              return new Date().toISOString();
+            } catch (e) {
+              console.error('Date parsing error:', e);
+              return new Date().toISOString();
+            }
+          };
+
+          // Helper: Extract date from content text
+          const extractDateFromText = (text: string): string | null => {
+            if (!text) return null;
+
+            // Pattern 1: Arabic/Persian months
+            const monthPatterns = [
+              { pattern: /(\d+)\s*(يناير|كانون الثاني|ینایر)/i, month: 0 },
+              { pattern: /(\d+)\s*(فبراير|شباط|فوریه)/i, month: 1 },
+              { pattern: /(\d+)\s*(مارس|آذار|مارس)/i, month: 2 },
+              { pattern: /(\d+)\s*(أبريل|نيسان|آوریل)/i, month: 3 },
+              { pattern: /(\d+)\s*(مايو|أيار|می)/i, month: 4 },
+              { pattern: /(\d+)\s*(يونيو|حزيران|ژوئن)/i, month: 5 },
+              { pattern: /(\d+)\s*(يوليو|تموز|ژوئیه)/i, month: 6 },
+              { pattern: /(\d+)\s*(أغسطس|آب|اوت)/i, month: 7 },
+              { pattern: /(\d+)\s*(سبتمبر|أيلول|سپتامبر)/i, month: 8 },
+              { pattern: /(\d+)\s*(أكتوبر|تشرين الأول|اکتبر)/i, month: 9 },
+              { pattern: /(\d+)\s*(نوفمبر|تشرين الثاني|نوامبر)/i, month: 10 },
+              { pattern: /(\d+)\s*(ديسمبر|كانون الأول|دسامبر)/i, month: 11 },
+            ];
+
+            for (const { pattern, month } of monthPatterns) {
+              const match = text.match(pattern);
+              if (match) {
+                const day = parseInt(match[1]);
+                const year = new Date().getFullYear();
+                return new Date(year, month, day).toISOString();
+              }
+            }
+
+            // Pattern 2: ISO-like date in text "2025-10-31"
+            const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+            if (isoMatch) {
+              return new Date(isoMatch[0]).toISOString();
+            }
+
+            // Pattern 3: "اليوم" (today), "أمس" (yesterday)
+            if (text.match(/اليوم|امروز/i)) {
+              return new Date().toISOString();
+            }
+            if (text.match(/أمس|دیروز/i)) {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              return yesterday.toISOString();
+            }
+
+            return null;
+          };
 
           // Debug: Show what we found
           if (i < 3) {
@@ -962,6 +1104,7 @@ const Settings = () => {
             console.log(`  🌐 Source: "${rawSource.substring(0, 40)}"`);
             console.log(`  🔗 URL: "${rawUrl.substring(0, 40)}"`);
             console.log(`  ✍️ Author: "${rawAuthor.substring(0, 30)}"`);
+            console.log(`  📅 Date raw: "${row.date || row.تاریخ || row.published_at || row.published_date || 'NONE'}"`);
           }
 
           // Smart content detection: title vs contents
@@ -1250,7 +1393,44 @@ const Settings = () => {
             contents: contents || "محتوا موجود نیست",
             source: cleanSource,
             author: rawAuthor || null,
-            published_at: parseDate(row["date"] || row["تاریخ"] || row["published_at"]),
+            published_at: (() => {
+              // Try date fields first
+              const dateFields = [
+                row.date,
+                row.تاریخ,
+                row.published_at,
+                row.published_date,
+                row.pubdate,
+                row['تاریخ انتشار'],
+                row['Publication Date'],
+                row.timestamp,
+              ];
+              
+              for (const field of dateFields) {
+                if (field && typeof field === 'string' && field.trim().length > 0) {
+                  const parsed = parseDate(field);
+                  if (i < 3) {
+                    console.log(`📅 Date from field "${field}": ${parsed}`);
+                  }
+                  return parsed;
+                }
+              }
+              
+              // Try extracting from content
+              const dateFromText = extractDateFromText(title + " " + contents);
+              if (dateFromText) {
+                if (i < 3) {
+                  console.log(`📅 Date extracted from text: ${dateFromText}`);
+                }
+                return dateFromText;
+              }
+              
+              // Fallback to today
+              if (i < 3) {
+                console.log(`⚠️ No date found, using today`);
+              }
+              return new Date().toISOString();
+            })(),
             source_url: finalUrl || null,
             language: detectedLanguage,
             status: "جدید",
