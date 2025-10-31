@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   RotateCcw,
   Settings as SettingsIcon,
-  Trash2
+  Trash2,
+  Search
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Papa from 'papaparse';
@@ -41,6 +42,7 @@ const Settings = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [cleaning, setCleaning] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [syncStats, setSyncStats] = useState({
@@ -245,27 +247,91 @@ const Settings = () => {
     }
   };
 
-  const checkEmptyPosts = async () => {
+  // Inspect table schema
+  const inspectSchema = async () => {
     try {
-      const { count: emptyCount } = await supabase
+      setInspecting(true);
+      
+      console.log('🔍 Trying to fetch one post to see structure...');
+      
+      const { data: sample, error } = await supabase
         .from('posts')
-        .select('*', { count: 'exact', head: true })
-        .or('title.is.null,title.eq.,title.eq.بدون عنوان,title.eq.undefined,title.eq.null');
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const columns = Object.keys(sample || {});
+      console.log('📋 Posts table has these columns:', columns);
+      console.log('📄 Sample post:', sample);
       
-      const { count: totalCount } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true });
+      toast({
+        title: 'ساختار جدول',
+        description: `${columns.length} ستون یافت شد - جزئیات در Console`,
+      });
       
-      setCleanupStats({ empty: emptyCount || 0, total: totalCount || 0 });
-      
-      console.log(`📊 Found ${emptyCount} empty posts out of ${totalCount} total`);
     } catch (error) {
-      console.error('Error checking empty posts:', error);
+      console.error('Schema inspection error:', error);
+      toast({
+        title: 'خطا',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setInspecting(false);
     }
   };
 
+  // Check for empty posts
+  const checkEmptyPosts = async () => {
+    try {
+      const { data: allPosts, error } = await supabase
+        .from('posts')
+        .select('*');
+
+      if (error) throw error;
+
+      // A post is "empty" if it has very few meaningful values
+      const emptyPosts = (allPosts || []).filter(post => {
+        // Get all values
+        const allValues = Object.entries(post);
+        
+        // Filter out system fields and empty values
+        const meaningfulValues = allValues.filter(([key, value]) => {
+          // Skip system fields
+          if (['id', 'created_at', 'updated_at'].includes(key)) return false;
+          
+          // Skip empty/null
+          if (value === null || value === '' || value === undefined) return false;
+          
+          // Skip if it looks like a UUID
+          if (typeof value === 'string' && value.match(/^[0-9a-f]{8}-[0-9a-f]{4}/i)) return false;
+          
+          return true;
+        });
+        
+        // Empty if has 2 or fewer meaningful fields
+        return meaningfulValues.length <= 2;
+      });
+
+      console.log(`📊 Found ${emptyPosts.length} empty posts out of ${allPosts.length} total`);
+      
+      setCleanupStats({ 
+        empty: emptyPosts.length, 
+        total: allPosts.length 
+      });
+      
+    } catch (error) {
+      console.error('Error checking posts:', error);
+    }
+  };
+
+  // Delete empty posts
   const cleanupEmptyPosts = async () => {
-    if (!confirm(`آیا می‌خواهید ${cleanupStats.empty} مطلب خالی را حذف کنید؟`)) {
+    const confirmMsg = `آیا مطمئن هستید که می‌خواهید ${cleanupStats.empty} مطلب خالی را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
+    
+    if (!confirm(confirmMsg)) {
       return;
     }
 
@@ -273,29 +339,70 @@ const Settings = () => {
       setCleaning(true);
       
       toast({
-        title: 'در حال پاکسازی...',
-        description: 'لطفا صبر کنید',
+        title: 'شروع پاکسازی...',
+        description: 'در حال شناسایی و حذف مطالب خالی',
       });
 
-      // Delete posts where title is null, empty, or invalid
-      const { data, error } = await supabase
+      // Get all posts
+      const { data: allPosts, error: fetchError } = await supabase
         .from('posts')
-        .delete()
-        .or('title.is.null,title.eq.,title.eq.بدون عنوان,title.eq.undefined,title.eq.null')
-        .select('id');
+        .select('*');
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
 
-      const deleted = data?.length || 0;
+      // Find empty posts
+      const emptyPostIds = (allPosts || [])
+        .filter(post => {
+          const allValues = Object.entries(post);
+          const meaningfulValues = allValues.filter(([key, value]) => {
+            if (['id', 'created_at', 'updated_at'].includes(key)) return false;
+            if (value === null || value === '' || value === undefined) return false;
+            if (typeof value === 'string' && value.match(/^[0-9a-f]{8}-[0-9a-f]{4}/i)) return false;
+            return true;
+          });
+          return meaningfulValues.length <= 2;
+        })
+        .map(post => post.id);
+
+      console.log(`🗑️ Will delete ${emptyPostIds.length} posts:`, emptyPostIds.slice(0, 5));
+
+      if (emptyPostIds.length === 0) {
+        toast({
+          title: 'هیچ مطلب خالی یافت نشد',
+          description: 'همه مطالب دارای محتوا هستند',
+        });
+        setCleaning(false);
+        return;
+      }
+
+      // Delete in batches of 100
+      let totalDeleted = 0;
+      const batchSize = 100;
+      
+      for (let i = 0; i < emptyPostIds.length; i += batchSize) {
+        const batch = emptyPostIds.slice(i, i + batchSize);
+        
+        const { error: deleteError } = await supabase
+          .from('posts')
+          .delete()
+          .in('id', batch);
+
+        if (deleteError) {
+          console.error('Delete error for batch:', deleteError);
+        } else {
+          totalDeleted += batch.length;
+          console.log(`✅ Deleted batch ${Math.floor(i / batchSize) + 1}: ${batch.length} posts`);
+        }
+      }
 
       toast({
-        title: '✅ پاکسازی موفق',
-        description: `${deleted} مطلب خالی حذف شد`,
+        title: '✅ پاکسازی کامل شد',
+        description: `${totalDeleted} مطلب خالی حذف شد`,
       });
 
-      console.log(`🗑️ Deleted ${deleted} empty posts`);
+      console.log(`🎉 Total deleted: ${totalDeleted} posts`);
       
-      // Refresh both sync and cleanup stats
+      // Refresh stats
       await checkSyncStatus();
       await checkEmptyPosts();
       
@@ -596,28 +703,45 @@ const Settings = () => {
         {cleanupStats.empty > 0 && (
           <Alert variant="destructive" className="border-2">
             <AlertTriangle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between">
-              <span>
-                ⚠️ {cleanupStats.empty} مطلب خالی در دیتابیس شما وجود دارد ({Math.round((cleanupStats.empty / cleanupStats.total) * 100)}% از کل)
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={cleanupEmptyPosts}
-                disabled={cleaning}
-              >
-                {cleaning ? (
-                  <>
-                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                    در حال حذف...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="ml-2 h-4 w-4" />
-                    حذف همه
-                  </>
-                )}
-              </Button>
+            <AlertDescription className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <strong>⚠️ {cleanupStats.empty} مطلب خالی</strong> در دیتابیس شما وجود دارد
+                <span className="text-sm block mt-1">
+                  ({Math.round((cleanupStats.empty / cleanupStats.total) * 100)}% از کل)
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={inspectSchema}
+                  disabled={inspecting}
+                >
+                  {inspecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={cleanupEmptyPosts}
+                  disabled={cleaning}
+                >
+                  {cleaning ? (
+                    <>
+                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      در حال حذف...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="ml-2 h-4 w-4" />
+                      حذف همه ({cleanupStats.empty})
+                    </>
+                  )}
+                </Button>
+              </div>
             </AlertDescription>
           </Alert>
         )}
