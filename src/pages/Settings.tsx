@@ -497,7 +497,6 @@ const Settings = () => {
       });
     }
   };
-};
 
 const deleteAllPosts = async () => {
   const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
