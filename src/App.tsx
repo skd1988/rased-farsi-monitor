@@ -12,6 +12,7 @@ import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
 import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
+import Trends from "./pages/Trends";
 import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 
@@ -34,7 +35,7 @@ const App = () => (
                 <Route path="ai-analysis" element={<AIAnalysis />} />
                 <Route path="alerts" element={<Alerts />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="trends" element={<ComingSoon title="ترندها" description="تحلیل روندهای رسانه‌ای به زودی در دسترس خواهد بود" />} />
+                <Route path="trends" element={<Trends />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
