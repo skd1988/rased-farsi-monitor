@@ -150,7 +150,7 @@ const detectLanguage = (text: string): string => {
 };
 
 // Helper function to detect source type
-const detectSourceType = (source: string, url: string = ""): "social" | "news" => {
+const detectSourceType = (source: string, url: string = ""): "social_media" | "website" | "news_agency" | "blog" | "forum" => {
   const socialPlatforms = [
     "twitter",
     "facebook",
@@ -184,24 +184,41 @@ const detectSourceType = (source: string, url: string = ""): "social" | "news" =
     "العربية",
   ];
 
+  const blogKeywords = ["blog", "وبلاگ", "مدونة"];
+  const forumKeywords = ["forum", "انجمن", "منتدى"];
+
   const checkText = `${source} ${url}`.toLowerCase();
 
   // Check social platforms first
   for (const platform of socialPlatforms) {
     if (checkText.includes(platform)) {
-      return "social";
+      return "social_media";
+    }
+  }
+
+  // Check for blogs
+  for (const keyword of blogKeywords) {
+    if (checkText.includes(keyword)) {
+      return "blog";
+    }
+  }
+
+  // Check for forums
+  for (const keyword of forumKeywords) {
+    if (checkText.includes(keyword)) {
+      return "forum";
     }
   }
 
   // Check news keywords
   for (const keyword of newsKeywords) {
     if (checkText.includes(keyword)) {
-      return "news";
+      return "news_agency";
     }
   }
 
-  // Default to news for unknown sources
-  return "news";
+  // Default to website for unknown sources
+  return "website";
 };
 
 // Helper function to parse dates properly
