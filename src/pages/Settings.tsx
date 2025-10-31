@@ -454,7 +454,62 @@ const Settings = () => {
       });
       return;
     }
+  };
 
+  const deleteAllPosts = async () => {
+    const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      setCleaning(true);
+
+      toast({
+        title: "شروع حذف...",
+        description: "لطفاً صبر کنید",
+      });
+
+      // Delete all in batches
+      let deletedTotal = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: batch } = await supabase.from("posts").select("id").limit(100);
+
+        if (!batch || batch.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        const ids = batch.map((p) => p.id);
+        await supabase.from("posts").delete().in("id", ids);
+
+        deletedTotal += batch.length;
+        console.log(`🗑️ Deleted ${deletedTotal}...`);
+      }
+
+      localStorage.setItem("lastSyncedRow", "0");
+
+      toast({
+        title: "✅ حذف کامل شد",
+        description: `${deletedTotal} مطلب حذف شد`,
+      });
+
+      await checkSyncStatus();
+      window.location.reload();
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast({
+        title: "خطا در حذف",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  const handleManualSync = async () => {
     try {
       const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
 
@@ -686,11 +741,12 @@ const Settings = () => {
             status: "جدید",
           };
 
-          // Check duplicates by title only (more reliable)
+          // Check duplicates
           const { data: existingPost } = await supabase
             .from("posts")
             .select("id")
             .eq("title", post.title)
+            .eq("published_at", post.published_at)
             .maybeSingle();
 
           if (existingPost) {
