@@ -18,8 +18,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-        <DialogHeader className="p-6 pb-4 border-b border-border">
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0" dir="rtl">
+        <DialogHeader className="p-6 pb-4 border-b border-border text-right">
           <DialogTitle className="text-2xl font-bold text-right pr-8">
             {post.title}
           </DialogTitle>
@@ -37,7 +37,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
             <div className="flex items-center gap-2 justify-end">
               <span className="text-muted-foreground">منبع:</span>
               <Badge variant="secondary" className="text-xs">
-                <Newspaper className="w-3 h-3 ml-1" />
+                <Newspaper className="w-3 h-3 ms-1" />
                 {post.source}
               </Badge>
             </div>
@@ -45,7 +45,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
             <div className="flex items-center gap-2 justify-end">
               <span className="text-muted-foreground">نویسنده:</span>
               <span className="font-medium">
-                <User className="w-3 h-3 inline ml-1" />
+                <User className="w-3 h-3 inline ms-1" />
                 {post.author}
               </span>
             </div>
@@ -53,7 +53,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
             <div className="flex items-center gap-2 justify-end">
               <span className="text-muted-foreground">تاریخ:</span>
               <div className="text-right">
-                <Calendar className="w-3 h-3 inline ml-1" />
+                <Calendar className="w-3 h-3 inline ms-1" />
                 <span className="font-medium">{formatPersianDate(post.date)}</span>
                 <p className="text-xs text-muted-foreground">{getRelativeTime(post.date)}</p>
               </div>
@@ -62,7 +62,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
             <div className="flex items-center gap-2 justify-end">
               <span className="text-muted-foreground">زبان:</span>
               <Badge variant="outline" className="text-xs">
-                <Globe className="w-3 h-3 ml-1" />
+                <Globe className="w-3 h-3 ms-1" />
                 {post.language}
               </Badge>
             </div>
@@ -70,7 +70,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
             <div className="flex items-center gap-2 justify-end">
               <span className="text-muted-foreground">وضعیت:</span>
               <Badge variant="secondary" className="text-xs">
-                <Tag className="w-3 h-3 ml-1" />
+                <Tag className="w-3 h-3 ms-1" />
                 {post.status}
               </Badge>
             </div>
@@ -108,7 +108,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
             variant="outline"
             onClick={() => window.open(post.articleURL, '_blank')}
           >
-            <ExternalLink className="w-4 h-4 ml-2" />
+            <ExternalLink className="w-4 h-4 ms-2" />
             مشاهده در سایت اصلی
           </Button>
           <Button variant="secondary" disabled>

@@ -363,14 +363,15 @@ const Alerts = () => {
             </div>
 
             <div className="md:col-span-2">
-              <label className="text-sm font-medium mb-2 block">جستجو</label>
+              <label className="text-sm font-medium mb-2 block text-right">جستجو</label>
               <div className="relative">
-                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4 pointer-events-none" />
                 <Input
                   placeholder="جستجو در عنوان و دلیل هشدار..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pr-10"
+                  className="pe-10 text-right"
+                  dir="rtl"
                 />
               </div>
             </div>
@@ -466,7 +467,7 @@ const Alerts = () => {
                           className="text-green-600 hover:text-green-700"
                           onClick={() => updateAlertStatus(alert.id, 'Resolved')}
                         >
-                          <CheckCircle2 className="h-4 w-4 ml-1" />
+                          <CheckCircle2 className="h-4 w-4 ms-1" />
                           حل شد
                         </Button>
                         <Button
@@ -475,7 +476,7 @@ const Alerts = () => {
                           className="text-gray-600"
                           onClick={() => updateAlertStatus(alert.id, 'Dismissed')}
                         >
-                          <XCircle className="h-4 w-4 ml-1" />
+                          <XCircle className="h-4 w-4 ms-1" />
                           رد می‌کنم
                         </Button>
                       </>
@@ -488,7 +489,7 @@ const Alerts = () => {
                         setShowPostModal(true);
                       }}
                     >
-                      <Eye className="h-4 w-4 ml-1" />
+                      <Eye className="h-4 w-4 ms-1" />
                       مشاهده پست
                     </Button>
                     <Button

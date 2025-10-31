@@ -211,19 +211,19 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onViewDetails}>
-                <ExternalLink className="ml-2 h-4 w-4" />
+                <ExternalLink className="ms-2 h-4 w-4" />
                 مشاهده پست اصلی
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleReanalyze} disabled={isAnalyzing}>
-                <RefreshCw className={cn("ml-2 h-4 w-4", isAnalyzing && "animate-spin")} />
+                <RefreshCw className={cn("ms-2 h-4 w-4", isAnalyzing && "animate-spin")} />
                 تحلیل مجدد
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleDelete}>
-                <Trash2 className="ml-2 h-4 w-4" />
+                <Trash2 className="ms-2 h-4 w-4" />
                 حذف تحلیل
               </DropdownMenuItem>
               <DropdownMenuItem>
-                <AlertTriangle className="ml-2 h-4 w-4" />
+                <AlertTriangle className="ms-2 h-4 w-4" />
                 گزارش خطا
               </DropdownMenuItem>
             </DropdownMenuContent>

@@ -159,7 +159,7 @@ const AIAnalysis = () => {
               }}
               size="lg"
             >
-              <FileText className="ml-2 h-5 w-5" />
+              <FileText className="ms-2 h-5 w-5" />
               شروع تحلیل
             </Button>
           </div>
@@ -192,11 +192,11 @@ const AIAnalysis = () => {
                 setShowBulkModal(true);
               }}
             >
-              <FileText className="ml-2 h-4 w-4" />
+              <FileText className="ms-2 h-4 w-4" />
               تحلیل گروهی
             </Button>
             <Button variant="outline">
-              <Download className="ml-2 h-4 w-4" />
+              <Download className="ms-2 h-4 w-4" />
               خروجی گزارش PDF
             </Button>
           </div>
@@ -217,7 +217,8 @@ const AIAnalysis = () => {
               placeholder="جستجو در نتایج..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="md:col-span-2"
+              className="md:col-span-2 text-right"
+              dir="rtl"
             />
 
             <Select value={threatFilter} onValueChange={setThreatFilter}>

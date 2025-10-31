@@ -403,7 +403,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                   </p>
                   <Button variant="outline" className="mt-2" asChild>
                     <div>
-                      <CheckSquare className="ml-2 h-4 w-4" />
+                      <CheckSquare className="ms-2 h-4 w-4" />
                       انتخاب کنید
                     </div>
                   </Button>

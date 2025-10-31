@@ -303,19 +303,20 @@ const PostsExplorer = () => {
   return (
     <div className="flex h-full bg-background" dir="rtl">
       {/* Filters Sidebar */}
-      <aside className="w-80 border-l border-border bg-card overflow-y-auto">
+      <aside className="w-80 border-r border-border bg-card overflow-y-auto">
         <div className="p-6 space-y-6">
           <div>
             <h3 className="text-lg font-bold mb-4">فیلترهای پیشرفته</h3>
             
             {/* Search */}
             <div className="relative mb-6">
-              <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 placeholder="جستجو در عنوان، محتوا، نویسنده..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pr-10"
+                className="pe-10 text-right"
+                dir="rtl"
               />
             </div>
 

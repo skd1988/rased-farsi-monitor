@@ -23,24 +23,26 @@ const App = () => (
     <ThemeProvider>
       <AuthProvider>
         <TooltipProvider>
-          <Toaster />
-          <Sonner position="top-center" />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Navigate to="/login" replace />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={<DashboardLayout />}>
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="posts" element={<PostsExplorer />} />
-                <Route path="ai-analysis" element={<AIAnalysis />} />
-                <Route path="alerts" element={<Alerts />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="trends" element={<Trends />} />
-              </Route>
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
+          <div dir="rtl" className="min-h-screen">
+            <Toaster />
+            <Sonner position="top-center" />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<DashboardLayout />}>
+                  <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="posts" element={<PostsExplorer />} />
+                  <Route path="ai-analysis" element={<AIAnalysis />} />
+                  <Route path="alerts" element={<Alerts />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="trends" element={<Trends />} />
+                </Route>
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </div>
         </TooltipProvider>
       </AuthProvider>
     </ThemeProvider>

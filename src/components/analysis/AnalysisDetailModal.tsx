@@ -45,7 +45,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
             {post.article_url && (
               <Button variant="link" size="sm" asChild>
                 <a href={post.article_url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="ml-1 h-3 w-3" />
+                  <ExternalLink className="ms-1 h-3 w-3" />
                   لینک اصلی
                 </a>
               </Button>
