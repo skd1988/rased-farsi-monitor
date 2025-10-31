@@ -154,11 +154,18 @@ const AIAnalysis = () => {
           <div className="text-6xl">🤖</div>
           <h3 className="text-2xl font-bold">هنوز هیچ مطلبی تحلیل نشده</h3>
           <p className="text-muted-foreground">برای شروع، از دکمه زیر استفاده کنید</p>
-          <Button onClick={() => {
-            console.log('🔵 دکمه شروع تحلیل کلیک شد');
-            setShowBulkModal(true);
-            console.log('🟢 showBulkModal set to true');
-          }} size="lg">
+          <Button 
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔵 دکمه شروع تحلیل کلیک شد');
+    setShowBulkModal(true);
+    console.log('🟢 showBulkModal set to true');
+    console.log('🟢 Current state:', showBulkModal);
+  }} 
+  size="lg"
+  type="button"
+>
             <FileText className="ml-2 h-5 w-5" />
             شروع تحلیل
           </Button>
