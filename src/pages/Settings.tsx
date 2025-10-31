@@ -138,7 +138,24 @@ const detectSourceType = (source: string, url: string = ""): "social" | "news" =
   return "news";
 };
 
-// Helper function to parse dates properly
+// Helper function to clean HTML content
+const cleanHTML = (text: string): string => {
+  if (!text) return "";
+
+  return text
+    .replace(/<iframe[^>]*>.*?<\/iframe>/gi, "") // Remove iframes
+    .replace(/<script[^>]*>.*?<\/script>/gi, "") // Remove scripts
+    .replace(/<style[^>]*>.*?<\/style>/gi, "") // Remove styles
+    .replace(/<[^>]+>/g, "") // Remove all HTML tags
+    .replace(/&nbsp;/g, " ") // Replace &nbsp;
+    .replace(/&amp;/g, "&") // Replace &amp;
+    .replace(/&lt;/g, "<") // Replace &lt;
+    .replace(/&gt;/g, ">") // Replace &gt;
+    .replace(/&quot;/g, '"') // Replace &quot;
+    .replace(/&#39;/g, "'") // Replace &#39;
+    .replace(/\s+/g, " ") // Replace multiple spaces
+    .trim();
+};
 const parseDate = (dateStr: any): string => {
   if (!dateStr || typeof dateStr !== "string") {
     return new Date().toISOString();
@@ -708,6 +725,12 @@ const Settings = () => {
       console.log("📋 Headers found:", headers);
       console.log("📋 Total headers:", headers.length);
 
+      // Debug: Show actual header mapping
+      console.log("📋 Header mapping check:");
+      headers.forEach((header, index) => {
+        console.log(`  ${index}: "${header}"`);
+      });
+
       const rows: any[] = [];
       for (let i = 1; i < dataLines.length; i++) {
         const line = dataLines[i];
@@ -770,24 +793,99 @@ const Settings = () => {
         setSyncProgress(50 + ((i + 1) / rowsToSync.length) * 40);
 
         try {
-          const title = (row["title"] || row["عنوان"] || row["headline"] || "").trim();
-          const contents = (row["contents"] || row["محتوا"] || row["content"] || "").trim();
+          // Debug: Log raw row structure first
+          if (i < 2) {
+            console.log(
+              `\n🔍 Raw Row ${i + 1} structure:`,
+              Object.keys(row).map((k) => `${k}: "${String(row[k]).substring(0, 40)}..."`),
+            );
+          }
+
+          // Try different field combinations - it seems the columns might be swapped
+          let rawTitle = "";
+          let rawContents = "";
+
+          // Check all possible title fields
+          const titleCandidates = [
+            row["title"],
+            row["عنوان"],
+            row["headline"],
+            row["contents"],
+            row["محتوا"],
+            row["content"],
+          ].filter(Boolean);
+
+          const contentsCandidates = [
+            row["contents"],
+            row["محتوا"],
+            row["content"],
+            row["title"],
+            row["عنوان"],
+            row["headline"],
+          ].filter(Boolean);
+
+          // Find the field that looks like actual content (not timestamp)
+          for (const candidate of titleCandidates) {
+            const cleaned = String(candidate).trim();
+            // Skip timestamps and HTML-heavy content
+            if (
+              !cleaned.match(/^\w+ \d{1,2}, \d{4} at \d{1,2}:\d{2}[AP]M$/) &&
+              !cleaned.includes("<iframe") &&
+              cleaned.length > 10
+            ) {
+              rawTitle = cleaned;
+              break;
+            }
+          }
+
+          // If no good title found, try contents field
+          if (!rawTitle) {
+            for (const candidate of contentsCandidates) {
+              const cleaned = String(candidate).trim();
+              if (
+                !cleaned.match(/^\w+ \d{1,2}, \d{4} at \d{1,2}:\d{2}[AP]M$/) &&
+                !cleaned.includes("<iframe") &&
+                cleaned.length > 10
+              ) {
+                rawContents = cleaned;
+                // Use first 100 chars as title
+                rawTitle = cleaned.substring(0, 100);
+                break;
+              }
+            }
+          } else {
+            // Find contents that's different from title
+            for (const candidate of contentsCandidates) {
+              const cleaned = String(candidate).trim();
+              if (cleaned !== rawTitle && cleaned.length > rawTitle.length) {
+                rawContents = cleaned;
+                break;
+              }
+            }
+          }
+
+          // Clean HTML from both fields
+          const title = cleanHTML(rawTitle).trim();
+          const contents = cleanHTML(rawContents || rawTitle).trim();
+
           const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
-          const url = (row["url"] || row["لینک"] || row["source_url"] || "").trim();
+          const url = (row["url"] || row["لینک"] || row["source_url"] || row["article url"] || "").trim();
 
           if (i < 3) {
-            console.log(`\n📋 Row ${lastSyncedRow + i + 1} sample:`, {
-              title: title.substring(0, 50),
-              contents: contents.substring(0, 50),
+            console.log(`\n📋 Row ${lastSyncedRow + i + 1} AFTER PROCESSING:`, {
+              title: title.substring(0, 60),
+              contents: contents.substring(0, 60),
               source: source.substring(0, 30),
+              url: url.substring(0, 30),
               hasTitle: !!title,
               titleLength: title.length,
+              contentsLength: contents.length,
             });
           }
 
-          if (!title || title.trim().length === 0) {
+          if (!title || title.trim().length < 10) {
             validationSkips.noTitle++;
-            if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: No title`);
+            if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: No meaningful title (length: ${title.length})`);
             continue;
           }
 
