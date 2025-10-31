@@ -920,16 +920,16 @@ const Settings = () => {
           const source = (row["source"] || row["منبع"] || row["publisher"] || "").trim();
           const url = (row["url"] || row["لینک"] || row["source_url"] || row["article url"] || "").trim();
 
-          // Clean and validate source
+          // Clean and shorten source for display
           let cleanSource = source;
 
-          // If source is a URL, try to extract domain name
+          // If source is a URL, extract domain name for better display
           if (source.includes("http")) {
             try {
               const urlObj = new URL(source);
               let domain = urlObj.hostname.replace("www.", "");
 
-              // Map known domains to clean names
+              // Map known domains to clean names (optional)
               const domainMap: Record<string, string> = {
                 "arabic.rt.com": "RT Arabic",
                 "aljazeera.net": "الجزیرة",
@@ -945,15 +945,13 @@ const Settings = () => {
               cleanSource = domainMap[domain] || domain;
             } catch (e) {
               // If URL parsing fails, use first part before .com
-              cleanSource = source.split(".com")[0].split("//").pop() || "منبع ناشناخته";
+              cleanSource = source.split(".com")[0].split("//").pop() || source;
             }
           }
 
-          // Skip if source is still unknown/empty after processing
-          if (!cleanSource || cleanSource === "نامشخص" || cleanSource === "منبع ناشناخته" || cleanSource.length < 3) {
-            validationSkips.noTitle++;
-            if (i < 5) console.log(`⚠️ Row ${lastSyncedRow + i + 1}: Unknown source (${cleanSource})`);
-            continue;
+          // Don't skip any sources - just use original if no cleanup worked
+          if (!cleanSource || cleanSource.length < 2) {
+            cleanSource = source || "منبع نامشخص";
           }
 
           if (i < 3) {
