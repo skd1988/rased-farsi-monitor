@@ -968,6 +968,133 @@ const Settings = () => {
           const rawTitle = getAllVariations(row, titlePatterns);
           const rawContents = getAllVariations(row, contentPatterns);
 
+          // Helper: Detect if source is social media or website
+          const detectSourceType = (url: string, source: string): string => {
+            if (!url && !source) return "website";
+            
+            const urlToCheck = (url || source).toLowerCase();
+            
+            // Social Media Patterns
+            const socialMediaPatterns = [
+              // Twitter / X
+              { pattern: /(?:twitter\.com|x\.com|t\.co)/, name: "twitter" },
+              
+              // Facebook
+              { pattern: /(?:facebook\.com|fb\.com|fb\.me)/, name: "facebook" },
+              
+              // Instagram
+              { pattern: /(?:instagram\.com|instagr\.am)/, name: "instagram" },
+              
+              // Telegram
+              { pattern: /(?:t\.me|telegram\.org|telegram\.me)/, name: "telegram" },
+              
+              // LinkedIn
+              { pattern: /linkedin\.com/, name: "linkedin" },
+              
+              // TikTok
+              { pattern: /(?:tiktok\.com|vm\.tiktok\.com)/, name: "tiktok" },
+              
+              // YouTube
+              { pattern: /(?:youtube\.com|youtu\.be)/, name: "youtube" },
+              
+              // WhatsApp
+              { pattern: /(?:whatsapp\.com|wa\.me)/, name: "whatsapp" },
+              
+              // Snapchat
+              { pattern: /snapchat\.com/, name: "snapchat" },
+              
+              // Reddit
+              { pattern: /reddit\.com/, name: "reddit" },
+              
+              // WeChat
+              { pattern: /wechat\.com/, name: "wechat" },
+              
+              // Discord
+              { pattern: /discord\.(?:gg|com)/, name: "discord" },
+              
+              // Clubhouse
+              { pattern: /clubhouse\.com/, name: "clubhouse" },
+              
+              // Twitch
+              { pattern: /twitch\.tv/, name: "twitch" },
+              
+              // Pinterest
+              { pattern: /pinterest\.com/, name: "pinterest" },
+              
+              // Tumblr
+              { pattern: /tumblr\.com/, name: "tumblr" },
+              
+              // VK (VKontakte)
+              { pattern: /vk\.com/, name: "vk" },
+              
+              // Weibo
+              { pattern: /weibo\.com/, name: "weibo" },
+              
+              // Mastodon
+              { pattern: /mastodon/, name: "mastodon" },
+              
+              // Medium (blog platform but social-like)
+              { pattern: /medium\.com/, name: "medium" },
+            ];
+            
+            for (const social of socialMediaPatterns) {
+              if (social.pattern.test(urlToCheck)) {
+                return "social_media";
+              }
+            }
+            
+            // News Agency Patterns (for future categorization)
+            const newsAgencyPatterns = [
+              /reuters\.com/i,
+              /ap\.org|apnews\.com/i,
+              /afp\.com/i,
+              /tass\.com/i,
+              /xinhua/i,
+              /aljazeera/i,
+              /bbc\.com|bbc\.co\.uk/i,
+              /cnn\.com/i,
+              /france24\.com/i,
+              /dw\.com/i,
+              /rt\.com/i,
+            ];
+            
+            for (const pattern of newsAgencyPatterns) {
+              if (pattern.test(urlToCheck)) {
+                return "news_agency";
+              }
+            }
+            
+            // Forum patterns
+            const forumPatterns = [
+              /forum/i,
+              /board/i,
+              /discussion/i,
+            ];
+            
+            for (const pattern of forumPatterns) {
+              if (pattern.test(urlToCheck)) {
+                return "forum";
+              }
+            }
+            
+            // Blog patterns
+            const blogPatterns = [
+              /blog/i,
+              /wordpress\.com/i,
+              /blogger\.com/i,
+              /blogspot\.com/i,
+            ];
+            
+            for (const pattern of blogPatterns) {
+              if (pattern.test(urlToCheck)) {
+                return "blog";
+              }
+            }
+            
+            // Default to website
+            return "website";
+          };
+
           // Helper: Intelligent date parsing
           const parseDate = (dateStr: string): string => {
             if (!dateStr || dateStr.trim() === "") {
@@ -1360,6 +1487,7 @@ const Settings = () => {
             console.log(`  📝 Title: "${title.substring(0, 60)}"`);
             console.log(`  📄 Contents: "${contents.substring(0, 60)}"`);
             console.log(`  🌐 Source: "${cleanSource}"`);
+            console.log(`  📱 Source Type: "${detectSourceType(finalUrl, cleanSource)}"`);
             console.log(`  🔗 URL: "${finalUrl.substring(0, 50)}"`);
             console.log(`  ✍️ Author: "${rawAuthor}"`);
             console.log(`  🌍 Language: ${detectedLanguage}`);
@@ -1392,6 +1520,7 @@ const Settings = () => {
             title: title,
             contents: contents || "محتوا موجود نیست",
             source: cleanSource,
+            source_type: detectSourceType(finalUrl, cleanSource),
             author: rawAuthor || null,
             published_at: (() => {
               // Try date fields first
