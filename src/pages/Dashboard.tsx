@@ -6,11 +6,13 @@ import LanguagePieChart from '@/components/dashboard/LanguagePieChart';
 import SourceTypePieChart from '@/components/dashboard/SourceTypePieChart';
 import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import SourcesBarChart from '@/components/dashboard/SourcesBarChart';
+import CountryPieChart from '@/components/dashboard/CountryPieChart';
 import PostsTable from '@/components/dashboard/PostsTable';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
+import { detectCountryFromSource } from '@/utils/countryDetector';
 
 const Dashboard = () => {
   const [selectedPost, setSelectedPost] = useState<EnrichedPost | null>(null);
@@ -59,6 +61,7 @@ const Dashboard = () => {
           status: post.status,
           articleURL: post.article_url || '',
           keywords: post.keywords || [],
+          source_country: post.source_country || null,
         }));
         
         setPosts(mappedPosts);
@@ -315,6 +318,44 @@ const Dashboard = () => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   }, [posts]);
+
+  // Prepare country distribution data
+  const countryData = useMemo(() => {
+    const countryCounts: Record<string, number> = {};
+    const totalPosts = posts.length;
+
+    posts.forEach(post => {
+      const country = post.source_country || 'نامشخص';
+      countryCounts[country] = (countryCounts[country] || 0) + 1;
+    });
+
+    const colorMap: Record<string, string> = {
+      'ایران': '#239B56',
+      'قطر': '#8E44AD',
+      'عربستان سعودی': '#E67E22',
+      'امارات': '#3498DB',
+      'مصر': '#E74C3C',
+      'عراق': '#F39C12',
+      'لبنان': '#1ABC9C',
+      'آمریکا': '#34495E',
+      'بریتانیا': '#2980B9',
+      'فرانسه': '#9B59B6',
+      'آلمان': '#16A085',
+      'ترکیه': '#C0392B',
+      'روسیه': '#7F8C8D',
+      'نامشخص': '#BDC3C7'
+    };
+
+    return Object.entries(countryCounts)
+      .map(([country, count]) => ({
+        country,
+        count,
+        percentage: totalPosts > 0 ? (count / totalPosts) * 100 : 0,
+        fill: colorMap[country] || '#95A5A6'
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10); // Top 10 countries
+  }, [posts]);
   
   const handleViewPost = (post: EnrichedPost) => {
     setSelectedPost(post);
@@ -377,8 +418,11 @@ const Dashboard = () => {
         <SocialMediaPieChart data={socialMediaData} />
       </div>
       
-      {/* Charts Row 3 */}
-      <SourcesBarChart data={barChartData} />
+      {/* Charts Row 3 - Sources & Country Distribution */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SourcesBarChart data={barChartData} />
+        <CountryPieChart data={countryData} loading={loading} />
+      </div>
       
       {/* Posts Table */}
       <PostsTable posts={posts.slice(0, 20)} onViewPost={handleViewPost} />

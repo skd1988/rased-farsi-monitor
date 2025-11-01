@@ -14,6 +14,7 @@ export interface EnrichedPost extends RawPost {
   language: string;
   status: string;
   keywords: string[];
+  source_country?: string | null;
 }
 
 // Utility functions for data derivation
