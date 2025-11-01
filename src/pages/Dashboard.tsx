@@ -22,15 +22,32 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchPosts = async () => {
       try {
-        const { data, error } = await supabase
-          .from('posts')
-          .select('*')
-          .order('published_at', { ascending: false });
-        
-        if (error) throw error;
+        let allPosts: any[] = [];
+        let from = 0;
+        const batchSize = 1000;
+        let hasMore = true;
+
+        // Fetch all posts in batches of 1000 to bypass Supabase's default limit
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('posts')
+            .select('*')
+            .order('published_at', { ascending: false })
+            .range(from, from + batchSize - 1);
+          
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+            allPosts = [...allPosts, ...data];
+            from += batchSize;
+            hasMore = data.length === batchSize;
+          } else {
+            hasMore = false;
+          }
+        }
         
         // Map Supabase data to EnrichedPost format
-        const mappedPosts: EnrichedPost[] = (data || []).map(post => ({
+        const mappedPosts: EnrichedPost[] = allPosts.map(post => ({
           id: post.id,
           title: post.title,
           contents: post.contents || '',
