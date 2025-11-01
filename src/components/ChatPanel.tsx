@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Trash2 } from 'lucide-react';
+import { MessageSquare, X, Send, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,6 +22,7 @@ const ChatPanel = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const quickPrompts = [
@@ -36,11 +37,11 @@ const ChatPanel = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages]);
+  }, [messages, isLoading]);
 
   const handleSend = (messageText?: string) => {
     const text = messageText || input.trim();
-    if (!text) return;
+    if (!text || isLoading) return;
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -51,6 +52,7 @@ const ChatPanel = () => {
 
     setMessages(prev => [...prev, newMessage]);
     setInput('');
+    setIsLoading(true);
 
     // Mock AI response after 1 second
     setTimeout(() => {
@@ -61,6 +63,7 @@ const ChatPanel = () => {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMessage]);
+      setIsLoading(false);
     }, 1000);
   };
 
@@ -133,20 +136,31 @@ const ChatPanel = () => {
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4" dir="rtl">
                 {messages.length === 0 ? (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground mb-3">
-                      سوالات پیشنهادی:
-                    </p>
-                    {quickPrompts.map((prompt, index) => (
-                      <Button
-                        key={index}
-                        variant="ghost"
-                        onClick={() => handleQuickPrompt(prompt)}
-                        className="w-full justify-end text-right p-3 h-auto bg-muted/50 hover:bg-muted text-sm"
-                      >
-                        {prompt}
-                      </Button>
-                    ))}
+                  <div className="space-y-6">
+                    <div className="text-center space-y-2">
+                      <p className="text-lg text-foreground">
+                        👋 سلام! چطور می‌تونم کمکتون کنم؟
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        می‌تونید سوالی درباره داده‌های رسانه‌ای بپرسید یا از پیشنهادهای زیر استفاده کنید
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        سوالات پیشنهادی:
+                      </p>
+                      {quickPrompts.map((prompt, index) => (
+                        <Button
+                          key={index}
+                          variant="ghost"
+                          onClick={() => handleQuickPrompt(prompt)}
+                          disabled={isLoading}
+                          className="w-full justify-end text-right p-3 h-auto bg-muted/50 hover:bg-muted text-sm transition-all duration-200 hover:shadow-sm disabled:opacity-50"
+                        >
+                          {prompt}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -158,19 +172,28 @@ const ChatPanel = () => {
                         }`}
                       >
                         <div
-                          className={`max-w-[85%] rounded-lg p-3 ${
+                          className={`max-w-[85%] rounded-lg p-3 shadow-sm ${
                             message.role === 'user'
                               ? 'bg-primary text-primary-foreground'
                               : 'bg-muted text-foreground'
                           }`}
                         >
-                          <p className="text-sm leading-relaxed">{message.content}</p>
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                            {message.content}
+                          </p>
                         </div>
                         <span className="text-xs text-muted-foreground opacity-70 mt-1">
                           {formatTime(message.timestamp)}
                         </span>
                       </div>
                     ))}
+                    {isLoading && (
+                      <div className="flex flex-col items-start">
+                        <div className="bg-muted rounded-lg p-3 shadow-sm">
+                          <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                        </div>
+                      </div>
+                    )}
                     <div ref={scrollRef} />
                   </>
                 )}
@@ -178,13 +201,13 @@ const ChatPanel = () => {
             </ScrollArea>
 
             {/* Input Area */}
-            <div className="border-t p-4">
+            <div className="border-t p-4 bg-background">
               <div className="flex gap-2">
                 <Button
                   onClick={() => handleSend()}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isLoading}
                   size="icon"
-                  className="shrink-0"
+                  className="shrink-0 disabled:opacity-50"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -195,6 +218,7 @@ const ChatPanel = () => {
                   placeholder="سوال خود را بپرسید..."
                   className="flex-1 text-right"
                   dir="rtl"
+                  disabled={isLoading}
                 />
               </div>
             </div>
