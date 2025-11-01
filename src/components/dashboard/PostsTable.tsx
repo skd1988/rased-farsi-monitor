@@ -125,14 +125,22 @@ const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
                     >
                       <Eye className="w-4 h-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => window.open(post.articleURL, '_blank')}
-                      title="لینک اصلی"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
+                    {post.articleURL && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        asChild
+                      >
+                        <a
+                          href={post.articleURL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="لینک اصلی"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
