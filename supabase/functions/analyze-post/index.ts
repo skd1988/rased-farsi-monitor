@@ -1,212 +1,330 @@
+// Fixed version - Using same approach as analyze-post
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.77.0';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.77.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface ChatRequest {
+  question: string;
+  conversationHistory?: Array<{ role: string; content: string }>;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log("🚀 analyze-post function started");
+  const startTime = Date.now();
 
   try {
-    // Initialize Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    console.log("Chat request received");
 
-    const { postId, postTitle, postContent } = await req.json();
+    const { question, conversationHistory = [] }: ChatRequest = await req.json();
 
-    // Validate input
-    if (!postId || !postContent) {
-      console.error("❌ Missing required fields");
-      return new Response(JSON.stringify({ error: "postId and postContent are required" }), {
+    if (!question || typeof question !== "string") {
+      return new Response(JSON.stringify({ error: "Question is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Check API key
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const deepseekApiKey = Deno.env.get("DEEPSEEK_API_KEY");
+
     if (!deepseekApiKey) {
-      console.error("❌ DEEPSEEK_API_KEY not configured");
-      return new Response(
-        JSON.stringify({
-          error: "API key not configured",
-          code: "MISSING_API_KEY",
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      throw new Error("DEEPSEEK_API_KEY not configured");
     }
 
-    const startTime = Date.now();
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Prepare prompt for DeepSeek
-    const prompt = `تو یک تحلیلگر رسانه‌ای حرفه‌ای هستی. این مطلب خبری رو تحلیل کن:
+    console.log(`Processing question: "${question}"`);
 
-عنوان: ${postTitle}
-محتوا: ${postContent}
+    // Fetch relevant data from Supabase
+    const relevantData = await fetchRelevantData(supabase, question);
 
-لطفاً خروجی رو دقیقاً به این فرمت JSON بده (بدون هیچ توضیح اضافی):
-
-{
-  "summary": "خلاصه محتوا در 2-3 جمله فارسی",
-  "sentiment": "Positive یا Negative یا Neutral",
-  "sentiment_score": عدد بین -1.0 تا +1.0,
-  "main_topic": "جنگ روانی یا محور مقاومت یا اتهام یا شبهه یا کمپین یا تحلیل سیاسی یا اخبار عادی",
-  "threat_level": "Critical یا High یا Medium یا Low",
-  "confidence": عدد بین 0 تا 100,
-  "key_points": ["نکته 1", "نکته 2", "نکته 3"],
-  "recommended_action": "اقدام پیشنهادی در یک جمله فارسی",
-  "keywords": ["کلمه1", "کلمه2", "کلمه3"]
-}
-
-معیارهای ارزیابی:
-- Threat Level Critical: محتوای وایرال، اتهامات جدی، کمپین هماهنگ شده
-- Threat Level High: محتوای تأثیرگذار
-- Threat Level Medium: محتوای معمولی با کلیدواژه‌های مرتبط
-- Threat Level Low: اشاره غیرمستقیم`;
-
-    console.log("📞 Calling DeepSeek API...");
-
-    // Call DeepSeek API
-    const deepseekResponse = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${deepseekApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
-    });
-
-    // Handle API errors
-    if (!deepseekResponse.ok) {
-      const errorText = await deepseekResponse.text();
-      console.error("❌ DeepSeek API error:", deepseekResponse.status, errorText);
-
-      if (deepseekResponse.status === 429) {
-        return new Response(
-          JSON.stringify({
-            error: "Rate limit exceeded. Please try again later.",
-            code: "RATE_LIMIT",
-          }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      throw new Error(`DeepSeek API error: ${deepseekResponse.status}`);
-    }
-
-    const deepseekData = await deepseekResponse.json();
-    const responseContent = deepseekData.choices[0].message.content;
-
-    // Extract JSON from response
-    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("Failed to extract JSON from response");
-    }
-
-    const analysis = JSON.parse(jsonMatch[0]);
-    const processingTime = (Date.now() - startTime) / 1000;
+    // Call DeepSeek API (using same method as analyze-post)
+    const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
 
     // Log API usage
-    const inputTokens = deepseekData.usage?.prompt_tokens || 0;
-    const outputTokens = deepseekData.usage?.completion_tokens || 0;
-    const totalTokens = deepseekData.usage?.total_tokens || 0;
-    
-    // DeepSeek pricing: $0.14 per 1M input tokens, $0.28 per 1M output tokens
-    const costUsd = (inputTokens * 0.14 / 1000000) + (outputTokens * 0.28 / 1000000);
+    await logAPIUsage(supabase, question, aiResponse.usage);
 
-    try {
-      await supabaseClient.from('api_usage_logs').insert({
-        post_id: postId,
-        model_used: 'deepseek-chat',
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        total_tokens: totalTokens,
-        cost_usd: costUsd,
-        response_time_ms: Math.round(processingTime * 1000),
-        status: 'success'
-      });
-    } catch (logError) {
-      console.error('⚠️ Failed to log API usage:', logError);
-      // Don't fail the request if logging fails
-    }
+    const processingTime = Date.now() - startTime;
+    console.log(`Response generated in ${processingTime}ms`);
 
-    console.log("✅ Analysis completed successfully");
-    console.log(`📊 Tokens: ${totalTokens} (in: ${inputTokens}, out: ${outputTokens}), Cost: $${costUsd.toFixed(6)}`);
-
-    // Return standardized response
     return new Response(
       JSON.stringify({
-        success: true,
-        analysis: {
-          summary: analysis.summary,
-          sentiment: analysis.sentiment,
-          sentiment_score: parseFloat(analysis.sentiment_score),
-          main_topic: analysis.main_topic,
-          threat_level: analysis.threat_level,
-          confidence: parseInt(analysis.confidence),
-          key_points: analysis.key_points || [],
-          recommended_action: analysis.recommended_action,
-          keywords: analysis.keywords || analysis.keywords_found || [],
-          analyzed_at: new Date().toISOString(),
-          analysis_model: "DeepSeek",
-          processing_time: processingTime,
+        answer: aiResponse.answer,
+        keyFindings: aiResponse.keyFindings,
+        statistics: aiResponse.statistics,
+        sources: aiResponse.sources,
+        recommendations: aiResponse.recommendations,
+        metadata: {
+          processingTime,
+          tokensUsed: aiResponse.usage.total_tokens,
+          model: "deepseek-chat",
+          dataUsed: { postsCount: relevantData.posts.length },
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
-    console.error("💥 Error:", error);
-
-    // Try to log the error (best effort)
-    try {
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-      
-      const errorData = await req.json().catch(() => ({}));
-      if (errorData.postId) {
-        await supabaseClient.from('api_usage_logs').insert({
-          post_id: errorData.postId,
-          model_used: 'deepseek-chat',
-          input_tokens: 0,
-          output_tokens: 0,
-          total_tokens: 0,
-          cost_usd: 0,
-          response_time_ms: 0,
-          status: 'error',
-          error_message: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    } catch (logError) {
-      console.error('⚠️ Failed to log error:', logError);
-    }
-
+    console.error("Error:", error);
     return new Response(
       JSON.stringify({
-        error: error instanceof Error ? error.message : "Unknown error",
-        code: "ANALYSIS_ERROR",
+        answer:
+          "متأسفانه خطایی رخ داد. لطفاً دوباره تلاش کنید.\n\nجزئیات: " +
+          (error instanceof Error ? error.message : "خطای نامشخص"),
+        isError: true,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
+
+async function fetchRelevantData(supabase: any, question: string) {
+  const query = question.toLowerCase();
+
+  // Determine time range based on question
+  let timeFilter: string;
+  const now = new Date();
+
+  if (query.includes("امروز") || query.includes("today")) {
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    timeFilter = today.toISOString();
+  } else if (query.includes("دیروز") || query.includes("yesterday")) {
+    const yesterday = new Date(now.getTime() - 86400000);
+    yesterday.setHours(0, 0, 0, 0);
+    timeFilter = yesterday.toISOString();
+  } else if (query.includes("هفته") || query.includes("week") || query.includes("۷")) {
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+    timeFilter = weekAgo.toISOString();
+  } else {
+    // Default: last 30 days
+    const monthAgo = new Date(now.getTime() - 30 * 86400000);
+    timeFilter = monthAgo.toISOString();
+  }
+
+  // Fetch posts from database
+  const { data: posts, error: postsError } = await supabase
+    .from("posts")
+    .select("*")
+    .gte("published_at", timeFilter)
+    .order("published_at", { ascending: false })
+    .limit(100);
+
+  if (postsError) {
+    console.error("Error fetching posts:", postsError);
+  }
+
+  console.log(`Fetched ${posts?.length || 0} posts for analysis`);
+
+  return { posts: posts || [], timeRange: timeFilter };
+}
+
+async function callDeepSeekAPI(apiKey: string, question: string, data: any, history: any[]) {
+  const dataContext = buildDataContext(data);
+
+  // Build conversation history
+  const historyMessages = history.slice(-10).map((msg: any) => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+
+  // Create the prompt (similar to analyze-post approach)
+  const prompt = `تو یک دستیار هوشمند و تحلیلگر رسانه‌ای هستی.
+
+مهم: به هر سوالی پاسخ بده. محدودیتی نداری!
+
+سوال کاربر: ${question}
+
+${historyMessages.length > 0 ? `تاریخچه گفتگو:\n${historyMessages.map((m) => `${m.role}: ${m.content}`).join("\n")}\n` : ""}
+
+داده‌های رسانه‌ای (در صورت نیاز استفاده کن):
+${dataContext}
+
+لطفاً خروجی رو دقیقاً به این فرمت JSON بده:
+
+{
+  "answer": "پاسخ کامل به فارسی",
+  "keyFindings": ["یافته 1", "یافته 2"] یا [],
+  "statistics": {"total_posts": 10} یا {},
+  "sources": {"posts": ["id1", "id2"]} یا {"posts": []},
+  "recommendations": ["توصیه 1"] یا []
+}
+
+قوانین مهم:
+- هیچوقت نگو "من فقط می‌تونم به سوالات زیر پاسخ بدم"
+- اگر سوال عمومی بود (سلام، چطوری، ...) بدون استفاده از داده رسانه‌ای جواب بده
+- همیشه answer رو پر کن`;
+
+  console.log("Calling DeepSeek API...");
+  console.log("Question:", question);
+
+  // Call DeepSeek (same as analyze-post - NO response_format!)
+  const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 4000,
+      // ✅ NO response_format - same as analyze-post!
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("DeepSeek API error:", response.status, errorText);
+    throw new Error(`DeepSeek API error: ${response.status}`);
+  }
+
+  const result = await response.json();
+  console.log("DeepSeek API responded successfully");
+
+  const responseContent = result.choices[0].message.content;
+  console.log("Raw response preview:", responseContent.substring(0, 200));
+
+  let aiAnswer;
+  try {
+    // Extract JSON from response (same as analyze-post)
+    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      aiAnswer = JSON.parse(jsonMatch[0]);
+      console.log("Parsed answer preview:", aiAnswer.answer?.substring(0, 100));
+    } else {
+      console.warn("No JSON found in response, using raw content");
+      aiAnswer = {
+        answer: responseContent,
+        keyFindings: [],
+        statistics: {},
+        sources: { posts: [] },
+        recommendations: [],
+      };
+    }
+  } catch (parseError) {
+    console.error("Error parsing AI response:", parseError);
+    console.error("Raw content:", responseContent);
+
+    // Fallback
+    aiAnswer = {
+      answer: responseContent,
+      keyFindings: [],
+      statistics: {},
+      sources: { posts: [] },
+      recommendations: [],
+    };
+  }
+
+  return {
+    answer: aiAnswer.answer || "پاسخی دریافت نشد",
+    keyFindings: aiAnswer.keyFindings || [],
+    statistics: aiAnswer.statistics || {},
+    sources: aiAnswer.sources || { posts: [] },
+    recommendations: aiAnswer.recommendations || [],
+    usage: result.usage,
+  };
+}
+
+function buildDataContext(data: any) {
+  const { posts } = data;
+
+  if (!posts || posts.length === 0) {
+    return `هیچ داده رسانه‌ای در بازه زمانی موجود نیست.
+
+اگر سوال درباره داده رسانه‌ای است، به کاربر بگو داده‌ای موجود نیست.
+اگر سوال عمومی است، آزادانه جواب بده.`;
+  }
+
+  // Group by language
+  const byLanguage: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    const lang = p.language || "نامشخص";
+    byLanguage[lang] = (byLanguage[lang] || 0) + 1;
+  });
+
+  // Group by source
+  const bySource: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    const src = p.source || "نامشخص";
+    bySource[src] = (bySource[src] || 0) + 1;
+  });
+
+  // Group by sentiment
+  const bySentiment: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    if (p.sentiment) {
+      bySentiment[p.sentiment] = (bySentiment[p.sentiment] || 0) + 1;
+    }
+  });
+
+  // Group by threat level
+  const byThreat: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    if (p.threat_level) {
+      byThreat[p.threat_level] = (byThreat[p.threat_level] || 0) + 1;
+    }
+  });
+
+  const summary = {
+    total: posts.length,
+    byLanguage,
+    bySource,
+    bySentiment,
+    byThreat,
+    samplePosts: posts.slice(0, 5).map((p: any) => ({
+      id: p.id,
+      title: p.title,
+      source: p.source,
+      date: p.published_at,
+    })),
+  };
+
+  return `داده‌های موجود:
+
+کل مطالب: ${summary.total}
+توزیع زبان: ${JSON.stringify(summary.byLanguage)}
+توزیع منابع: ${JSON.stringify(summary.bySource)}
+${Object.keys(summary.bySentiment).length > 0 ? "احساسات: " + JSON.stringify(summary.bySentiment) : ""}
+${Object.keys(summary.byThreat).length > 0 ? "سطح تهدید: " + JSON.stringify(summary.byThreat) : ""}
+
+نمونه مطالب: ${JSON.stringify(summary.samplePosts)}`;
+}
+
+async function logAPIUsage(supabase: any, question: string, usage: any) {
+  try {
+    const inputCost = (usage.prompt_tokens * 0.27) / 1000000;
+    const outputCost = (usage.completion_tokens * 1.1) / 1000000;
+    const totalCost = inputCost + outputCost;
+
+    await supabase.from("api_usage_logs").insert({
+      endpoint: "chat",
+      question: question.substring(0, 200),
+      tokens_used: usage.total_tokens,
+      input_tokens: usage.prompt_tokens,
+      output_tokens: usage.completion_tokens,
+      model_used: "deepseek-chat",
+      status: "success",
+      cost_usd: totalCost,
+    });
+
+    console.log(`API usage logged: ${usage.total_tokens} tokens, $${totalCost.toFixed(6)}`);
+  } catch (error) {
+    console.error("Error logging API usage:", error);
+    // Don't throw - logging failure shouldn't break the chat
+  }
+}
