@@ -623,7 +623,7 @@ const PostsExplorer = () => {
                           />
                         </th>
                         <th className="p-4 text-right font-medium">ردیف</th>
-                        <th className="p-4 text-right font-medium min-w-[300px]">عنوان</th>
+                        <th className="p-4 text-right font-medium w-[400px] max-w-[400px]">عنوان</th>
                         <th className="p-4 text-right font-medium">منبع</th>
                         <th className="p-4 text-right font-medium">نویسنده</th>
                         <th className="p-4 text-right font-medium">تاریخ</th>
@@ -648,10 +648,10 @@ const PostsExplorer = () => {
                           <td className="p-4 text-muted-foreground">
                             {(currentPage - 1) * itemsPerPage + index + 1}
                           </td>
-                          <td className="p-4">
+                          <td className="p-4 max-w-md">
                             <button
                               onClick={() => setSelectedPost(post)}
-                              className="text-right hover:text-primary transition-colors font-medium line-clamp-2"
+                              className="text-right hover:text-primary transition-colors font-medium line-clamp-2 w-full text-ellipsis overflow-hidden"
                             >
                               {post.title}
                             </button>
