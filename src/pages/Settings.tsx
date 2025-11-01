@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { detectCountryFromSource } from "@/utils/countryDetector";
 import {
   Loader2,
   Key,
@@ -1625,11 +1626,23 @@ const Settings = () => {
             });
           }
 
+          // Detect country from source
+          const detectedCountry = detectCountryFromSource(cleanSource, finalUrl || '');
+
+          if (i < 3) {
+            console.log(`🌍 Country detection for row ${i + 1}:`, {
+              source: cleanSource,
+              sourceUrl: finalUrl,
+              detectedCountry: detectedCountry || 'نامشخص'
+            });
+          }
+
           const post = {
             title: title,
             contents: contents || "محتوا موجود نیست",
             source: cleanSource,
             source_type: detectSourceType(finalUrl, cleanSource),
+            source_country: detectedCountry || 'نامشخص',
             author: rawAuthor || null,
             published_at: (() => {
               // Try date fields first
