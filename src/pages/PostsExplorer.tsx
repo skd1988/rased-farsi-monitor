@@ -613,25 +613,25 @@ const PostsExplorer = () => {
                     </Button>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full table-fixed">
+                  <div className="overflow-x-auto max-w-full">
+                    <table className="w-full">
                       <thead className="border-b bg-muted/50">
                         <tr>
-                          <th className="p-4 text-right w-12">
+                          <th className="p-3 text-right w-12 flex-shrink-0">
                             <Checkbox
                               checked={selectedPosts.size === paginatedPosts.length && paginatedPosts.length > 0}
                               onCheckedChange={handleSelectAll}
                             />
                           </th>
-                          <th className="p-4 text-right font-medium w-16">ردیف</th>
-                          <th className="p-4 text-right font-medium min-w-[200px] max-w-[400px]">عنوان</th>
-                          <th className="p-4 text-right font-medium w-36">منبع</th>
-                          <th className="p-4 text-right font-medium w-32">نویسنده</th>
-                          <th className="p-4 text-right font-medium w-44">تاریخ</th>
-                          <th className="p-4 text-right font-medium w-20">زبان</th>
-                          <th className="p-4 text-right font-medium w-48">کلمات کلیدی</th>
-                          <th className="p-4 text-right font-medium w-32">وضعیت</th>
-                          <th className="p-4 text-right font-medium w-24">عملیات</th>
+                          <th className="p-3 text-right font-medium w-16 flex-shrink-0">ردیف</th>
+                          <th className="p-3 text-right font-medium min-w-[250px]">عنوان</th>
+                          <th className="p-3 text-right font-medium min-w-[120px]">منبع</th>
+                          <th className="p-3 text-right font-medium min-w-[100px]">نویسنده</th>
+                          <th className="p-3 text-right font-medium min-w-[150px]">تاریخ</th>
+                          <th className="p-3 text-right font-medium w-20 flex-shrink-0">زبان</th>
+                          <th className="p-3 text-right font-medium min-w-[180px]">کلمات کلیدی</th>
+                          <th className="p-3 text-right font-medium min-w-[100px]">وضعیت</th>
+                          <th className="p-3 text-right font-medium w-20 flex-shrink-0">عملیات</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -640,69 +640,73 @@ const PostsExplorer = () => {
                             key={post.id}
                             className="border-b hover:bg-muted/50 transition-colors"
                           >
-                            <td className="p-4">
+                            <td className="p-3">
                               <Checkbox
                                 checked={selectedPosts.has(post.id)}
                                 onCheckedChange={(checked) => handleSelectPost(post.id, checked as boolean)}
                               />
                             </td>
-                            <td className="p-4 text-muted-foreground">
+                            <td className="p-3 text-muted-foreground text-sm">
                               {(currentPage - 1) * itemsPerPage + index + 1}
                             </td>
-                            <td className="p-4">
+                            <td className="p-3">
                               <button
                                 onClick={() => setSelectedPost(post)}
-                                className="text-right hover:text-primary transition-colors font-medium line-clamp-2 w-full break-words"
+                                className="text-right hover:text-primary transition-colors font-medium line-clamp-2 max-w-[400px] break-words overflow-hidden text-ellipsis"
                               >
                                 {post.title}
                               </button>
                             </td>
-                            <td className="p-4">
-                              <Badge variant="outline" className="whitespace-nowrap">
+                            <td className="p-3">
+                              <Badge variant="outline" className="text-xs whitespace-nowrap">
                                 {post.source}
                               </Badge>
                             </td>
-                            <td className="p-4 text-sm text-muted-foreground truncate">
-                              {post.author || '-'}
+                            <td className="p-3 text-sm text-muted-foreground">
+                              <div className="truncate max-w-[150px]">
+                                {post.author || '-'}
+                              </div>
                             </td>
-                            <td className="p-4">
+                            <td className="p-3">
                               <div className="text-sm">
-                                <div>{formatPersianDate(post.published_at)}</div>
-                                <div className="text-xs text-muted-foreground">
+                                <div className="whitespace-nowrap">{formatPersianDate(post.published_at)}</div>
+                                <div className="text-xs text-muted-foreground whitespace-nowrap">
                                   {getRelativeTime(post.published_at)}
                                 </div>
                               </div>
                             </td>
-                            <td className="p-4 text-sm text-center">
-                              {LANGUAGES.find(l => l.code === post.language)?.emoji} {post.language}
+                            <td className="p-3 text-sm text-center">
+                              <span className="whitespace-nowrap">
+                                {LANGUAGES.find(l => l.code === post.language)?.emoji}
+                              </span>
                             </td>
-                            <td className="p-4">
-                              <div className="flex flex-wrap gap-1">
-                                {post.keywords.slice(0, 3).map(keyword => (
+                            <td className="p-3">
+                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {post.keywords.slice(0, 2).map(keyword => (
                                   <Badge
                                     key={keyword}
                                     variant="outline"
-                                    className={cn('text-xs', KEYWORD_COLORS[keyword])}
+                                    className={cn('text-xs whitespace-nowrap', KEYWORD_COLORS[keyword])}
                                   >
                                     {keyword}
                                   </Badge>
                                 ))}
-                                {post.keywords.length > 3 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    +{post.keywords.length - 3} دیگر
+                                {post.keywords.length > 2 && (
+                                  <Badge variant="outline" className="text-xs whitespace-nowrap">
+                                    +{post.keywords.length - 2}
                                   </Badge>
                                 )}
                               </div>
                             </td>
-                            <td className="p-4">
-                              <Badge variant="outline" className={cn('text-xs', STATUS_COLORS[post.status])}>
+                            <td className="p-3">
+                              <Badge variant="outline" className={cn('text-xs whitespace-nowrap', STATUS_COLORS[post.status])}>
                                 {post.status}
                               </Badge>
                             </td>
-                            <td className="p-4">
+                            <td className="p-3">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                     <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
