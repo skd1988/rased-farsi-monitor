@@ -32,6 +32,7 @@ import {
   Trash2,
   Search,
   Languages,
+  Activity,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Papa from "papaparse";
@@ -1926,7 +1927,7 @@ const Settings = () => {
         )}
 
         <Tabs defaultValue="data-sources" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsList className="grid w-full grid-cols-6 mb-8">
             <TabsTrigger value="data-sources" className="gap-2">
               <Database className="h-4 w-4" />
               <span className="hidden sm:inline">منابع داده</span>
@@ -1946,6 +1947,14 @@ const Settings = () => {
             <TabsTrigger value="automation" className="gap-2">
               <Zap className="h-4 w-4" />
               <span className="hidden sm:inline">اتوماسیون</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="api-usage" 
+              className="gap-2"
+              onClick={() => window.location.href = '/settings/api-usage'}
+            >
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">مصرف API</span>
             </TabsTrigger>
           </TabsList>
 

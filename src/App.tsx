@@ -14,6 +14,7 @@ import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Trends from "./pages/Trends";
 import APIUsage from "./pages/APIUsage";
+import SettingsAPIUsage from "./pages/settings/APIUsage";
 import ComingSoon from "./pages/ComingSoon";
 import Debug from "./pages/Debug";
 import NotFound from "./pages/NotFound";
@@ -37,6 +38,7 @@ const App = () => (
                   <Route path="posts" element={<PostsExplorer />} />
                   <Route path="ai-analysis" element={<AIAnalysis />} />
                   <Route path="api-usage" element={<APIUsage />} />
+                  <Route path="settings/api-usage" element={<SettingsAPIUsage />} />
                   <Route path="alerts" element={<Alerts />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="trends" element={<Trends />} />
