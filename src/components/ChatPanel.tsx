@@ -17,6 +17,16 @@ interface Message {
   content: string;
   role: 'user' | 'assistant';
   timestamp: Date;
+  metadata?: {
+    processingTime?: number;
+  };
+  statistics?: Record<string, number>;
+  keyFindings?: string[];
+  sources?: {
+    posts?: string[];
+    analysis?: string[];
+  };
+  isError?: boolean;
 }
 
 const ChatPanel = () => {
@@ -67,6 +77,10 @@ const ChatPanel = () => {
         content: data.answer || "متأسفم، خطایی رخ داده است.",
         role: 'assistant',
         timestamp: new Date(),
+        metadata: data.metadata,
+        statistics: data.statistics,
+        keyFindings: data.keyFindings,
+        sources: data.sources,
       };
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
@@ -76,6 +90,7 @@ const ChatPanel = () => {
         content: "متأسفم، خطایی در ارتباط با سرور رخ داده است. لطفاً دوباره تلاش کنید.",
         role: 'assistant',
         timestamp: new Date(),
+        isError: true,
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -191,12 +206,90 @@ const ChatPanel = () => {
                           className={`max-w-[85%] rounded-lg p-3 shadow-sm ${
                             message.role === 'user'
                               ? 'bg-primary text-primary-foreground'
+                              : message.isError
+                              ? 'bg-destructive/10 text-destructive'
                               : 'bg-muted text-foreground'
                           }`}
                         >
                           <p className="text-sm leading-relaxed whitespace-pre-wrap">
                             {message.content}
                           </p>
+
+                          {/* Metadata section for AI messages */}
+                          {message.role === 'assistant' && !message.isError && (
+                            <>
+                              {/* Statistics */}
+                              {message.statistics && Object.keys(message.statistics).length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-border">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {Object.entries(message.statistics).map(([key, value]) => (
+                                      <div key={key} className="bg-background p-2 rounded text-xs">
+                                        <div className="text-muted-foreground">{key}</div>
+                                        <div className="font-semibold">{value}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Key Findings */}
+                              {message.keyFindings && message.keyFindings.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-border">
+                                  <p className="font-semibold text-xs mb-1">نکات کلیدی:</p>
+                                  <ul className="list-disc list-inside space-y-1 text-xs">
+                                    {message.keyFindings.map((finding, idx) => (
+                                      <li key={idx}>{finding}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Sources */}
+                              {message.sources && (message.sources.posts?.length || message.sources.analysis?.length) && (
+                                <div className="mt-3 pt-3 border-t border-border">
+                                  <p className="font-semibold text-xs mb-2">
+                                    منابع ({(message.sources.posts?.length || 0) + (message.sources.analysis?.length || 0)}):
+                                  </p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {[...(message.sources.posts || []), ...(message.sources.analysis || [])]
+                                      .slice(0, 5)
+                                      .map((source, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="bg-primary/10 text-primary px-2 py-1 rounded text-xs"
+                                        >
+                                          {source}
+                                        </span>
+                                      ))}
+                                    {((message.sources.posts?.length || 0) + (message.sources.analysis?.length || 0)) > 5 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        +{((message.sources.posts?.length || 0) + (message.sources.analysis?.length || 0)) - 5} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Processing Time */}
+                              {message.metadata?.processingTime && (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  پردازش شد در {(message.metadata.processingTime / 1000).toFixed(1)} ثانیه
+                                </p>
+                              )}
+                            </>
+                          )}
+
+                          {/* Retry button for errors */}
+                          {message.isError && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSend(messages[messages.findIndex(m => m.id === message.id) - 1]?.content)}
+                              className="mt-2 text-xs"
+                            >
+                              تلاش مجدد
+                            </Button>
+                          )}
                         </div>
                         <span className="text-xs text-muted-foreground opacity-70 mt-1">
                           {formatTime(message.timestamp)}
@@ -205,8 +298,9 @@ const ChatPanel = () => {
                     ))}
                     {isLoading && (
                       <div className="flex flex-col items-start">
-                        <div className="bg-muted rounded-lg p-3 shadow-sm">
-                          <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                        <div className="bg-muted rounded-lg p-3 shadow-sm flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                          <span className="text-sm text-muted-foreground">در حال تایپ...</span>
                         </div>
                       </div>
                     )}
