@@ -41,15 +41,32 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
 
   const fetchUnanalyzedPosts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('id, title, contents, published_at, source')
-        .is('analyzed_at', null)
-        .order('published_at', { ascending: false })
-        .limit(50);
+      let allPosts: any[] = [];
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      setPosts(data || []);
+      // Fetch all unanalyzed posts in batches of 1000 to bypass Supabase's default limit
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('id, title, contents, published_at, source')
+          .is('analyzed_at', null)
+          .order('published_at', { ascending: false })
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allPosts = [...allPosts, ...data];
+          from += batchSize;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setPosts(allPosts);
     } catch (error) {
       console.error('Error fetching posts:', error);
       toast({
