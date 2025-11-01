@@ -13,6 +13,7 @@ import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { detectCountryFromSource } from '@/utils/countryDetector';
+import { toast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
   const [selectedPost, setSelectedPost] = useState<EnrichedPost | null>(null);
@@ -74,6 +75,121 @@ const Dashboard = () => {
     
     fetchPosts();
   }, []);
+
+  // Auto-migration for source_country field
+  useEffect(() => {
+    const checkAndMigrateCountries = async () => {
+      try {
+        // Check if migration has already run in this session
+        const hasRunMigration = sessionStorage.getItem('country_migration_done');
+        if (hasRunMigration) return;
+
+        // Check how many posts don't have source_country
+        const { count, error: countError } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .is('source_country', null);
+
+        if (countError) {
+          console.error('Error counting posts:', countError);
+          return;
+        }
+
+        // If more than 50 posts need migration, start auto-migration
+        if (count && count > 50) {
+          toast({
+            title: "🌍 شناسایی کشور منابع",
+            description: "در حال به‌روزرسانی کشور منابع... این کار چند ثانیه طول می‌کشد",
+          });
+
+          let totalUpdated = 0;
+          let totalFailed = 0;
+          const batchSize = 100;
+          let offset = 0;
+
+          while (offset < count) {
+            const { data: postsToUpdate, error: fetchError } = await supabase
+              .from('posts')
+              .select('id, source, source_url')
+              .is('source_country', null)
+              .range(offset, offset + batchSize - 1);
+
+            if (fetchError) {
+              console.error('Error fetching posts for migration:', fetchError);
+              totalFailed += batchSize;
+              offset += batchSize;
+              continue;
+            }
+
+            if (postsToUpdate && postsToUpdate.length > 0) {
+              // Update each post
+              for (const post of postsToUpdate) {
+                try {
+                  const country = detectCountryFromSource(post.source, post.source_url || '');
+                  
+                  if (country) {
+                    const { error: updateError } = await supabase
+                      .from('posts')
+                      .update({ source_country: country })
+                      .eq('id', post.id);
+
+                    if (updateError) {
+                      console.error('Error updating post:', post.id, updateError);
+                      totalFailed++;
+                    } else {
+                      totalUpdated++;
+                    }
+                  }
+                } catch (err) {
+                  console.error('Error processing post:', post.id, err);
+                  totalFailed++;
+                }
+              }
+            }
+
+            offset += batchSize;
+
+            // Show progress for large migrations
+            if (count > 200 && offset < count) {
+              const progress = Math.min(Math.round((offset / count) * 100), 100);
+              toast({
+                title: "پیشرفت Migration",
+                description: `${progress}٪ تکمیل شده...`,
+              });
+            }
+          }
+
+          // Show completion message
+          if (totalUpdated > 0) {
+            toast({
+              title: "✅ Migration موفق",
+              description: `${totalUpdated} مطلب به‌روزرسانی شد${totalFailed > 0 ? ` (${totalFailed} خطا)` : ''}`,
+            });
+
+            // Refresh the posts after migration
+            setTimeout(() => {
+              window.location.reload();
+            }, 2000);
+          }
+
+          // Mark migration as done
+          sessionStorage.setItem('country_migration_done', 'true');
+        }
+      } catch (error) {
+        console.error('Error in country migration:', error);
+        toast({
+          title: "خطا در Migration",
+          description: "مشکلی در به‌روزرسانی کشور منابع پیش آمد",
+          variant: "destructive",
+        });
+      }
+    };
+
+    // Run migration check after posts are loaded
+    if (!loading && posts.length > 0) {
+      checkAndMigrateCountries();
+    }
+  }, [loading, posts.length]);
   
   // Calculate KPIs
   const todayPosts = useMemo(() => {
