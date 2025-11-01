@@ -12,24 +12,6 @@ interface ChatRequest {
   conversationHistory?: Array<{ role: string; content: string }>;
 }
 
-interface ChatResponse {
-  answer: string;
-  sources?: {
-    posts?: string[];
-  };
-  metadata?: {
-    dataUsed?: {
-      postsCount?: number;
-    };
-    processingTime?: number;
-    tokensUsed?: number;
-    model?: string;
-  };
-  keyFindings?: string[];
-  statistics?: Record<string, any>;
-  recommendations?: string[];
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -150,45 +132,66 @@ async function callDeepSeekAPI(apiKey: string, question: string, data: any, hist
   const messages = [
     {
       role: "system",
-      content: `تو یک دستیار هوشمند و تحلیلگر رسانه‌ای حرفه‌ای هستی که به کاربر در هر موضوعی کمک می‌کنی.
+      content: `You are an intelligent AI assistant and media analyst who helps users with ANY topic they ask about.
 
-شخصیت تو:
-- دوستانه، صبور و کمک‌کننده
-- حرفه‌ای در تحلیل رسانه‌ای و داده‌ها
-- می‌تونی درباره هر موضوعی صحبت کنی (نه فقط رسانه)
+🚨 CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE:
 
-قابلیت‌های تو:
-1. ✅ پاسخ به هر سوالی - محدودیتی نداری!
-2. ✅ اگر سوال درباره داده‌های رسانه‌ای بود، از داده‌های واقعی زیر استفاده کن و آمار دقیق بده
-3. ✅ اگر سوال عمومی بود (سلام، درود، چطوری؟ یا موضوعات غیرمرتبط)، بر اساس دانش خودت پاسخ کامل و دوستانه بده
-4. ✅ اگر داده کافی نداری برای سوال رسانه‌ای، صادقانه بگو و راهنمایی کن
-5. ✅ همیشه پاسخ‌ها رو به فارسی، واضح و دوستانه بنویس
-6. ✅ از markdown برای فرمت‌بندی استفاده کن (** برای bold، - برای لیست)
+1. ✅ Answer EVERY question the user asks - NO EXCEPTIONS
+2. ✅ There are NO topic restrictions - you can discuss anything
+3. ✅ NEVER say "I can only answer these questions: X, Y, Z"
+4. ✅ NEVER list specific topics and ask user to choose from them
+5. ✅ Be conversational, friendly, and helpful
+6. ✅ Always respond in Persian (فارسی)
 
-داده‌های رسانه‌ای در دسترس (فقط برای سوالات مرتبط با رسانه):
+Your capabilities:
+- General conversation: greetings, how are you, small talk
+- Knowledge questions: science, history, technology, culture, etc.
+- Media analysis: use the data below when relevant
+- Creative tasks: writing, brainstorming, explanations
+- Technical help: programming, math, problem-solving
+
+Media data available (use ONLY if question is about media analysis):
 ${dataContext}
 
-⚠️ مهم ترین قوانین:
-- هیچ‌وقت نگو "من فقط می‌تونم به این سوالات پاسخ بدم"
-- به هر سوالی که کاربر پرسید، با تمام توان پاسخ بده
-- اگر نمی‌دونی، بگو که نمی‌دونی و پیشنهاد بده چطور می‌تونه پیدا کنه
-- اگر سوال ربطی به رسانه نداره، بازهم جواب بده (مثل سلام، احوالپرسی، سوالات عمومی)
+EXAMPLES - Learn from these:
 
-فرمت پاسخ (JSON):
+❌ WRONG (NEVER do this):
+User: "سلام"
+You: "متوجه سوال شما شدم. در حال حاضر من می‌توانم به سوالات زیر پاسخ دهم: • مطالب امروز..."
+
+✅ CORRECT:
+User: "سلام"
+You: {"answer": "سلام! خوش اومدید. چطور می‌تونم کمکتون کنم؟ 😊", "keyFindings": [], "statistics": {}, "sources": {"posts": []}, "recommendations": []}
+
+✅ CORRECT:
+User: "حالت چطوره؟"
+You: {"answer": "ممنون که پرسیدید! من آماده‌ام تا در هر موضوعی بهتون کمک کنم. چه سوالی دارید؟", "keyFindings": [], "statistics": {}, "sources": {"posts": []}, "recommendations": []}
+
+✅ CORRECT:
+User: "درباره هوش مصنوعی چیزی بگو"
+You: {"answer": "هوش مصنوعی (AI) یکی از هیجان‌انگیزترین حوزه‌های فناوری مدرن است...", "keyFindings": [], "statistics": {}, "sources": {"posts": []}, "recommendations": []}
+
+✅ CORRECT:
+User: "چند مطلب امروز داریم؟"
+You: {"answer": "بر اساس داده‌های موجود، امروز X مطلب جمع‌آوری شده است...", "keyFindings": ["..."], "statistics": {...}, "sources": {"posts": [...]}, "recommendations": ["..."]}
+
+Response Format (ALWAYS valid JSON):
 {
-  "answer": "پاسخ کامل به فارسی با markdown formatting",
-  "keyFindings": ["یافته مهم 1", "یافته 2"] یا [],
-  "statistics": {
-    "total_posts": عدد,
-    "relevant_count": عدد
-  } یا {},
-  "sources": {
-    "posts": ["post_id1", "post_id2"]
-  } یا { "posts": [] },
-  "recommendations": ["توصیه 1", "توصیه 2"] یا []
+  "answer": "Your complete answer in Persian with markdown formatting if needed",
+  "keyFindings": [] or ["finding 1", "finding 2"],
+  "statistics": {} or {"total_posts": 10, ...},
+  "sources": {"posts": []} or {"posts": ["id1", "id2"]},
+  "recommendations": [] or ["recommendation 1", "recommendation 2"]
 }
 
-💡 نکته: اگر سوال عمومی بود و نیازی به keyFindings، statistics، sources نداشت، آرایه‌ها و آبجکت‌ها رو خالی بذار، ولی answer همیشه باید پر و کامل باشه.`,
+Important notes:
+- If question is general (not about media data), leave keyFindings, statistics, sources, recommendations empty
+- But ALWAYS provide a complete, helpful answer
+- Use markdown in answer for formatting: **bold**, *italic*, - lists
+- Be natural and conversational
+- NEVER refuse to answer or limit yourself to specific topics
+
+Remember: You are a general-purpose AI assistant. Answer EVERYTHING!`,
     },
     ...history.slice(-10).map((msg: any) => ({
       role: msg.role,
@@ -201,6 +204,7 @@ ${dataContext}
   ];
 
   console.log("Calling DeepSeek API...");
+  console.log("Question:", question);
 
   const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
     method: "POST",
@@ -211,7 +215,7 @@ ${dataContext}
     body: JSON.stringify({
       model: "deepseek-chat",
       messages,
-      temperature: 0.9,
+      temperature: 1.0,
       max_tokens: 4000,
       response_format: { type: "json_object" },
     }),
@@ -225,12 +229,15 @@ ${dataContext}
 
   const result = await response.json();
   console.log("DeepSeek API responded successfully");
+  console.log("Raw response:", result.choices[0].message.content.substring(0, 200));
 
   let aiAnswer;
   try {
     aiAnswer = JSON.parse(result.choices[0].message.content);
   } catch (parseError) {
     console.error("Error parsing AI response:", parseError);
+    console.error("Raw content:", result.choices[0].message.content);
+
     // Fallback: use raw content as answer
     aiAnswer = {
       answer: result.choices[0].message.content,
@@ -240,6 +247,8 @@ ${dataContext}
       recommendations: [],
     };
   }
+
+  console.log("Parsed answer:", aiAnswer.answer.substring(0, 100));
 
   return {
     answer: aiAnswer.answer || "پاسخی دریافت نشد",
@@ -255,30 +264,22 @@ function buildDataContext(data: any) {
   const { posts } = data;
 
   if (!posts || posts.length === 0) {
-    return `📊 وضعیت داده‌ها: هیچ داده رسانه‌ای در بازه زمانی انتخابی موجود نیست.
+    return `📊 Data Status: No media data available in the selected time range.
 
-🔹 اگر سوال کاربر درباره آمار یا تحلیل رسانه‌ای است:
-   - به کاربر بگو که در حال حاضر داده‌ای موجود نیست
-   - پیشنهاد بده بازه زمانی دیگری را امتحان کند
-   - یا صبر کند تا سیستم داده جمع‌آوری کند
-
-🔹 اگر سوال کاربر عمومی است (مثل سلام، احوالپرسی، یا موضوعات غیرمرتبط):
-   - آزادانه و دوستانه جواب بده
-   - از دانش عمومی خودت استفاده کن
-   - محدودیت قائل نشو`;
+Important: If the user's question is NOT about media data (e.g., "hello", "how are you", general knowledge questions), you should answer freely using your knowledge. Only mention the lack of data if they specifically ask about media statistics or posts.`;
   }
 
   // Group by language
   const byLanguage: Record<string, number> = {};
   posts.forEach((p: any) => {
-    const lang = p.language || "نامشخص";
+    const lang = p.language || "Unknown";
     byLanguage[lang] = (byLanguage[lang] || 0) + 1;
   });
 
   // Group by source
   const bySource: Record<string, number> = {};
   posts.forEach((p: any) => {
-    const src = p.source || "نامشخص";
+    const src = p.source || "Unknown";
     bySource[src] = (bySource[src] || 0) + 1;
   });
 
@@ -340,18 +341,18 @@ function buildDataContext(data: any) {
     })),
   };
 
-  return `📊 خلاصه داده‌های موجود:
+  return `📊 Media Data Summary:
 
-کل مطالب: ${summary.total}
-بازه زمانی: ${summary.dateRange.from} تا ${summary.dateRange.to}
+Total posts: ${summary.total}
+Time range: ${summary.dateRange.from} to ${summary.dateRange.to}
 
-توزیع زبان: ${JSON.stringify(summary.byLanguage, null, 2)}
-توزیع منابع: ${JSON.stringify(summary.bySource, null, 2)}
-${Object.keys(summary.bySentiment).length > 0 ? "توزیع احساسات: " + JSON.stringify(summary.bySentiment, null, 2) : ""}
-${Object.keys(summary.byThreat).length > 0 ? "توزیع سطح تهدید: " + JSON.stringify(summary.byThreat, null, 2) : ""}
-${summary.topKeywords.length > 0 ? "کلمات کلیدی برتر: " + JSON.stringify(summary.topKeywords, null, 2) : ""}
+By Language: ${JSON.stringify(summary.byLanguage, null, 2)}
+By Source: ${JSON.stringify(summary.bySource, null, 2)}
+${Object.keys(summary.bySentiment).length > 0 ? "By Sentiment: " + JSON.stringify(summary.bySentiment, null, 2) : ""}
+${Object.keys(summary.byThreat).length > 0 ? "By Threat Level: " + JSON.stringify(summary.byThreat, null, 2) : ""}
+${summary.topKeywords.length > 0 ? "Top Keywords: " + JSON.stringify(summary.topKeywords, null, 2) : ""}
 
-نمونه مطالب (10 مورد اول):
+Sample Posts (first 10):
 ${JSON.stringify(summary.samplePosts, null, 2)}`;
 }
 
