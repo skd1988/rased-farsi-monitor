@@ -272,7 +272,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
             <div className="space-y-2">
               <div className="flex justify-between text-sm text-muted-foreground mb-2">
                 <span>پیشرفت: {currentPost} از {posts.length}</span>
-                <span>زمان تخمینی: {estimatedTimeRemaining} ثانیه</span>
+                <span>زمان تخمینی: {Math.ceil(estimatedTimeRemaining / 60)} دقیقه</span>
               </div>
               <Progress value={progress} className="w-full h-3" />
             </div>
