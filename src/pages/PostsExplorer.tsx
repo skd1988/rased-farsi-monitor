@@ -319,9 +319,9 @@ const PostsExplorer = () => {
   const getKeywordCount = (keyword: string) => posts.filter(p => p.keywords.includes(keyword)).length;
 
   return (
-    <div className="flex h-full bg-background" dir="rtl">
+    <div className="flex h-full bg-background overflow-x-hidden" dir="rtl">
       {/* Filters Sidebar */}
-      <aside className="w-80 border-r border-border bg-card overflow-y-auto">
+      <aside className="w-80 border-r border-border bg-card overflow-y-auto overflow-x-hidden flex-shrink-0">
         <div className="p-6 space-y-6">
           <div>
             <h3 className="text-lg font-bold mb-4">فیلترهای پیشرفته</h3>
@@ -545,7 +545,7 @@ const PostsExplorer = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="p-6">
           {/* Header */}
           <div className="mb-6">
@@ -613,7 +613,7 @@ const PostsExplorer = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-max">
                     <thead className="border-b bg-muted/50">
                       <tr>
                         <th className="p-4 text-right">
