@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
+import ChatPanel from '@/components/ChatPanel';
 
 const DashboardLayout = () => {
   const { isAuthenticated } = useAuth();
@@ -27,6 +28,7 @@ const DashboardLayout = () => {
           <Outlet />
         </main>
       </div>
+      <ChatPanel />
     </div>
   );
 };
