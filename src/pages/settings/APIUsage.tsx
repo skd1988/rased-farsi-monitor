@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Activity, TrendingUp, DollarSign, Zap, Download, RefreshCw, Info } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import {
   LineChart,
   Line,
@@ -19,43 +21,213 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-// Mock data for charts
-const lineChartData = [
-  { date: '۱ دی', query: 45, answer: 67 },
-  { date: '۲ دی', query: 52, answer: 78 },
-  { date: '۳ دی', query: 48, answer: 71 },
-  { date: '۴ دی', query: 61, answer: 89 },
-  { date: '۵ دی', query: 55, answer: 82 },
-  { date: '۶ دی', query: 49, answer: 74 },
-  { date: '۷ دی', query: 58, answer: 85 },
-];
+interface UsageLog {
+  id: string;
+  created_at: string;
+  model_used: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  response_time_ms: number;
+  status: string;
+  error_message: string | null;
+}
 
-const pieChartData = [
-  { name: 'query_analysis', value: 35, label: 'تحلیل سوال' },
-  { name: 'generate_answer', value: 55, label: 'تولید پاسخ' },
-  { name: 'chat', value: 10, label: 'چت' },
-];
+interface Stats {
+  today: {
+    requests: number;
+    cost: number;
+    trend: number;
+  };
+  week: {
+    requests: number;
+    cost: number;
+    trend: number;
+  };
+  month: {
+    requests: number;
+    cost: number;
+    trend: number;
+  };
+  avgCost: number;
+}
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))'];
 
-const endpointData = [
-  { endpoint: 'query_analysis', requests: 423, tokens: 45234, avg: 107, cost: 0.0234 },
-  { endpoint: 'generate_answer', requests: 687, tokens: 234567, avg: 341, cost: 0.4567 },
-  { endpoint: 'chat', requests: 133, tokens: 23456, avg: 176, cost: 0.0987 },
-];
-
-const activityData = Array.from({ length: 10 }, (_, i) => ({
-  id: i,
-  time: new Date(Date.now() - i * 3600000).toLocaleTimeString('fa-IR'),
-  endpoint: ['query_analysis', 'generate_answer', 'chat'][Math.floor(Math.random() * 3)],
-  question: 'مطالب امروز با threat level بالا رو نشون بده',
-  tokens: Math.floor(Math.random() * 500) + 100,
-  cost: (Math.random() * 0.01).toFixed(4),
-  time_ms: Math.floor(Math.random() * 2000) + 500,
-}));
-
 const APIUsage = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stats>({
+    today: { requests: 0, cost: 0, trend: 0 },
+    week: { requests: 0, cost: 0, trend: 0 },
+    month: { requests: 0, cost: 0, trend: 0 },
+    avgCost: 0
+  });
+  const [lineChartData, setLineChartData] = useState<any[]>([]);
+  const [pieChartData, setPieChartData] = useState<any[]>([]);
+  const [recentLogs, setRecentLogs] = useState<UsageLog[]>([]);
+  const [endpointStats, setEndpointStats] = useState<any[]>([]);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchUsageData();
+  }, []);
+
+  useEffect(() => {
+    if (autoRefresh) {
+      const interval = setInterval(fetchUsageData, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh]);
+
+  const fetchUsageData = async () => {
+    try {
+      setLoading(true);
+      
+      // Calculate date ranges
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      // Fetch all logs for the month
+      const { data: logs, error } = await supabase
+        .from('api_usage_logs')
+        .select('*')
+        .gte('created_at', monthStart.toISOString())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (!logs || logs.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      // Calculate stats
+      const todayLogs = logs.filter(log => new Date(log.created_at) >= todayStart);
+      const weekLogs = logs.filter(log => new Date(log.created_at) >= weekStart);
+      
+      const todayCost = todayLogs.reduce((sum, log) => sum + log.cost_usd, 0);
+      const weekCost = weekLogs.reduce((sum, log) => sum + log.cost_usd, 0);
+      const monthCost = logs.reduce((sum, log) => sum + log.cost_usd, 0);
+
+      setStats({
+        today: {
+          requests: todayLogs.length,
+          cost: todayCost,
+          trend: 12 // TODO: Calculate real trend
+        },
+        week: {
+          requests: weekLogs.length,
+          cost: weekCost,
+          trend: 8
+        },
+        month: {
+          requests: logs.length,
+          cost: monthCost,
+          trend: -3
+        },
+        avgCost: logs.length > 0 ? monthCost / logs.length : 0
+      });
+
+      // Prepare line chart data (last 7 days)
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date(now.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
+        return date.toISOString().split('T')[0];
+      });
+
+      const chartData = last7Days.map(date => {
+        const dayLogs = logs.filter(log => log.created_at.split('T')[0] === date);
+        return {
+          date: new Date(date).toLocaleDateString('fa-IR', { month: 'numeric', day: 'numeric' }),
+          requests: dayLogs.length,
+          tokens: dayLogs.reduce((sum, log) => sum + log.total_tokens, 0)
+        };
+      });
+      setLineChartData(chartData);
+
+      // Prepare pie chart data (cost by model)
+      const totalCost = logs.reduce((sum, log) => sum + log.cost_usd, 0);
+      setPieChartData([
+        {
+          name: 'DeepSeek Chat',
+          value: Math.round((totalCost / totalCost) * 100),
+          label: 'DeepSeek Chat'
+        }
+      ]);
+
+      // Endpoint stats (group by status/type)
+      const successLogs = logs.filter(log => log.status === 'success');
+      setEndpointStats([
+        {
+          endpoint: 'AI Analysis',
+          requests: successLogs.length,
+          tokens: successLogs.reduce((sum, log) => sum + log.total_tokens, 0),
+          avg: successLogs.length > 0 ? Math.round(successLogs.reduce((sum, log) => sum + log.total_tokens, 0) / successLogs.length) : 0,
+          cost: successLogs.reduce((sum, log) => sum + log.cost_usd, 0)
+        }
+      ]);
+
+      // Recent logs (last 10)
+      setRecentLogs(logs.slice(0, 10));
+
+      setLoading(false);
+
+      if (autoRefresh) {
+        toast({
+          title: "داده‌ها بروزرسانی شدند",
+          description: new Date().toLocaleTimeString('fa-IR'),
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching usage data:', error);
+      toast({
+        title: "خطا",
+        description: "خطا در دریافت داده‌ها",
+        variant: "destructive"
+      });
+      setLoading(false);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (recentLogs.length === 0) {
+      toast({
+        title: "خطا",
+        description: "هیچ داده‌ای برای خروجی وجود ندارد",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const csv = [
+      ['Timestamp', 'Model', 'Tokens', 'Input Tokens', 'Output Tokens', 'Cost (USD)', 'Processing Time (ms)', 'Status'].join(','),
+      ...recentLogs.map(log => [
+        log.created_at,
+        log.model_used,
+        log.total_tokens,
+        log.input_tokens,
+        log.output_tokens,
+        log.cost_usd.toFixed(6),
+        log.response_time_ms,
+        log.status
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `api-usage-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+
+    toast({
+      title: "✅ فایل ذخیره شد",
+      description: "CSV با موفقیت دانلود شد"
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background p-6" dir="rtl">
@@ -74,11 +246,11 @@ const APIUsage = () => {
             />
             <Label htmlFor="auto-refresh" className="text-sm">بروزرسانی خودکار</Label>
           </div>
-          <Button variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 ml-2" />
+          <Button variant="outline" size="sm" onClick={fetchUsageData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
             بروزرسانی
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="h-4 w-4 ml-2" />
             Export CSV
           </Button>
@@ -86,89 +258,114 @@ const APIUsage = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">امروز</p>
-              <p className="text-3xl font-bold mb-1">42</p>
-              <p className="text-sm text-muted-foreground">$0.0234</p>
-            </div>
-            <Activity className="h-8 w-8 text-primary" />
-          </div>
-          <p className="text-sm text-green-600 mt-2">+12%</p>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">این هفته</p>
-              <p className="text-3xl font-bold mb-1">287</p>
-              <p className="text-sm text-muted-foreground">$0.1567</p>
-            </div>
-            <TrendingUp className="h-8 w-8 text-primary" />
-          </div>
-          <p className="text-sm text-green-600 mt-2">+8%</p>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">این ماه</p>
-              <p className="text-3xl font-bold mb-1">1,243</p>
-              <p className="text-sm text-muted-foreground">$0.6789</p>
-            </div>
-            <DollarSign className="h-8 w-8 text-primary" />
-          </div>
-          <p className="text-sm text-red-600 mt-2">-3%</p>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">میانگین هزینه</p>
-              <p className="text-3xl font-bold mb-1">$0.0005</p>
-              <p className="text-sm text-muted-foreground">به ازای هر request</p>
-            </div>
-            <Zap className="h-8 w-8 text-primary" />
-          </div>
-        </Card>
-      </div>
-
-      {/* Smart Alerts */}
-      <div className="space-y-3 mb-6">
-        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-start gap-3">
-          <Info className="h-5 w-5 text-primary mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm">
-              💡 پیشنهاد: ۶۷٪ از سوالات می‌توانند از نتایج cache شده استفاده کنند
+      {loading && stats.today.requests === 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i} className="p-6 animate-pulse">
+              <div className="h-20 bg-muted rounded"></div>
+            </Card>
+          ))}
+        </div>
+      ) : stats.today.requests === 0 && stats.month.requests === 0 ? (
+        <Card className="p-6 mb-6">
+          <div className="text-center space-y-2">
+            <p className="text-lg">هنوز درخواستی ثبت نشده است.</p>
+            <p className="text-sm text-muted-foreground">
+              با استفاده از Chat، اولین درخواست خود را ارسال کنید تا آمار اینجا نمایش داده شود.
             </p>
           </div>
-        </div>
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 flex items-start gap-3">
-          <Info className="h-5 w-5 text-green-600 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm text-green-900 dark:text-green-100">
-              ✅ شما در محدوده بودجه هستید: $0.68 / $50.00
-            </p>
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <Card className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">امروز</p>
+                  <p className="text-3xl font-bold mb-1">{stats.today.requests}</p>
+                  <p className="text-sm text-muted-foreground">${stats.today.cost.toFixed(4)}</p>
+                </div>
+                <Activity className="h-8 w-8 text-primary" />
+              </div>
+              <p className="text-sm text-green-600 mt-2">+{stats.today.trend}%</p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">این هفته</p>
+                  <p className="text-3xl font-bold mb-1">{stats.week.requests}</p>
+                  <p className="text-sm text-muted-foreground">${stats.week.cost.toFixed(4)}</p>
+                </div>
+                <TrendingUp className="h-8 w-8 text-primary" />
+              </div>
+              <p className="text-sm text-green-600 mt-2">+{stats.week.trend}%</p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">این ماه</p>
+                  <p className="text-3xl font-bold mb-1">{stats.month.requests.toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">${stats.month.cost.toFixed(4)}</p>
+                </div>
+                <DollarSign className="h-8 w-8 text-primary" />
+              </div>
+              <p className={`text-sm ${stats.month.trend >= 0 ? 'text-green-600' : 'text-red-600'} mt-2`}>
+                {stats.month.trend >= 0 ? '+' : ''}{stats.month.trend}%
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">میانگین هزینه</p>
+                  <p className="text-3xl font-bold mb-1">${stats.avgCost.toFixed(6)}</p>
+                  <p className="text-sm text-muted-foreground">به ازای هر request</p>
+                </div>
+                <Zap className="h-8 w-8 text-primary" />
+              </div>
+            </Card>
           </div>
-        </div>
-      </div>
+
+          {/* Smart Alerts */}
+          <div className="space-y-3 mb-6">
+            {stats.month.cost > 40 && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex items-start gap-3">
+                <Info className="h-5 w-5 text-destructive mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm text-destructive">
+                    ⚠️ هشدار: با روند فعلی، هزینه ماهانه از بودجه تعیین‌شده ($50) فراتر می‌رود
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 flex items-start gap-3">
+              <Info className="h-5 w-5 text-green-600 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-green-900 dark:text-green-100">
+                  ✅ شما در محدوده بودجه هستید: ${stats.month.cost.toFixed(2)} / $50.00
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">درخواست‌ها در طول زمان</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={lineChartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="query" stroke="hsl(var(--primary))" name="تحلیل سوال" />
-              <Line type="monotone" dataKey="answer" stroke="hsl(var(--chart-2))" name="تولید پاسخ" />
-            </LineChart>
+              <LineChart data={lineChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="requests" stroke="hsl(var(--primary))" name="درخواست‌ها" />
+                <Line type="monotone" dataKey="tokens" stroke="hsl(var(--chart-2))" name="توکن‌ها" />
+              </LineChart>
           </ResponsiveContainer>
         </Card>
 
@@ -218,7 +415,7 @@ const APIUsage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {endpointData.map((row, idx) => (
+                  {endpointStats.map((row, idx) => (
                     <tr
                       key={idx}
                       className="border-b hover:bg-muted/50 transition-colors"
@@ -249,17 +446,17 @@ const APIUsage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {activityData.map((row) => (
+                  {recentLogs.map((row) => (
                     <tr
                       key={row.id}
                       className="border-b hover:bg-muted/50 transition-colors"
                     >
-                      <td className="p-3">{row.time}</td>
-                      <td className="p-3">{row.endpoint}</td>
-                      <td className="p-3 max-w-xs truncate">{row.question}</td>
-                      <td className="p-3">{row.tokens}</td>
-                      <td className="p-3">${row.cost}</td>
-                      <td className="p-3">{row.time_ms}ms</td>
+                      <td className="p-3">{new Date(row.created_at).toLocaleTimeString('fa-IR')}</td>
+                      <td className="p-3">{row.model_used}</td>
+                      <td className="p-3 max-w-xs truncate">تحلیل AI</td>
+                      <td className="p-3">{row.total_tokens}</td>
+                      <td className="p-3">${row.cost_usd.toFixed(6)}</td>
+                      <td className="p-3">{row.response_time_ms}ms</td>
                     </tr>
                   ))}
                 </tbody>
@@ -273,20 +470,20 @@ const APIUsage = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="p-6 bg-muted/50">
           <p className="text-sm text-muted-foreground mb-1">Input Tokens</p>
-          <p className="text-2xl font-bold mb-1">145,678</p>
-          <p className="text-sm text-muted-foreground">≈ $0.0393</p>
+          <p className="text-2xl font-bold mb-1">{recentLogs.reduce((sum, log) => sum + log.input_tokens, 0).toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">≈ ${(recentLogs.reduce((sum, log) => sum + log.input_tokens, 0) * 0.27 / 1000000).toFixed(4)}</p>
         </Card>
 
         <Card className="p-6 bg-muted/50">
           <p className="text-sm text-muted-foreground mb-1">Output Tokens</p>
-          <p className="text-2xl font-bold mb-1">97,118</p>
-          <p className="text-sm text-muted-foreground">≈ $0.1068</p>
+          <p className="text-2xl font-bold mb-1">{recentLogs.reduce((sum, log) => sum + log.output_tokens, 0).toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">≈ ${(recentLogs.reduce((sum, log) => sum + log.output_tokens, 0) * 1.10 / 1000000).toFixed(4)}</p>
         </Card>
 
         <Card className="p-6 bg-primary/10">
           <p className="text-sm text-muted-foreground mb-1">Total Cost</p>
-          <p className="text-2xl font-bold text-primary mb-1">$0.1461</p>
-          <p className="text-sm text-primary">تخمین ماهانه: $4.38</p>
+          <p className="text-2xl font-bold text-primary mb-1">${stats.month.cost.toFixed(4)}</p>
+          <p className="text-sm text-primary">تخمین ماهانه: ${(stats.month.cost * 30 / new Date().getDate()).toFixed(2)}</p>
         </Card>
       </div>
     </div>
