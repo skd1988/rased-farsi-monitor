@@ -9,30 +9,28 @@ const corsHeaders = {
 
 interface ChatRequest {
   question: string;
-  context?: string;
+  conversationHistory?: Array<{ role: string; content: string }>;
 }
 
 interface ChatResponse {
   answer: string;
   sources?: {
     posts?: string[];
-    analysis?: string[];
   };
   metadata?: {
     dataUsed?: {
-      rawPostsCount?: number;
-      analyzedPostsCount?: number;
+      postsCount?: number;
     };
     processingTime?: number;
-    threatLevel?: string;
-    confidence?: number;
+    tokensUsed?: number;
+    model?: string;
   };
   keyFindings?: string[];
-  statistics?: Record<string, number>;
+  statistics?: Record<string, any>;
+  recommendations?: string[];
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -42,314 +40,250 @@ serve(async (req) => {
   try {
     console.log('Chat request received');
     
-    const { question, context }: ChatRequest = await req.json();
+    const { question, conversationHistory = [] }: ChatRequest = await req.json();
     
     if (!question || typeof question !== 'string') {
       return new Response(
-        JSON.stringify({ error: 'Question is required and must be a string' }), 
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ error: 'Question is required' }), 
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
+    
+    if (!deepseekApiKey) {
+      throw new Error('DEEPSEEK_API_KEY not configured');
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`Processing question: "${question}" with context: ${context || 'none'}`);
+    console.log(`Processing: "${question}"`);
 
-    // Get today's date for filtering
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Fetch relevant data from Supabase
+    const relevantData = await fetchRelevantData(supabase, question);
 
-    const questionLower = question.toLowerCase();
-    let response: ChatResponse;
+    // Call DeepSeek API
+    const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
 
-    // Check for "today" keywords
-    if (questionLower.includes('امروز') || questionLower.includes('today')) {
-      console.log('Matched: today query');
-      
-      const { data: todayPosts, error } = await supabase
-        .from('posts')
-        .select('*')
-        .gte('published_at', today.toISOString())
-        .order('published_at', { ascending: false });
+    // Log API usage
+    await logAPIUsage(supabase, question, aiResponse.usage);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-
-      if (!todayPosts || todayPosts.length === 0) {
-        response = {
-          answer: "⚠️ هنوز داده‌ای برای امروز در دیتابیس وجود ندارد.\n\nبرای شروع:\n1. داده‌های نمونه را import کنید\n2. یا منتظر بمانید تا سیستم RSS داده جمع‌آوری کند\n\nآیا می‌خواهید داده‌های نمونه اضافه شوند؟",
-          keyFindings: ["هیچ داده‌ای برای امروز یافت نشد"],
-          statistics: { total_posts: 0 }
-        };
-      } else {
-        // Calculate statistics
-        const persianCount = todayPosts.filter((p: any) => p.language === 'فارسی').length;
-        const arabicCount = todayPosts.filter((p: any) => p.language === 'عربی').length;
-        const englishCount = todayPosts.filter((p: any) => p.language === 'انگلیسی').length;
-        
-        const analyzed = todayPosts.filter((p: any) => p.threat_level);
-        const positiveCount = analyzed.filter((p: any) => p.sentiment === 'مثبت').length;
-        const negativeCount = analyzed.filter((p: any) => p.sentiment === 'منفی').length;
-        const neutralCount = analyzed.filter((p: any) => p.sentiment === 'خنثی').length;
-        const highThreatCount = analyzed.filter((p: any) => p.threat_level === 'High' || p.threat_level === 'Critical').length;
-
-        response = {
-          answer: `امروز ${todayPosts.length} مطلب جمع‌آوری شده:\n• ${persianCount} مطلب فارسی\n• ${arabicCount} مطلب عربی\n• ${englishCount} مطلب انگلیسی\n\nتوزیع احساسات:\n• مثبت: ${positiveCount} مطلب (${Math.round(positiveCount/analyzed.length*100) || 0}٪)\n• خنثی: ${neutralCount} مطلب (${Math.round(neutralCount/analyzed.length*100) || 0}٪)\n• منفی: ${negativeCount} مطلب (${Math.round(negativeCount/analyzed.length*100) || 0}٪)\n\n${highThreatCount} مطلب با Threat Level بالا شناسایی شده.`,
-          sources: {
-            posts: todayPosts.slice(0, 5).map((p: any) => p.id),
-          },
-          statistics: {
-            total_posts: todayPosts.length,
-            positive: positiveCount,
-            negative: negativeCount,
-            neutral: neutralCount,
-            high_threat: highThreatCount
-          },
-          keyFindings: [
-            `${persianCount} مطلب فارسی جمع‌آوری شده`,
-            `${highThreatCount} مطلب با سطح تهدید بالا شناسایی شد`,
-            `احساسات غالب ${neutralCount > positiveCount && neutralCount > negativeCount ? 'خنثی' : negativeCount > positiveCount ? 'منفی' : 'مثبت'} است`
-          ],
-          metadata: {
-            dataUsed: {
-              rawPostsCount: todayPosts.length,
-              analyzedPostsCount: analyzed.length
-            }
-          }
-        };
-      }
-    }
-    // Check for "trend" keywords
-    else if (questionLower.includes('ترند') || questionLower.includes('trend') || questionLower.includes('کلمات')) {
-      console.log('Matched: trend query');
-      
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select('keywords, main_topic')
-        .gte('published_at', sevenDaysAgo.toISOString())
-        .not('keywords', 'is', null);
-
-      if (error) throw error;
-
-      if (!posts || posts.length === 0) {
-        response = {
-          answer: "هنوز داده کافی برای تحلیل ترند کلمات کلیدی وجود ندارد.",
-          keyFindings: ["داده ناکافی"],
-        };
-      } else {
-        // Flatten and count keywords
-        const keywordCounts: Record<string, number> = {};
-        posts.forEach((post: any) => {
-          if (post.keywords) {
-            post.keywords.forEach((keyword: string) => {
-              keywordCounts[keyword] = (keywordCounts[keyword] || 0) + 1;
-            });
-          }
-        });
-
-        const sortedKeywords = Object.entries(keywordCounts)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 5);
-
-        const keywordsText = sortedKeywords
-          .map(([keyword, count], idx) => `${idx + 1}. ${keyword} (${count} بار)`)
-          .join('\n');
-
-        response = {
-          answer: `ترند کلمات کلیدی در ۷ روز اخیر:\n\n${keywordsText}\n\nجمع کل: ${posts.length} مطلب تحلیل شده`,
-          keyFindings: [
-            `${sortedKeywords[0]?.[0] || 'نامشخص'} پرتکرارترین کلمه است`,
-            `${sortedKeywords.length} کلمه برتر ${sortedKeywords.reduce((sum, [, count]) => sum + count, 0)} بار تکرار شده‌اند`
-          ],
-          statistics: {
-            total_keywords: Object.keys(keywordCounts).length,
-            total_mentions: Object.values(keywordCounts).reduce((a, b) => a + b, 0)
-          }
-        };
-      }
-    }
-    // Check for "source" keywords
-    else if (questionLower.includes('منبع') || questionLower.includes('source') || questionLower.includes('منفی')) {
-      console.log('Matched: source query');
-      
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select('source, sentiment')
-        .gte('published_at', sevenDaysAgo.toISOString())
-        .eq('sentiment', 'منفی')
-        .order('published_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (!posts || posts.length === 0) {
-        response = {
-          answer: "هیچ محتوای منفی در بازه زمانی انتخابی یافت نشد.",
-          keyFindings: []
-        };
-      } else {
-        // Count by source
-        const sourceCounts: Record<string, number> = {};
-        posts.forEach((post: any) => {
-          sourceCounts[post.source] = (sourceCounts[post.source] || 0) + 1;
-        });
-
-        const topSources = Object.entries(sourceCounts)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 3);
-
-        const sourcesText = topSources
-          .map(([source, count], idx) => `${idx + 1}. ${source}: ${count} مطلب منفی`)
-          .join('\n');
-
-        response = {
-          answer: `منابعی که بیشترین محتوای منفی دارند:\n\n${sourcesText}\n\nجمع کل: ${posts.length} مطلب منفی`,
-          sources: {
-            analysis: topSources.map(([source]) => source)
-          },
-          keyFindings: [
-            `${topSources[0]?.[0] || 'نامشخص'} بیشترین محتوای منفی را دارد`,
-            `${posts.length} مطلب با احساسات منفی شناسایی شد`
-          ]
-        };
-      }
-    }
-    // Check for "campaign" keywords
-    else if (questionLower.includes('کمپین') || questionLower.includes('campaign') || questionLower.includes('هماهنگ')) {
-      console.log('Matched: campaign query');
-      
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select('source, keywords, published_at, title')
-        .gte('published_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-        .not('keywords', 'is', null)
-        .order('published_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (!posts || posts.length === 0) {
-        response = {
-          answer: "داده کافی برای تشخیص الگوی کمپین هماهنگ‌شده وجود ندارد.",
-          keyFindings: []
-        };
-      } else {
-        // Look for coordinated patterns (same keywords from multiple sources in short time)
-        const keywordsBySource: Record<string, Set<string>> = {};
-        posts.forEach((post: any) => {
-          if (!keywordsBySource[post.source]) {
-            keywordsBySource[post.source] = new Set();
-          }
-          post.keywords?.forEach((kw: string) => keywordsBySource[post.source].add(kw));
-        });
-
-        // Find common keywords across multiple sources
-        const allKeywords = new Set<string>();
-        Object.values(keywordsBySource).forEach(keywords => {
-          keywords.forEach(kw => allKeywords.add(kw));
-        });
-
-        const commonKeywords = Array.from(allKeywords).filter(kw => {
-          const sourceCount = Object.values(keywordsBySource).filter(keywords => keywords.has(kw)).length;
-          return sourceCount >= 3; // At least 3 sources use this keyword
-        });
-
-        if (commonKeywords.length > 0) {
-          response = {
-            answer: `⚠️ یک الگوی مشکوک شناسایی شد:\n\nدر ۲۴ ساعت گذشته، ${Object.keys(keywordsBySource).length} منبع مختلف مطالبی با کلمات مشترک منتشر کردند:\n\n${commonKeywords.slice(0, 5).map(kw => `• '${kw}'`).join('\n')}\n\nمنابع درگیر:\n${Object.keys(keywordsBySource).slice(0, 4).join('، ')}\n\n💡 توصیه: بررسی دقیق‌تر و ردیابی منشأ این روایت`,
-            keyFindings: [
-              `${Object.keys(keywordsBySource).length} منبع در بازه زمانی نزدیک محتوای مشابه منتشر کردند`,
-              `${commonKeywords.length} کلمه کلیدی مشترک شناسایی شد`,
-              "الگوی انتشار قابل بررسی است"
-            ],
-            metadata: {
-              threatLevel: "medium",
-              confidence: 0.65
-            }
-          };
-        } else {
-          response = {
-            answer: "هیچ الگوی هماهنگ‌شده مشکوکی در ۲۴ ساعت گذشته شناسایی نشد.",
-            keyFindings: ["الگوی عادی انتشار محتوا"]
-          };
-        }
-      }
-    }
-    // Check for "summary" keywords
-    else if (questionLower.includes('خلاصه') || questionLower.includes('summary') || questionLower.includes('وضعیت')) {
-      console.log('Matched: summary query');
-      
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select('*')
-        .gte('published_at', today.toISOString());
-
-      if (error) throw error;
-
-      if (!posts || posts.length === 0) {
-        response = {
-          answer: "هنوز داده‌ای برای خلاصه امروز وجود ندارد.",
-          statistics: { total_posts: 0 }
-        };
-      } else {
-        const highThreatCount = posts.filter((p: any) => p.threat_level === 'High' || p.threat_level === 'Critical').length;
-        const neutralSentiment = Math.round(posts.filter((p: any) => p.sentiment === 'خنثی').length / posts.length * 100) || 0;
-
-        response = {
-          answer: `📊 خلاصه وضعیت امروز:\n\n✅ فعالیت عادی: ${posts.length} مطلب جمع‌آوری شده\n${highThreatCount > 0 ? `⚠️ ${highThreatCount} مطلب با Threat بالا شناسایی شد\n` : ''}\n🔍 نکات کلیدی:\n• تعداد مطالب: ${posts.length}\n• میزان احساسات خنثی: ${neutralSentiment}٪\n\n📈 ترند: وضعیت ${highThreatCount > 2 ? 'نیاز به توجه دارد' : 'عادی است'}`,
-          statistics: {
-            total_posts: posts.length,
-            high_threat: highThreatCount,
-            sentiment_neutral: neutralSentiment
-          }
-        };
-      }
-    }
-    // Default response
-    else {
-      console.log('Matched: default response');
-      response = {
-        answer: "متوجه سوال شما شدم. در حال حاضر من می‌توانم به سوالات زیر پاسخ دهم:\n\n• مطالب امروز\n• ترند کلمات کلیدی\n• تحلیل منابع\n• شناسایی کمپین\n• خلاصه وضعیت\n\nلطفاً یکی از این موارد را انتخاب کنید یا سوال خود را دقیق‌تر بیان کنید.",
-        keyFindings: []
-      };
-    }
-
-    // Add processing time to metadata
     const processingTime = Date.now() - startTime;
-    response.metadata = {
-      ...response.metadata,
-      processingTime
-    };
-
     console.log(`Response generated in ${processingTime}ms`);
 
     return new Response(
-      JSON.stringify(response),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({
+        answer: aiResponse.answer,
+        keyFindings: aiResponse.keyFindings,
+        statistics: aiResponse.statistics,
+        sources: aiResponse.sources,
+        recommendations: aiResponse.recommendations,
+        metadata: {
+          processingTime,
+          tokensUsed: aiResponse.usage.total_tokens,
+          model: 'deepseek-chat',
+          dataUsed: { postsCount: relevantData.posts.length }
+        }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in chat-with-data function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error',
-        message: errorMessage
+        answer: 'متأسفانه خطایی رخ داد. لطفاً دوباره تلاش کنید.',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        isError: true
       }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
+
+async function fetchRelevantData(supabase: any, question: string) {
+  const query = question.toLowerCase();
+  
+  // Determine time range
+  let timeFilter: string;
+  const now = new Date();
+  
+  if (query.includes('امروز') || query.includes('today')) {
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    timeFilter = today.toISOString();
+  } else if (query.includes('دیروز') || query.includes('yesterday')) {
+    const yesterday = new Date(now.getTime() - 86400000);
+    yesterday.setHours(0, 0, 0, 0);
+    timeFilter = yesterday.toISOString();
+  } else if (query.includes('هفته') || query.includes('week') || query.includes('۷')) {
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+    timeFilter = weekAgo.toISOString();
+  } else {
+    const monthAgo = new Date(now.getTime() - 30 * 86400000);
+    timeFilter = monthAgo.toISOString();
+  }
+
+  // Fetch posts
+  const { data: posts } = await supabase
+    .from('posts')
+    .select('*')
+    .gte('published_at', timeFilter)
+    .order('published_at', { ascending: false })
+    .limit(100);
+
+  return { posts: posts || [], timeRange: timeFilter };
+}
+
+async function callDeepSeekAPI(apiKey: string, question: string, data: any, history: any[]) {
+  const dataContext = buildDataContext(data);
+  
+  const messages = [
+    {
+      role: 'system',
+      content: `تو یک تحلیلگر رسانه‌ای خبره هستی که به کاربر در تحلیل داده‌های رسانه‌ای کمک می‌کنی.
+
+وظایف تو:
+1. به هر سوالی درباره داده‌های رسانه‌ای پاسخ دقیق بده
+2. از داده‌های واقعی استفاده کن و آمار دقیق ارائه بده
+3. پاسخ‌ها رو به فارسی، واضح و کامل بنویس
+4. اگر داده کافی نداری، صادقانه بگو
+5. insights و الگوهای مهم رو highlight کن
+
+داده‌های در دسترس:
+${dataContext}
+
+فرمت پاسخ (JSON):
+{
+  "answer": "پاسخ کامل به فارسی با فرمت markdown",
+  "keyFindings": ["یافته کلیدی 1", "یافته 2", "..."],
+  "statistics": {
+    "total_posts": عدد,
+    "relevant_count": عدد
+  },
+  "sources": {
+    "posts": ["post_id1", "post_id2"]
+  },
+  "recommendations": ["توصیه 1", "توصیه 2"]
+}`
+    },
+    ...history.slice(-10).map((msg: any) => ({
+      role: msg.role,
+      content: msg.content
+    })),
+    {
+      role: 'user',
+      content: question
+    }
+  ];
+
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages,
+      temperature: 0.7,
+      max_tokens: 4000,
+      response_format: { type: 'json_object' }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('DeepSeek API error:', response.status, errorText);
+    throw new Error(`DeepSeek API error: ${response.status}`);
+  }
+
+  const result = await response.json();
+  const aiAnswer = JSON.parse(result.choices[0].message.content);
+
+  return {
+    answer: aiAnswer.answer || 'پاسخی دریافت نشد',
+    keyFindings: aiAnswer.keyFindings || [],
+    statistics: aiAnswer.statistics || {},
+    sources: aiAnswer.sources || { posts: [] },
+    recommendations: aiAnswer.recommendations || [],
+    usage: result.usage
+  };
+}
+
+function buildDataContext(data: any) {
+  const { posts } = data;
+
+  if (!posts || posts.length === 0) {
+    return 'هیچ داده‌ای در بازه زمانی انتخابی موجود نیست.';
+  }
+
+  // Group by language
+  const byLanguage: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    byLanguage[p.language] = (byLanguage[p.language] || 0) + 1;
+  });
+
+  // Group by source
+  const bySource: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    bySource[p.source] = (bySource[p.source] || 0) + 1;
+  });
+
+  // Group by sentiment
+  const bySentiment: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    if (p.sentiment) {
+      bySentiment[p.sentiment] = (bySentiment[p.sentiment] || 0) + 1;
+    }
+  });
+
+  // Group by threat level
+  const byThreat: Record<string, number> = {};
+  posts.forEach((p: any) => {
+    if (p.threat_level) {
+      byThreat[p.threat_level] = (byThreat[p.threat_level] || 0) + 1;
+    }
+  });
+
+  const summary = {
+    total: posts.length,
+    byLanguage,
+    bySource,
+    bySentiment,
+    byThreat,
+    dateRange: {
+      from: posts[posts.length - 1]?.published_at,
+      to: posts[0]?.published_at
+    },
+    samplePosts: posts.slice(0, 10).map((p: any) => ({
+      id: p.id,
+      title: p.title,
+      source: p.source,
+      date: p.published_at,
+      sentiment: p.sentiment,
+      threat: p.threat_level
+    }))
+  };
+
+  return JSON.stringify(summary, null, 2);
+}
+
+async function logAPIUsage(supabase: any, question: string, usage: any) {
+  const inputCost = (usage.prompt_tokens * 0.27) / 1000000;
+  const outputCost = (usage.completion_tokens * 1.10) / 1000000;
+  const totalCost = inputCost + outputCost;
+
+  await supabase.from('api_usage_logs').insert({
+    endpoint: 'chat',
+    question: question.substring(0, 200),
+    tokens_used: usage.total_tokens,
+    input_tokens: usage.prompt_tokens,
+    output_tokens: usage.completion_tokens,
+    model_used: 'deepseek-chat',
+    status: 'success',
+    cost_usd: totalCost
+  });
+}

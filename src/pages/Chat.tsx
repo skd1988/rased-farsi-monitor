@@ -181,11 +181,20 @@ const Chat = () => {
       content,
     });
 
-    // Call chat API
+    // Build conversation history (last 10 messages)
+    const conversationHistory = messages.slice(-10).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    // Call chat API with conversation history
     setIsLoading(true);
     try {
       const response = await supabase.functions.invoke('chat-with-data', {
-        body: { question: content, context: 'last_30_days' },
+        body: { 
+          question: content,
+          conversationHistory 
+        },
       });
 
       if (response.error) throw response.error;
