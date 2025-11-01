@@ -1,15 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import ChatSidebar from '@/components/chat/ChatSidebar';
-import ChatMessage from '@/components/chat/ChatMessage';
-import ChatInput from '@/components/chat/ChatInput';
-import QuickPrompts from '@/components/chat/QuickPrompts';
-import { Sparkles } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import ChatSidebar from "@/components/chat/ChatSidebar";
+import ChatMessage from "@/components/chat/ChatMessage";
+import ChatInput from "@/components/chat/ChatInput";
+import QuickPrompts from "@/components/chat/QuickPrompts";
+import { Sparkles } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: Date;
   metadata?: any;
@@ -44,17 +44,17 @@ const Chat = () => {
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const loadConversations = async () => {
     const { data, error } = await supabase
-      .from('chat_conversations')
-      .select('*')
-      .order('updated_at', { ascending: false });
+      .from("chat_conversations")
+      .select("*")
+      .order("updated_at", { ascending: false });
 
     if (error) {
-      console.error('Error loading conversations:', error);
+      console.error("Error loading conversations:", error);
       return;
     }
 
@@ -63,40 +63,40 @@ const Chat = () => {
 
   const loadMessages = async (conversationId: string) => {
     const { data, error } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('timestamp', { ascending: true });
+      .from("chat_messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("timestamp", { ascending: true });
 
     if (error) {
-      console.error('Error loading messages:', error);
+      console.error("Error loading messages:", error);
       return;
     }
 
     setMessages(
       (data || []).map((msg) => ({
         id: msg.id,
-        role: msg.role as 'user' | 'assistant',
+        role: msg.role as "user" | "assistant",
         content: msg.content,
         timestamp: new Date(msg.timestamp),
         metadata: msg.metadata,
-      }))
+      })),
     );
   };
 
   const createNewConversation = async () => {
     const { data, error } = await supabase
-      .from('chat_conversations')
-      .insert({ title: 'گفتگوی جدید' })
+      .from("chat_conversations")
+      .insert({ title: "گفتگوی جدید" })
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating conversation:', error);
+      console.error("Error creating conversation:", error);
       toast({
-        title: 'خطا',
-        description: 'ایجاد گفتگو با خطا مواجه شد',
-        variant: 'destructive',
+        title: "خطا",
+        description: "ایجاد گفتگو با خطا مواجه شد",
+        variant: "destructive",
       });
       return;
     }
@@ -107,13 +107,10 @@ const Chat = () => {
   };
 
   const deleteConversation = async (conversationId: string) => {
-    const { error } = await supabase
-      .from('chat_conversations')
-      .delete()
-      .eq('id', conversationId);
+    const { error } = await supabase.from("chat_conversations").delete().eq("id", conversationId);
 
     if (error) {
-      console.error('Error deleting conversation:', error);
+      console.error("Error deleting conversation:", error);
       return;
     }
 
@@ -127,12 +124,12 @@ const Chat = () => {
 
   const updateConversationTitle = async (conversationId: string, title: string) => {
     const { error } = await supabase
-      .from('chat_conversations')
+      .from("chat_conversations")
       .update({ title, updated_at: new Date().toISOString() })
-      .eq('id', conversationId);
+      .eq("id", conversationId);
 
     if (error) {
-      console.error('Error updating title:', error);
+      console.error("Error updating title:", error);
       return;
     }
 
@@ -142,20 +139,24 @@ const Chat = () => {
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return;
 
+    console.log("=== START: Sending message ===");
+    console.log("Message content:", content);
+
     // Create conversation if needed
     let conversationId = currentConversationId;
     if (!conversationId) {
       const { data, error } = await supabase
-        .from('chat_conversations')
+        .from("chat_conversations")
         .insert({ title: content.substring(0, 50) })
         .select()
         .single();
 
       if (error || !data) {
+        console.error("Error creating conversation:", error);
         toast({
-          title: 'خطا',
-          description: 'ایجاد گفتگو با خطا مواجه شد',
-          variant: 'destructive',
+          title: "خطا",
+          description: "ایجاد گفتگو با خطا مواجه شد",
+          variant: "destructive",
         });
         return;
       }
@@ -165,19 +166,19 @@ const Chat = () => {
       loadConversations();
     }
 
-    // Add user message to UI
+    // Add user message to UI immediately
     const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
+      role: "user",
       content,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
 
     // Save user message to database
-    await supabase.from('chat_messages').insert({
+    await supabase.from("chat_messages").insert({
       conversation_id: conversationId,
-      role: 'user',
+      role: "user",
       content,
     });
 
@@ -187,51 +188,93 @@ const Chat = () => {
       content: msg.content,
     }));
 
-    // Call chat API with conversation history
+    console.log("Conversation history length:", conversationHistory.length);
+
+    // Call Edge Function - NO MOCKS!
     setIsLoading(true);
     try {
-      const response = await supabase.functions.invoke('chat-with-data', {
-        body: { 
+      console.log("Calling chat-with-data Edge Function...");
+
+      const response = await supabase.functions.invoke("chat-with-data", {
+        body: {
           question: content,
-          conversationHistory 
+          conversationHistory,
         },
       });
 
-      if (response.error) throw response.error;
+      console.log("Response received:", response);
+
+      if (response.error) {
+        console.error("Edge Function error:", response.error);
+        throw response.error;
+      }
+
+      if (!response.data || !response.data.answer) {
+        console.error("Invalid response data:", response.data);
+        throw new Error("Invalid response from API");
+      }
+
+      console.log("AI Answer:", response.data.answer);
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: "assistant",
         content: response.data.answer,
         timestamp: new Date(),
         metadata: {
           sources: response.data.sources,
           statistics: response.data.statistics,
           keyFindings: response.data.keyFindings,
+          recommendations: response.data.recommendations,
         },
       };
 
       setMessages((prev) => [...prev, aiMessage]);
 
       // Save AI message to database
-      await supabase.from('chat_messages').insert({
+      await supabase.from("chat_messages").insert({
         conversation_id: conversationId,
-        role: 'assistant',
+        role: "assistant",
         content: aiMessage.content,
         metadata: aiMessage.metadata,
       });
 
       // Update conversation timestamp
       await supabase
-        .from('chat_conversations')
+        .from("chat_conversations")
         .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversationId);
+        .eq("id", conversationId);
+
+      console.log("=== END: Message sent successfully ===");
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("=== ERROR in handleSendMessage ===");
+      console.error("Error details:", error);
+      console.error("Error type:", typeof error);
+      console.error("Error object:", JSON.stringify(error, null, 2));
+
+      // Show detailed error in chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `❌ خطا در ارسال پیام:
+
+${error instanceof Error ? error.message : "خطای نامشخص"}
+
+لطفاً موارد زیر را بررسی کنید:
+- اتصال اینترنت
+- تنظیمات DEEPSEEK_API_KEY
+- Console برای جزئیات بیشتر
+
+سپس دوباره تلاش کنید.`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+
       toast({
-        title: 'خطا',
-        description: 'ارسال پیام با خطا مواجه شد',
-        variant: 'destructive',
+        title: "خطا",
+        description: "ارسال پیام با خطا مواجه شد - Console را چک کنید",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -262,8 +305,8 @@ const Chat = () => {
             <div>
               <h1 className="text-xl font-semibold">
                 {currentConversationId
-                  ? conversations.find((c) => c.id === currentConversationId)?.title || 'گفتگو'
-                  : 'گفتگو با داده‌ها'}
+                  ? conversations.find((c) => c.id === currentConversationId)?.title || "گفتگو"
+                  : "گفتگو با داده‌ها"}
               </h1>
               <p className="text-sm text-muted-foreground">DeepSeek-V3</p>
             </div>
@@ -279,9 +322,7 @@ const Chat = () => {
                   <Sparkles className="w-8 h-8 text-primary" />
                 </div>
                 <h2 className="text-3xl font-bold mb-2">👋 سلام! چطور می‌تونم کمکتون کنم؟</h2>
-                <p className="text-muted-foreground">
-                  می‌تونید سوالی درباره داده‌های رسانه‌ای بپرسید
-                </p>
+                <p className="text-muted-foreground">می‌تونید هر سوالی بپرسید - درباره رسانه یا موضوعات دیگر</p>
               </div>
 
               <QuickPrompts onSelectPrompt={handleQuickPrompt} />
@@ -291,6 +332,16 @@ const Chat = () => {
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                      <span className="text-sm text-muted-foreground">در حال تایپ...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
