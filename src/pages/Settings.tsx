@@ -317,6 +317,7 @@ const Settings = () => {
       deepseek_api_key: "",
       google_sheet_id: localStorage.getItem("sheetId") || "11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ",
       google_sheet_name: localStorage.getItem("sheetName") || "Sheet1",
+      google_api_key: localStorage.getItem("googleApiKey") || "",
       last_sync_time: localStorage.getItem("lastSyncTime") || null,
       sync_status: null,
       theme: localStorage.getItem("theme") || "blue",
@@ -358,6 +359,7 @@ const Settings = () => {
     if (updates.dark_mode !== undefined) localStorage.setItem("darkMode", String(updates.dark_mode));
     if (updates.google_sheet_id) localStorage.setItem("sheetId", updates.google_sheet_id);
     if (updates.google_sheet_name) localStorage.setItem("sheetName", updates.google_sheet_name);
+    if (updates.google_api_key !== undefined) localStorage.setItem("googleApiKey", updates.google_api_key);
     if (updates.auto_sync !== undefined) localStorage.setItem("autoSyncEnabled", String(updates.auto_sync));
     if (updates.sync_interval) localStorage.setItem("syncInterval", updates.sync_interval);
     if (updates.auto_analysis !== undefined) localStorage.setItem("autoAnalysis", String(updates.auto_analysis));
@@ -748,28 +750,63 @@ const Settings = () => {
       });
 
       // Use Google Sheets JSON API to get all rows (no 1000 limit)
-      const jsonUrl = `https://sheets.googleapis.com/v4/spreadsheets/${settings.google_sheet_id}/values/${encodeURIComponent(settings.google_sheet_name)}?key=${settings.google_api_key || 'AIzaSyBPqxO6LKfWNkDBB0DVKQxhV7JXUmD2rEM'}`;
+      const hasApiKey = settings.google_api_key && settings.google_api_key.trim().length > 0;
       
-      console.log("🔗 Fetching from Google Sheets API");
+      console.log("🔗 Fetching from Google Sheets API", hasApiKey ? "(with API key)" : "(without API key - will fallback to CSV)");
       setSyncProgress(30);
 
       let allRows: string[][] = [];
+      let usedCSV = false;
       
-      try {
-        // Try JSON API first (no 1000 row limit)
-        const jsonResponse = await fetch(jsonUrl);
-        
-        if (jsonResponse.ok) {
-          const jsonData = await jsonResponse.json();
-          allRows = jsonData.values || [];
-          console.log(`✅ Fetched ${allRows.length} rows from JSON API (no limit)`);
-        } else {
-          throw new Error("JSON API failed, falling back to CSV");
+      if (hasApiKey) {
+        try {
+          // Try JSON API first (no 1000 row limit) - only if API key is provided
+          const jsonUrl = `https://sheets.googleapis.com/v4/spreadsheets/${settings.google_sheet_id}/values/${encodeURIComponent(settings.google_sheet_name)}?key=${settings.google_api_key}`;
+          const jsonResponse = await fetch(jsonUrl);
+          
+          if (jsonResponse.ok) {
+            const jsonData = await jsonResponse.json();
+            allRows = jsonData.values || [];
+            console.log(`✅ Fetched ${allRows.length} rows from JSON API (no limit)`);
+          } else {
+            const errorData = await jsonResponse.json();
+            console.warn("⚠️ JSON API failed:", errorData);
+            toast({
+              title: "❌ Google API Key نامعتبر",
+              description: "API Key وارد شده صحیح نیست. در حال استفاده از روش CSV (محدودیت 1000 ردیف)",
+              variant: "destructive",
+            });
+            throw new Error("Invalid API key");
+          }
+        } catch (e) {
+          console.warn("⚠️ JSON API failed, using CSV (1000 row limit):", e);
+          usedCSV = true;
+          
+          // Fallback to CSV (has 1000 row limit)
+          const csvUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
+          const csvResponse = await fetch(csvUrl);
+          
+          if (!csvResponse.ok) {
+            throw new Error("خطا در دریافت داده‌ها. لطفا Sheet ID و دسترسی عمومی را بررسی کنید");
+          }
+          
+          const csvText = await csvResponse.text();
+          const lines = csvText.split("\n");
+          allRows = lines.map(line => parseCSVLine(line).map(v => v.replace(/"/g, "").trim()));
+          
+          if (allRows.length >= 1000) {
+            toast({
+              title: "⚠️ محدودیت CSV",
+              description: "فقط 1000 ردیف اول دریافت شد. برای دریافت همه داده‌ها، Google API Key در تنظیمات اضافه کنید.",
+              variant: "destructive",
+            });
+          }
         }
-      } catch (e) {
-        console.warn("⚠️ JSON API failed, using CSV (1000 row limit):", e);
+      } else {
+        // No API key - use CSV directly with warning
+        usedCSV = true;
+        console.log("⚠️ No API key provided, using CSV (1000 row limit)");
         
-        // Fallback to CSV (has 1000 row limit)
         const csvUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
         const csvResponse = await fetch(csvUrl);
         
@@ -781,11 +818,12 @@ const Settings = () => {
         const lines = csvText.split("\n");
         allRows = lines.map(line => parseCSVLine(line).map(v => v.replace(/"/g, "").trim()));
         
-        if (allRows.length === 1001) { // 1000 data + 1 header
+        if (allRows.length >= 1000) {
           toast({
-            title: "⚠️ محدودیت CSV",
-            description: "فقط 1000 ردیف اول دریافت شد. برای دریافت همه داده‌ها، Google API Key اضافه کنید.",
+            title: "⚠️ محدودیت 1000 ردیف",
+            description: "بدون Google API Key فقط 1000 ردیف اول import می‌شود. برای import کامل، API Key رایگان دریافت و در تنظیمات وارد کنید.",
             variant: "destructive",
+            duration: 10000,
           });
         }
       }
@@ -1917,6 +1955,36 @@ const Settings = () => {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="google-api-key">Google API Key (اختیاری - برای بیش از 1000 ردیف)</Label>
+                  <Input
+                    id="google-api-key"
+                    type="password"
+                    value={settings.google_api_key}
+                    onChange={(e) => setSettings({ ...settings, google_api_key: e.target.value })}
+                    placeholder="AIzaSy..."
+                    dir="ltr"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    برای import بیش از 1000 ردیف، یک API Key رایگان از{" "}
+                    <a 
+                      href="https://console.cloud.google.com/apis/credentials" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Google Cloud Console
+                    </a>
+                    {" "}دریافت کنید و Google Sheets API را فعال کنید.
+                  </p>
+                </div>
+
+                <Alert>
+                  <AlertDescription>
+                    💡 بدون API Key فقط 1000 ردیف اول import می‌شود. برای دریافت API Key رایگان، کافیست یک پروژه در Google Cloud بسازید و Google Sheets API را فعال کنید.
+                  </AlertDescription>
+                </Alert>
+
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -1924,6 +1992,7 @@ const Settings = () => {
                       saveSettings({
                         google_sheet_id: settings.google_sheet_id,
                         google_sheet_name: settings.google_sheet_name,
+                        google_api_key: settings.google_api_key,
                       })
                     }
                   >
