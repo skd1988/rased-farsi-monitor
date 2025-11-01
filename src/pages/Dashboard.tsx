@@ -197,59 +197,59 @@ const Dashboard = () => {
     if (sourceLower.includes('t.me') || sourceLower.includes('telegram.me') || 
         sourceLower.includes('telegram.org') || sourceLower.includes('telegram') || 
         sourceLower.includes('تلغرام') || sourceLower.includes('تلگرام')) {
-      return 'Telegram';
+      return 'تلگرام';
     }
     
     // Check for Twitter/X
     if (sourceLower.includes('twitter.com') || sourceLower.includes('x.com') ||
         sourceLower.includes('twitter') || sourceLower.includes('توییتر') || 
         sourceLower.includes('تويتر')) {
-      return 'Twitter';
+      return 'توییتر';
     }
     
     // Check for Facebook
     if (sourceLower.includes('facebook.com') || sourceLower.includes('fb.com') || 
         sourceLower.includes('fb.watch') || sourceLower.includes('facebook') || 
         sourceLower.includes('فيسبوك') || sourceLower.includes('فیسبوک')) {
-      return 'Facebook';
+      return 'فیسبوک';
     }
     
     // Check for Instagram
     if (sourceLower.includes('instagram.com') || sourceLower.includes('instagr.am') ||
         sourceLower.includes('instagram') || sourceLower.includes('إنستغرام') || 
         sourceLower.includes('اینستاگرام')) {
-      return 'Instagram';
+      return 'اینستاگرام';
     }
     
     // Check for YouTube
     if (sourceLower.includes('youtube.com') || sourceLower.includes('youtu.be') ||
         sourceLower.includes('youtube') || sourceLower.includes('يوتيوب') || 
         sourceLower.includes('یوتیوب')) {
-      return 'YouTube';
+      return 'یوتیوب';
     }
     
     // Check for TikTok
     if (sourceLower.includes('tiktok.com') || sourceLower.includes('tiktok') || 
         sourceLower.includes('تيك توك') || sourceLower.includes('تیک')) {
-      return 'TikTok';
+      return 'تیک‌تاک';
     }
     
     // Check for LinkedIn
     if (sourceLower.includes('linkedin.com') || sourceLower.includes('linkedin') || 
         sourceLower.includes('لينكد')) {
-      return 'LinkedIn';
+      return 'لینکدین';
     }
     
     // Check for WhatsApp
     if (sourceLower.includes('whatsapp.com') || sourceLower.includes('wa.me') ||
         sourceLower.includes('whatsapp') || sourceLower.includes('واتساب')) {
-      return 'WhatsApp';
+      return 'واتساپ';
     }
     
     // Check for Reddit
     if (sourceLower.includes('reddit.com') || sourceLower.includes('reddit') || 
         sourceLower.includes('ردیت')) {
-      return 'Reddit';
+      return 'ردیت';
     }
     
     return 'سایر';
@@ -281,15 +281,15 @@ const Dashboard = () => {
     }, {} as Record<string, number>);
 
     const platformColors: Record<string, string> = {
-      'Twitter': '#1DA1F2',
-      'Facebook': '#4267B2',
-      'Instagram': '#E1306C',
-      'YouTube': '#FF0000',
-      'TikTok': '#000000',
-      'Telegram': '#0088cc',
-      'LinkedIn': '#0077b5',
-      'WhatsApp': '#25D366',
-      'Reddit': '#FF4500',
+      'توییتر': '#1DA1F2',
+      'فیسبوک': '#4267B2',
+      'اینستاگرام': '#E1306C',
+      'یوتیوب': '#FF0000',
+      'تیک‌تاک': '#000000',
+      'تلگرام': '#0088cc',
+      'لینکدین': '#0077b5',
+      'واتساپ': '#25D366',
+      'ردیت': '#FF4500',
       'سایر': '#6B7280'
     };
 
