@@ -610,10 +610,18 @@ const Settings = () => {
         return;
       }
 
+      console.log(`🔍 Starting language re-detection for ${allPosts.length} posts`);
+      console.log('📋 Sample of first 3 posts:', allPosts.slice(0, 3).map(p => ({
+        id: p.id,
+        currentLang: p.language,
+        titleSample: p.title?.substring(0, 50)
+      })));
+
       let updatedCount = 0;
       let persianCount = 0;
       let arabicCount = 0;
       let mixedCount = 0;
+      let skippedLowConfidence = 0;
       const batchSize = 50;
 
       for (let i = 0; i < allPosts.length; i += batchSize) {
@@ -624,25 +632,44 @@ const Settings = () => {
           const text = `${post.title} ${post.contents || ''}`;
           const result = detectLanguageAdvanced(text);
 
-          if (result.confidence > 60) {
+          // Log first 3 detections for debugging
+          if (updatedCount < 3) {
+            console.log(`\n🧪 Detection ${updatedCount + 1}:`, {
+              postId: post.id,
+              currentLanguage: post.language,
+              detectedLanguage: result.language,
+              confidence: result.confidence,
+              scores: result.details,
+              textSample: text.substring(0, 100)
+            });
+          }
+
+          // Lower threshold to 50 for better detection
+          if (result.confidence > 50) {
             const newLang = result.language === 'persian' ? 'فارسی' :
                            result.language === 'arabic' ? 'عربی' :
                            result.language === 'mixed' ? 'ترکیبی' : 'نامشخص';
 
-            // Only update if language changed
-            if (newLang !== post.language) {
-              const { error: updateError } = await supabase
-                .from('posts')
-                .update({ language: newLang })
-                .eq('id', post.id);
+            // Always update regardless of current value to fix incorrect data
+            const { error: updateError } = await supabase
+              .from('posts')
+              .update({ language: newLang })
+              .eq('id', post.id);
 
-              if (!updateError) {
-                updatedCount++;
-                if (result.language === 'persian') persianCount++;
-                else if (result.language === 'arabic') arabicCount++;
-                else if (result.language === 'mixed') mixedCount++;
+            if (!updateError) {
+              updatedCount++;
+              if (result.language === 'persian') persianCount++;
+              else if (result.language === 'arabic') arabicCount++;
+              else if (result.language === 'mixed') mixedCount++;
+              
+              if (updatedCount % 20 === 0) {
+                console.log(`✅ Progress: ${updatedCount}/${allPosts.length} - Persian: ${persianCount}, Arabic: ${arabicCount}, Mixed: ${mixedCount}`);
               }
+            } else {
+              console.error('Update error:', updateError);
             }
+          } else {
+            skippedLowConfidence++;
           }
         }
       }
@@ -656,12 +683,21 @@ const Settings = () => {
         mixed: mixedCount
       });
 
-      toast({
-        title: "✅ تشخیص مجدد کامل شد",
-        description: `${updatedCount} مطلب از ${allPosts.length} به‌روزرسانی شد`,
+      console.log(`\n🎉 Language re-detection complete!`, {
+        total: allPosts.length,
+        updated: updatedCount,
+        skippedLowConfidence,
+        breakdown: {
+          persian: persianCount,
+          arabic: arabicCount,
+          mixed: mixedCount
+        }
       });
 
-      console.log(`🎉 Language re-detection complete: ${updatedCount} updated, ${persianCount} Persian, ${arabicCount} Arabic, ${mixedCount} Mixed`);
+      toast({
+        title: "✅ تشخیص مجدد کامل شد",
+        description: `${updatedCount} مطلب به‌روزرسانی شد - فارسی: ${persianCount} | عربی: ${arabicCount} | ترکیبی: ${mixedCount}`,
+      });
 
     } catch (error) {
       console.error("Re-detection error:", error);
