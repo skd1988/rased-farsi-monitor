@@ -747,29 +747,55 @@ const Settings = () => {
         description: "در حال اتصال به Google Sheets",
       });
 
-      const sheetUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
-      console.log("🔗 Fetching from:", sheetUrl);
+      // Use Google Sheets JSON API to get all rows (no 1000 limit)
+      const jsonUrl = `https://sheets.googleapis.com/v4/spreadsheets/${settings.google_sheet_id}/values/${encodeURIComponent(settings.google_sheet_name)}?key=${settings.google_api_key || 'AIzaSyBPqxO6LKfWNkDBB0DVKQxhV7JXUmD2rEM'}`;
+      
+      console.log("🔗 Fetching from Google Sheets API");
       setSyncProgress(30);
 
-      const response = await fetch(sheetUrl);
-
-      if (!response.ok) {
-        throw new Error("خطا در دریافت داده‌ها. لطفا Sheet ID و دسترسی عمومی را بررسی کنید");
+      let allRows: string[][] = [];
+      
+      try {
+        // Try JSON API first (no 1000 row limit)
+        const jsonResponse = await fetch(jsonUrl);
+        
+        if (jsonResponse.ok) {
+          const jsonData = await jsonResponse.json();
+          allRows = jsonData.values || [];
+          console.log(`✅ Fetched ${allRows.length} rows from JSON API (no limit)`);
+        } else {
+          throw new Error("JSON API failed, falling back to CSV");
+        }
+      } catch (e) {
+        console.warn("⚠️ JSON API failed, using CSV (1000 row limit):", e);
+        
+        // Fallback to CSV (has 1000 row limit)
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${settings.google_sheet_id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(settings.google_sheet_name)}`;
+        const csvResponse = await fetch(csvUrl);
+        
+        if (!csvResponse.ok) {
+          throw new Error("خطا در دریافت داده‌ها. لطفا Sheet ID و دسترسی عمومی را بررسی کنید");
+        }
+        
+        const csvText = await csvResponse.text();
+        const lines = csvText.split("\n");
+        allRows = lines.map(line => parseCSVLine(line).map(v => v.replace(/"/g, "").trim()));
+        
+        if (allRows.length === 1001) { // 1000 data + 1 header
+          toast({
+            title: "⚠️ محدودیت CSV",
+            description: "فقط 1000 ردیف اول دریافت شد. برای دریافت همه داده‌ها، Google API Key اضافه کنید.",
+            variant: "destructive",
+          });
+        }
       }
-
-      const csvText = await response.text();
-      console.log("📄 CSV fetched, raw size:", csvText.length);
+      console.log("📄 Data fetched, total rows:", allRows.length);
       setSyncProgress(50);
 
-      const allLines = csvText.split("\n");
-      const dataLines = allLines.filter((line, index) => {
+      const dataLines = allRows.filter((row, index) => {
         if (index === 0) return true; // Keep header
 
-        const cleaned = line.replace(/"/g, "").trim();
-        if (!cleaned || cleaned.match(/^,+$/)) return false;
-
-        const values = cleaned.split(",").map((v) => v.trim());
-        const meaningfulValues = values.filter((v) => {
+        const meaningfulValues = row.filter((v) => {
           if (!v || v.length === 0) return false;
           if (v.includes("<") || v.includes(">")) return false;
           if (v.length < 3) return false;
@@ -779,14 +805,13 @@ const Settings = () => {
         return meaningfulValues.length >= 3;
       });
 
-      console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty lines: ${dataLines.length}`);
+      console.log(`📊 Total rows: ${allRows.length}, Valid rows: ${dataLines.length}`);
 
       const { count: dbPostCount } = await supabase.from("posts").select("*", { count: "exact", head: true });
       const lastSyncedRow = dbPostCount || 0;
       console.log(`📊 Database has ${dbPostCount} posts, syncing from row ${lastSyncedRow + 1}`);
 
-      const allLinesRaw = csvText.split("\n");
-      const headers = parseCSVLine(allLinesRaw[0]).map((h) => h.replace(/"/g, "").trim());
+      const headers = dataLines[0].map((h) => (typeof h === 'string' ? h.replace(/"/g, "").trim() : String(h)));
 
       console.log("📋 Headers found:", headers);
       console.log("📋 Total headers:", headers.length);
@@ -807,8 +832,7 @@ const Settings = () => {
 
       const rows: any[] = [];
       for (let i = 1; i < dataLines.length; i++) {
-        const line = dataLines[i];
-        const values = parseCSVLine(line).map((v) => v.replace(/"/g, "").trim());
+        const values = dataLines[i].map((v) => (typeof v === 'string' ? v.replace(/"/g, "").trim() : String(v)));
 
         if (i <= 3) {
           console.log(`\n🔍 Row ${i}:`);
