@@ -10,6 +10,7 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from '@/components/ui/drawer';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Message {
   id: string;
@@ -39,7 +40,7 @@ const ChatPanel = () => {
     }
   }, [messages, isLoading]);
 
-  const handleSend = (messageText?: string) => {
+  const handleSend = async (messageText?: string) => {
     const text = messageText || input.trim();
     if (!text || isLoading) return;
 
@@ -54,17 +55,32 @@ const ChatPanel = () => {
     setInput('');
     setIsLoading(true);
 
-    // Mock AI response after 1 second
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.functions.invoke('chat-with-data', {
+        body: { question: text, context: 'last_30_days' }
+      });
+
+      if (error) throw error;
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "این یک پاسخ آزمایشی است. قابلیت اتصال به API در مرحله بعد اضافه می‌شود.",
+        content: data.answer || "متأسفم، خطایی رخ داده است.",
         role: 'assistant',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "متأسفم، خطایی در ارتباط با سرور رخ داده است. لطفاً دوباره تلاش کنید.",
+        role: 'assistant',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handleClearChat = () => {
