@@ -151,47 +151,107 @@ const Dashboard = () => {
     
     const sourceLower = source.toLowerCase();
     
-    const socialMedia = [
-      'twitter', 'x.com', 'توییتر', 'تويتر',
-      'facebook', 'fb', 'فيسبوك', 'فیسبوک',
-      'instagram', 'insta', 'إنستغرام', 'اینستاگرام',
+    // Check for social media domains
+    const socialDomains = [
+      't.me', 'telegram.me', 'telegram.org',
+      'twitter.com', 'x.com',
+      'facebook.com', 'fb.com', 'fb.watch',
+      'instagram.com', 'instagr.am',
+      'youtube.com', 'youtu.be',
+      'tiktok.com',
+      'linkedin.com',
+      'snapchat.com',
+      'whatsapp.com', 'wa.me',
+      'reddit.com',
+      'pinterest.com',
+      'discord.gg', 'discord.com'
+    ];
+    
+    // Check for social media keywords
+    const socialKeywords = [
+      'twitter', 'توییتر', 'تويتر',
+      'facebook', 'فيسبوك', 'فیسبوک',
+      'instagram', 'إنستغرام', 'اینستاگرام',
       'youtube', 'يوتيوب', 'یوتیوب',
-      'tiktok', 'تيك توك', 'تیک‌تاک', 'تیک',
+      'tiktok', 'تيك توك', 'تیک‌تاک',
       'telegram', 'تلغرام', 'تلگرام',
       'linkedin', 'لينكد إن',
       'snapchat', 'سناب شات',
-      'whatsapp', 'واتساب'
+      'whatsapp', 'واتساب',
+      'reddit', 'ردیت',
+      'pinterest', 'پینترست',
+      'discord', 'دیسکورد'
     ];
     
-    const isSocial = socialMedia.some(platform => sourceLower.includes(platform));
-    return isSocial ? 'social' : 'website';
+    const isSocialDomain = socialDomains.some(domain => sourceLower.includes(domain));
+    const isSocialKeyword = socialKeywords.some(keyword => sourceLower.includes(keyword));
+    
+    return (isSocialDomain || isSocialKeyword) ? 'social' : 'website';
   };
 
   const getSocialPlatform = (source: string): string => {
     if (!source) return 'سایر';
     const sourceLower = source.toLowerCase();
     
-    if (sourceLower.includes('twitter') || sourceLower.includes('توییتر') || sourceLower.includes('تويتر') || sourceLower.includes('x.com')) {
-      return 'Twitter';
-    }
-    if (sourceLower.includes('facebook') || sourceLower.includes('فيسبوك') || sourceLower.includes('فیسبوک')) {
-      return 'Facebook';
-    }
-    if (sourceLower.includes('instagram') || sourceLower.includes('إنستغرام') || sourceLower.includes('اینستاگرام')) {
-      return 'Instagram';
-    }
-    if (sourceLower.includes('youtube') || sourceLower.includes('يوتيوب') || sourceLower.includes('یوتیوب')) {
-      return 'YouTube';
-    }
-    if (sourceLower.includes('tiktok') || sourceLower.includes('تيك توك') || sourceLower.includes('تیک')) {
-      return 'TikTok';
-    }
-    if (sourceLower.includes('telegram') || sourceLower.includes('تلغرام') || sourceLower.includes('تلگرام')) {
+    // Check for Telegram
+    if (sourceLower.includes('t.me') || sourceLower.includes('telegram.me') || 
+        sourceLower.includes('telegram.org') || sourceLower.includes('telegram') || 
+        sourceLower.includes('تلغرام') || sourceLower.includes('تلگرام')) {
       return 'Telegram';
     }
-    if (sourceLower.includes('linkedin') || sourceLower.includes('لينكد')) {
+    
+    // Check for Twitter/X
+    if (sourceLower.includes('twitter.com') || sourceLower.includes('x.com') ||
+        sourceLower.includes('twitter') || sourceLower.includes('توییتر') || 
+        sourceLower.includes('تويتر')) {
+      return 'Twitter';
+    }
+    
+    // Check for Facebook
+    if (sourceLower.includes('facebook.com') || sourceLower.includes('fb.com') || 
+        sourceLower.includes('fb.watch') || sourceLower.includes('facebook') || 
+        sourceLower.includes('فيسبوك') || sourceLower.includes('فیسبوک')) {
+      return 'Facebook';
+    }
+    
+    // Check for Instagram
+    if (sourceLower.includes('instagram.com') || sourceLower.includes('instagr.am') ||
+        sourceLower.includes('instagram') || sourceLower.includes('إنستغرام') || 
+        sourceLower.includes('اینستاگرام')) {
+      return 'Instagram';
+    }
+    
+    // Check for YouTube
+    if (sourceLower.includes('youtube.com') || sourceLower.includes('youtu.be') ||
+        sourceLower.includes('youtube') || sourceLower.includes('يوتيوب') || 
+        sourceLower.includes('یوتیوب')) {
+      return 'YouTube';
+    }
+    
+    // Check for TikTok
+    if (sourceLower.includes('tiktok.com') || sourceLower.includes('tiktok') || 
+        sourceLower.includes('تيك توك') || sourceLower.includes('تیک')) {
+      return 'TikTok';
+    }
+    
+    // Check for LinkedIn
+    if (sourceLower.includes('linkedin.com') || sourceLower.includes('linkedin') || 
+        sourceLower.includes('لينكد')) {
       return 'LinkedIn';
     }
+    
+    // Check for WhatsApp
+    if (sourceLower.includes('whatsapp.com') || sourceLower.includes('wa.me') ||
+        sourceLower.includes('whatsapp') || sourceLower.includes('واتساب')) {
+      return 'WhatsApp';
+    }
+    
+    // Check for Reddit
+    if (sourceLower.includes('reddit.com') || sourceLower.includes('reddit') || 
+        sourceLower.includes('ردیت')) {
+      return 'Reddit';
+    }
+    
     return 'سایر';
   };
 
@@ -228,6 +288,8 @@ const Dashboard = () => {
       'TikTok': '#000000',
       'Telegram': '#0088cc',
       'LinkedIn': '#0077b5',
+      'WhatsApp': '#25D366',
+      'Reddit': '#FF4500',
       'سایر': '#6B7280'
     };
 
