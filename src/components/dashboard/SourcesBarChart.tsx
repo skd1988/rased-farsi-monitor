@@ -74,6 +74,35 @@ const getBarColor = (index: number): string => {
   return colors[index] || '#bfdbfe';
 };
 
+// Custom Y-axis tick with proper RTL support using foreignObject
+const CustomYAxisTick = ({ x, y, payload }: any) => {
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <foreignObject x={-190} y={-12} width={180} height={24}>
+        <div 
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            paddingRight: '10px',
+            direction: 'rtl',
+            fontSize: '14px',
+            fontWeight: 600,
+            color: 'hsl(var(--foreground))',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {payload.value}
+        </div>
+      </foreignObject>
+    </g>
+  );
+};
+
 const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }) => {
   // Prepare data with cleaned names
   const chartData = data.slice(0, 10).map((item, index) => ({
@@ -105,11 +134,7 @@ const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }
             type="category" 
             dataKey="displayName" 
             width={190}
-            tick={{ 
-              fill: 'hsl(var(--foreground))', 
-              fontSize: 14, 
-              fontWeight: 600
-            }}
+            tick={<CustomYAxisTick />}
             tickLine={false}
             axisLine={false}
             interval={0}
