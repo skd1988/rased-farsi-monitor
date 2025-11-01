@@ -144,6 +144,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
             threat_level: analysis.threat_level,
             confidence: analysis.confidence,
             key_points: analysis.key_points,
+            keywords: analysis.keywords,
             recommended_action: analysis.recommended_action,
             analyzed_at: analysis.analyzed_at,
             analysis_model: analysis.analysis_model,

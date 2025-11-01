@@ -57,7 +57,7 @@ const Trends = () => {
     const { data, error } = await supabase
       .from('posts')
       .select('keywords')
-      .gte('created_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .gte('published_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
       .not('keywords', 'is', null);
 
     if (!error && data) {
@@ -88,14 +88,14 @@ const Trends = () => {
     const { data: recent } = await supabase
       .from('posts')
       .select('keywords')
-      .gte('created_at', threeDaysAgo.toISOString())
+      .gte('published_at', threeDaysAgo.toISOString())
       .not('keywords', 'is', null);
 
     const { data: previous } = await supabase
       .from('posts')
       .select('keywords')
-      .gte('created_at', sixDaysAgo.toISOString())
-      .lt('created_at', threeDaysAgo.toISOString())
+      .gte('published_at', sixDaysAgo.toISOString())
+      .lt('published_at', threeDaysAgo.toISOString())
       .not('keywords', 'is', null);
 
     if (recent && previous) {
@@ -137,15 +137,15 @@ const Trends = () => {
     const days = getDaysInterval();
     const { data, error } = await supabase
       .from('posts')
-      .select('created_at, threat_level')
-      .gte('created_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: true });
+      .select('published_at, threat_level')
+      .gte('published_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .order('published_at', { ascending: true });
 
     if (!error && data) {
       const dateMap: Record<string, any> = {};
       
       data.forEach(post => {
-        const date = new Date(post.created_at).toISOString().split('T')[0];
+        const date = new Date(post.published_at).toISOString().split('T')[0];
         if (!dateMap[date]) {
           dateMap[date] = { date, Critical: 0, High: 0, Medium: 0, Low: 0, total: 0 };
         }
@@ -163,16 +163,16 @@ const Trends = () => {
     const days = getDaysInterval();
     const { data, error } = await supabase
       .from('posts')
-      .select('created_at, sentiment')
-      .gte('created_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .select('published_at, sentiment')
+      .gte('published_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
       .not('sentiment', 'is', null)
-      .order('created_at', { ascending: true });
+      .order('published_at', { ascending: true });
 
     if (!error && data) {
       const dateMap: Record<string, any> = {};
       
       data.forEach(post => {
-        const date = new Date(post.created_at).toISOString().split('T')[0];
+        const date = new Date(post.published_at).toISOString().split('T')[0];
         if (!dateMap[date]) {
           dateMap[date] = { date, positive: 0, neutral: 0, negative: 0 };
         }
@@ -207,7 +207,7 @@ const Trends = () => {
     const { data, error } = await supabase
       .from('posts')
       .select('main_topic')
-      .gte('created_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .gte('published_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
       .not('main_topic', 'is', null);
 
     if (!error && data) {
@@ -231,7 +231,7 @@ const Trends = () => {
     const { data, error } = await supabase
       .from('posts')
       .select('source')
-      .gte('created_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .gte('published_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
       .not('source', 'is', null);
 
     if (!error && data) {
@@ -256,7 +256,7 @@ const Trends = () => {
     const { data, error } = await supabase
       .from('posts')
       .select('main_topic, sentiment')
-      .gte('created_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
+      .gte('published_at', new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString())
       .not('main_topic', 'is', null)
       .not('sentiment', 'is', null);
 
