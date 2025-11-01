@@ -10,6 +10,7 @@ import DashboardLayout from "./pages/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
+import Chat from "./pages/Chat";
 import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Trends from "./pages/Trends";
@@ -37,6 +38,7 @@ const App = () => (
                   <Route path="dashboard" element={<Dashboard />} />
                   <Route path="posts" element={<PostsExplorer />} />
                   <Route path="ai-analysis" element={<AIAnalysis />} />
+                  <Route path="chat" element={<Chat />} />
                   <Route path="api-usage" element={<APIUsage />} />
                   <Route path="settings/api-usage" element={<SettingsAPIUsage />} />
                   <Route path="alerts" element={<Alerts />} />

@@ -114,6 +114,71 @@ export type Database = {
           },
         ]
       }
+      chat_conversations: {
+        Row: {
+          created_at: string | null
+          id: string
+          title: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      chat_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          id: string
+          metadata: Json | null
+          model: string | null
+          role: string
+          timestamp: string | null
+          tokens_used: number | null
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          id?: string
+          metadata?: Json | null
+          model?: string | null
+          role: string
+          timestamp?: string | null
+          tokens_used?: number | null
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          id?: string
+          metadata?: Json | null
+          model?: string | null
+          role?: string
+          timestamp?: string | null
+          tokens_used?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           analysis_model: string | null
