@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.77.0';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,12 @@ serve(async (req) => {
   console.log("🚀 analyze-post function started");
 
   try {
+    // Initialize Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
     const { postId, postTitle, postContent } = await req.json();
 
     // Validate input
@@ -118,7 +125,32 @@ serve(async (req) => {
     const analysis = JSON.parse(jsonMatch[0]);
     const processingTime = (Date.now() - startTime) / 1000;
 
+    // Log API usage
+    const inputTokens = deepseekData.usage?.prompt_tokens || 0;
+    const outputTokens = deepseekData.usage?.completion_tokens || 0;
+    const totalTokens = deepseekData.usage?.total_tokens || 0;
+    
+    // DeepSeek pricing: $0.14 per 1M input tokens, $0.28 per 1M output tokens
+    const costUsd = (inputTokens * 0.14 / 1000000) + (outputTokens * 0.28 / 1000000);
+
+    try {
+      await supabaseClient.from('api_usage_logs').insert({
+        post_id: postId,
+        model_used: 'deepseek-chat',
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: totalTokens,
+        cost_usd: costUsd,
+        response_time_ms: Math.round(processingTime * 1000),
+        status: 'success'
+      });
+    } catch (logError) {
+      console.error('⚠️ Failed to log API usage:', logError);
+      // Don't fail the request if logging fails
+    }
+
     console.log("✅ Analysis completed successfully");
+    console.log(`📊 Tokens: ${totalTokens} (in: ${inputTokens}, out: ${outputTokens}), Cost: $${costUsd.toFixed(6)}`);
 
     // Return standardized response
     return new Response(
@@ -143,6 +175,31 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("💥 Error:", error);
+
+    // Try to log the error (best effort)
+    try {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      const errorData = await req.json().catch(() => ({}));
+      if (errorData.postId) {
+        await supabaseClient.from('api_usage_logs').insert({
+          post_id: errorData.postId,
+          model_used: 'deepseek-chat',
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          cost_usd: 0,
+          response_time_ms: 0,
+          status: 'error',
+          error_message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    } catch (logError) {
+      console.error('⚠️ Failed to log error:', logError);
+    }
 
     return new Response(
       JSON.stringify({

@@ -64,6 +64,56 @@ export type Database = {
           },
         ]
       }
+      api_usage_logs: {
+        Row: {
+          cost_usd: number
+          created_at: string
+          error_message: string | null
+          id: string
+          input_tokens: number
+          model_used: string
+          output_tokens: number
+          post_id: string | null
+          response_time_ms: number
+          status: string
+          total_tokens: number
+        }
+        Insert: {
+          cost_usd?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input_tokens?: number
+          model_used?: string
+          output_tokens?: number
+          post_id?: string | null
+          response_time_ms?: number
+          status?: string
+          total_tokens?: number
+        }
+        Update: {
+          cost_usd?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          input_tokens?: number
+          model_used?: string
+          output_tokens?: number
+          post_id?: string | null
+          response_time_ms?: number
+          status?: string
+          total_tokens?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_usage_logs_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           analysis_model: string | null

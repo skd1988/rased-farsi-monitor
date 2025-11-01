@@ -1,12 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, FileText, Brain, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench } from 'lucide-react';
+import { Home, FileText, Brain, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const menuItems = [
   { icon: Home, label: 'داشبورد', path: '/dashboard' },
   { icon: FileText, label: 'مطالب', path: '/posts' },
   { icon: Brain, label: 'تحلیل هوشمند', path: '/ai-analysis' },
+  { icon: BarChart3, label: 'مصرف API', path: '/api-usage' },
   { icon: AlertTriangle, label: 'هشدارها', path: '/alerts' },
   { icon: TrendingUp, label: 'ترندها', path: '/trends' },
   { icon: Settings, label: 'تنظیمات', path: '/settings' },
