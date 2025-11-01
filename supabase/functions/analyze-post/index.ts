@@ -133,7 +133,7 @@ serve(async (req) => {
           confidence: parseInt(analysis.confidence),
           key_points: analysis.key_points || [],
           recommended_action: analysis.recommended_action,
-          keywords: analysis.keywords || [],
+          keywords: analysis.keywords || analysis.keywords_found || [],
           analyzed_at: new Date().toISOString(),
           analysis_model: "DeepSeek",
           processing_time: processingTime,
