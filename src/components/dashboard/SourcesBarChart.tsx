@@ -56,19 +56,19 @@ const cleanSourceName = (source: string): string => {
   return cleaned.length > 20 ? cleaned.substring(0, 17) + '...' : cleaned;
 };
 
-// Color gradient for bars
-const getBarColor = (index: number, total: number): string => {
+// Color gradient for bars - professional palette
+const getBarColor = (index: number): string => {
   const colors = [
     '#1e40af', // Dark blue - Top 1
     '#2563eb', // Blue - Top 2
     '#3b82f6', // Medium blue - Top 3
-    '#60a5fa', // Light blue - 4
-    '#93c5fd', // Lighter blue - 5
-    '#7c3aed', // Purple - 6
-    '#a78bfa', // Light purple - 7
-    '#ec4899', // Pink - 8
-    '#f472b6', // Light pink - 9
-    '#fb923c'  // Orange - 10
+    '#f59e0b', // Orange - 4
+    '#10b981', // Green - 5
+    '#8b5cf6', // Purple - 6
+    '#ec4899', // Pink - 7
+    '#ef4444', // Red - 8
+    '#6366f1', // Indigo - 9
+    '#14b8a6'  // Teal - 10
   ];
   
   return colors[index] || '#bfdbfe';
@@ -80,32 +80,41 @@ const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }
     ...item,
     displayName: cleanSourceName(item.source),
     originalSource: item.source,
-    color: getBarColor(index, data.length)
+    color: getBarColor(index)
   }));
 
   return (
     <div className="bg-card rounded-lg p-6 shadow-sm border">
-      <h3 className="text-lg font-bold mb-4 text-right text-foreground">فعال‌ترین منابع خبری</h3>
-      <ResponsiveContainer width="100%" height={450}>
+      <h3 className="text-lg font-bold mb-6 text-right text-foreground">فعال‌ترین منابع خبری</h3>
+      <ResponsiveContainer width="100%" height={500}>
         <BarChart
           data={chartData}
           layout="vertical"
-          margin={{ top: 5, right: 40, left: 120, bottom: 5 }}
-          barCategoryGap="15%"
+          margin={{ top: 10, right: 60, left: 200, bottom: 10 }}
+          barGap={8}
+          barCategoryGap="20%"
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted))" opacity={0.3} />
           <XAxis 
             type="number" 
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 13 }}
             tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+            axisLine={{ stroke: 'hsl(var(--muted))' }}
           />
           <YAxis 
             type="category" 
             dataKey="displayName" 
-            width={115}
-            tick={{ fill: 'hsl(var(--foreground))', fontSize: 13, fontWeight: 500 }}
+            width={190}
+            tick={{ 
+              fill: 'hsl(var(--foreground))', 
+              fontSize: 14, 
+              fontWeight: 600,
+              textAnchor: 'end',
+              direction: 'rtl'
+            }}
             tickLine={false}
             axisLine={false}
+            interval={0}
           />
           <Tooltip
             content={({ active, payload }) => {
@@ -131,7 +140,7 @@ const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }
           />
           <Bar 
             dataKey="count" 
-            radius={[0, 6, 6, 0]}
+            radius={[0, 8, 8, 0]}
             onClick={(data) => {
               if (data.sourceURL) {
                 window.open(data.sourceURL, '_blank');
@@ -140,6 +149,7 @@ const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }
               }
             }}
             cursor="pointer"
+            maxBarSize={35}
           >
             {chartData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />
@@ -149,9 +159,10 @@ const SourcesBarChart: React.FC<SourcesBarChartProps> = ({ data, onSourceClick }
               position="right" 
               style={{ 
                 fill: 'hsl(var(--foreground))', 
-                fontSize: 12, 
-                fontWeight: 600 
+                fontSize: 13, 
+                fontWeight: 700 
               }} 
+              offset={10}
             />
           </Bar>
         </BarChart>
