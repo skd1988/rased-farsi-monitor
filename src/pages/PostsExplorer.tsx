@@ -319,9 +319,9 @@ const PostsExplorer = () => {
   const getKeywordCount = (keyword: string) => posts.filter(p => p.keywords.includes(keyword)).length;
 
   return (
-    <div className="flex h-full bg-background overflow-x-hidden" dir="rtl">
+    <div className="flex h-full bg-background overflow-hidden" dir="rtl">
       {/* Filters Sidebar */}
-      <aside className="w-80 border-r border-border bg-card overflow-y-auto overflow-x-hidden flex-shrink-0">
+      <aside className="w-72 flex-shrink-0 border-r border-border bg-card overflow-y-auto">
         <div className="p-6 space-y-6">
           <div>
             <h3 className="text-lg font-bold mb-4">فیلترهای پیشرفته</h3>
@@ -545,8 +545,8 @@ const PostsExplorer = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="p-6">
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-6">
           {/* Header */}
           <div className="mb-6">
             <div className="flex items-start justify-between mb-2">
@@ -596,159 +596,161 @@ const PostsExplorer = () => {
           )}
 
           {/* Table */}
-          <Card>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="p-6 space-y-3">
-                  {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : paginatedPosts.length === 0 ? (
-                <div className="p-12 text-center">
-                  <p className="text-lg text-muted-foreground">هیچ مطلبی یافت نشد</p>
-                  <Button variant="link" onClick={clearAllFilters} className="mt-2">
-                    پاک کردن فیلترها
-                  </Button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-max">
-                    <thead className="border-b bg-muted/50">
-                      <tr>
-                        <th className="p-4 text-right">
-                          <Checkbox
-                            checked={selectedPosts.size === paginatedPosts.length && paginatedPosts.length > 0}
-                            onCheckedChange={handleSelectAll}
-                          />
-                        </th>
-                        <th className="p-4 text-right font-medium">ردیف</th>
-                        <th className="p-4 text-right font-medium w-[400px] max-w-[400px]">عنوان</th>
-                        <th className="p-4 text-right font-medium">منبع</th>
-                        <th className="p-4 text-right font-medium">نویسنده</th>
-                        <th className="p-4 text-right font-medium">تاریخ</th>
-                        <th className="p-4 text-right font-medium">زبان</th>
-                        <th className="p-4 text-right font-medium">کلمات کلیدی</th>
-                        <th className="p-4 text-right font-medium">وضعیت</th>
-                        <th className="p-4 text-right font-medium">عملیات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedPosts.map((post, index) => (
-                        <tr
-                          key={post.id}
-                          className="border-b hover:bg-muted/50 transition-colors"
-                        >
-                          <td className="p-4">
+          <div className="overflow-hidden">
+            <Card>
+              <CardContent className="p-0">
+                {loading ? (
+                  <div className="p-6 space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : paginatedPosts.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <p className="text-lg text-muted-foreground">هیچ مطلبی یافت نشد</p>
+                    <Button variant="link" onClick={clearAllFilters} className="mt-2">
+                      پاک کردن فیلترها
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full table-fixed">
+                      <thead className="border-b bg-muted/50">
+                        <tr>
+                          <th className="p-4 text-right w-12">
                             <Checkbox
-                              checked={selectedPosts.has(post.id)}
-                              onCheckedChange={(checked) => handleSelectPost(post.id, checked as boolean)}
+                              checked={selectedPosts.size === paginatedPosts.length && paginatedPosts.length > 0}
+                              onCheckedChange={handleSelectAll}
                             />
-                          </td>
-                          <td className="p-4 text-muted-foreground">
-                            {(currentPage - 1) * itemsPerPage + index + 1}
-                          </td>
-                          <td className="p-4 max-w-md">
-                            <button
-                              onClick={() => setSelectedPost(post)}
-                              className="text-right hover:text-primary transition-colors font-medium line-clamp-2 w-full text-ellipsis overflow-hidden"
-                            >
-                              {post.title}
-                            </button>
-                          </td>
-                          <td className="p-4">
-                            <Badge variant="outline" className="whitespace-nowrap">
-                              {post.source}
-                            </Badge>
-                          </td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {post.author || '-'}
-                          </td>
-                          <td className="p-4">
-                            <div className="text-sm">
-                              <div>{formatPersianDate(post.published_at)}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {getRelativeTime(post.published_at)}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-4 text-sm">
-                            {LANGUAGES.find(l => l.code === post.language)?.emoji} {post.language}
-                          </td>
-                          <td className="p-4">
-                            <div className="flex flex-wrap gap-1 max-w-[200px]">
-                              {post.keywords.slice(0, 3).map(keyword => (
-                                <Badge
-                                  key={keyword}
-                                  variant="outline"
-                                  className={cn('text-xs', KEYWORD_COLORS[keyword])}
-                                >
-                                  {keyword}
-                                </Badge>
-                              ))}
-                              {post.keywords.length > 3 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{post.keywords.length - 3} دیگر
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <Badge variant="outline" className={cn('text-xs', STATUS_COLORS[post.status])}>
-                              {post.status}
-                            </Badge>
-                          </td>
-                          <td className="p-4">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setSelectedPost(post)}>
-                                  <Eye className="w-4 h-4 ml-2" />
-                                  مشاهده جزئیات
-                                </DropdownMenuItem>
-                                <DropdownMenuItem disabled>
-                                  🤖 تحلیل هوش مصنوعی (به زودی)
-                                </DropdownMenuItem>
-                                {post.article_url && (
-                                  <DropdownMenuItem
-                                    onClick={() => window.open(post.article_url!, '_blank')}
-                                  >
-                                    <LinkIcon className="w-4 h-4 ml-2" />
-                                    باز کردن لینک اصلی
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem disabled>
-                                  📝 ویرایش
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleArchivePost(post.id)}>
-                                  <Archive className="w-4 h-4 ml-2" />
-                                  آرشیو
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => {
-                                    setPostToDelete(post.id);
-                                    setDeleteDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 className="w-4 h-4 ml-2" />
-                                  حذف
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </td>
+                          </th>
+                          <th className="p-4 text-right font-medium w-16">ردیف</th>
+                          <th className="p-4 text-right font-medium min-w-[200px] max-w-[400px]">عنوان</th>
+                          <th className="p-4 text-right font-medium w-36">منبع</th>
+                          <th className="p-4 text-right font-medium w-32">نویسنده</th>
+                          <th className="p-4 text-right font-medium w-44">تاریخ</th>
+                          <th className="p-4 text-right font-medium w-20">زبان</th>
+                          <th className="p-4 text-right font-medium w-48">کلمات کلیدی</th>
+                          <th className="p-4 text-right font-medium w-32">وضعیت</th>
+                          <th className="p-4 text-right font-medium w-24">عملیات</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      </thead>
+                      <tbody>
+                        {paginatedPosts.map((post, index) => (
+                          <tr
+                            key={post.id}
+                            className="border-b hover:bg-muted/50 transition-colors"
+                          >
+                            <td className="p-4">
+                              <Checkbox
+                                checked={selectedPosts.has(post.id)}
+                                onCheckedChange={(checked) => handleSelectPost(post.id, checked as boolean)}
+                              />
+                            </td>
+                            <td className="p-4 text-muted-foreground">
+                              {(currentPage - 1) * itemsPerPage + index + 1}
+                            </td>
+                            <td className="p-4">
+                              <button
+                                onClick={() => setSelectedPost(post)}
+                                className="text-right hover:text-primary transition-colors font-medium line-clamp-2 w-full break-words"
+                              >
+                                {post.title}
+                              </button>
+                            </td>
+                            <td className="p-4">
+                              <Badge variant="outline" className="whitespace-nowrap">
+                                {post.source}
+                              </Badge>
+                            </td>
+                            <td className="p-4 text-sm text-muted-foreground truncate">
+                              {post.author || '-'}
+                            </td>
+                            <td className="p-4">
+                              <div className="text-sm">
+                                <div>{formatPersianDate(post.published_at)}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {getRelativeTime(post.published_at)}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4 text-sm text-center">
+                              {LANGUAGES.find(l => l.code === post.language)?.emoji} {post.language}
+                            </td>
+                            <td className="p-4">
+                              <div className="flex flex-wrap gap-1">
+                                {post.keywords.slice(0, 3).map(keyword => (
+                                  <Badge
+                                    key={keyword}
+                                    variant="outline"
+                                    className={cn('text-xs', KEYWORD_COLORS[keyword])}
+                                  >
+                                    {keyword}
+                                  </Badge>
+                                ))}
+                                {post.keywords.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{post.keywords.length - 3} دیگر
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <Badge variant="outline" className={cn('text-xs', STATUS_COLORS[post.status])}>
+                                {post.status}
+                              </Badge>
+                            </td>
+                            <td className="p-4">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    <MoreVertical className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setSelectedPost(post)}>
+                                    <Eye className="w-4 h-4 ml-2" />
+                                    مشاهده جزئیات
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem disabled>
+                                    🤖 تحلیل هوش مصنوعی (به زودی)
+                                  </DropdownMenuItem>
+                                  {post.article_url && (
+                                    <DropdownMenuItem
+                                      onClick={() => window.open(post.article_url!, '_blank')}
+                                    >
+                                      <LinkIcon className="w-4 h-4 ml-2" />
+                                      باز کردن لینک اصلی
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem disabled>
+                                    📝 ویرایش
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleArchivePost(post.id)}>
+                                    <Archive className="w-4 h-4 ml-2" />
+                                    آرشیو
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => {
+                                      setPostToDelete(post.id);
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4 ml-2" />
+                                    حذف
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Pagination */}
           {!loading && filteredPosts.length > 0 && (
