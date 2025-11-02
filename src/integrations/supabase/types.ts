@@ -588,6 +588,30 @@ export type Database = {
           },
         ]
       }
+      resource_ownership: {
+        Row: {
+          created_at: string | null
+          id: string
+          resource_id: string
+          resource_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          resource_id: string
+          resource_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          resource_id?: string
+          resource_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       target_profiles: {
         Row: {
           bio_summary: string | null
@@ -633,15 +657,143 @@ export type Database = {
         }
         Relationships: []
       }
+      user_daily_limits: {
+        Row: {
+          ai_analysis: number | null
+          chat_messages: number | null
+          created_at: string | null
+          exports: number | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: number | null
+          chat_messages?: number | null
+          created_at?: string | null
+          exports?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: number | null
+          chat_messages?: number | null
+          created_at?: string | null
+          exports?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_daily_usage: {
+        Row: {
+          ai_analysis: number | null
+          chat_messages: number | null
+          created_at: string | null
+          exports: number | null
+          id: string
+          updated_at: string | null
+          usage_date: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: number | null
+          chat_messages?: number | null
+          created_at?: string | null
+          exports?: number | null
+          id?: string
+          updated_at?: string | null
+          usage_date?: string
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: number | null
+          chat_messages?: number | null
+          created_at?: string | null
+          exports?: number | null
+          id?: string
+          updated_at?: string | null
+          usage_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      users: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          last_login: string | null
+          preferences: Json | null
+          status: Database["public"]["Enums"]["user_status"]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          last_login?: string | null
+          preferences?: Json | null
+          status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          last_login?: string | null
+          preferences?: Json | null
+          status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "super_admin" | "admin" | "analyst" | "viewer" | "guest"
+      user_status: "active" | "suspended" | "inactive"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -768,6 +920,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["super_admin", "admin", "analyst", "viewer", "guest"],
+      user_status: ["active", "suspended", "inactive"],
+    },
   },
 } as const
