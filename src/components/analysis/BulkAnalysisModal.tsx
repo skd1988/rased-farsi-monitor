@@ -263,7 +263,9 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const calculateRemainingTime = (): number => {
     const remaining = progress.total - progress.current;
     const avgTime = 2.5; // seconds per post average
-    return Math.round(remaining * avgTime);
+    const totalSeconds = Math.round(remaining * avgTime);
+    const minutes = Math.ceil(totalSeconds / 60); // Convert to minutes
+    return minutes;
   };
 
   const calculateProgress = (): number => {
@@ -389,7 +391,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 <div>
                   <div className="font-medium">در حال اجرا...</div>
                   <div className="text-sm text-muted-foreground">
-                    زمان تخمینی باقیمانده: {calculateRemainingTime()} ثانیه
+                    زمان تخمینی باقیمانده: {calculateRemainingTime()} دقیقه
                   </div>
                 </div>
               </div>
