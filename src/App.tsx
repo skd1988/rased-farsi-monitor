@@ -23,6 +23,7 @@ import IntelligenceAndTrends from "./pages/IntelligenceAndTrends";
 import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
 import PhotoManagement from "./pages/settings/PhotoManagement";
+import UserManagement from "./pages/settings/UserManagement";
 import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
@@ -82,6 +83,13 @@ const App = () => (
                     } />
                     
                     <Route path="settings/photo-management" element={<PhotoManagement />} />
+                    
+                    <Route path="settings/users" element={
+                      <ProtectedRoute requiredPermission="MANAGE_USERS" showUnauthorized>
+                        <UserManagement />
+                      </ProtectedRoute>
+                    } />
+                    
                     <Route path="response-management" element={<ResponseManagement />} />
                     
                     <Route path="settings" element={
