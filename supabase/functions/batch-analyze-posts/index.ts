@@ -292,7 +292,7 @@ async function saveAnalysisResult(
     updateData.threat_level = result.threat_level;
     updateData.target_entity = result.primary_target ? [result.primary_target] : null;
     updateData.analysis_summary = `غربالگری سریع: ${result.is_psyop ? 'احتمال PsyOp' : 'خبر عادی'}`;
-    updateData.sentiment = result.is_psyop ? 'منفی' : 'خنثی';
+    updateData.sentiment = result.is_psyop ? 'Negative' : 'Neutral';  // Use English values for constraint
     updateData.main_topic = 'نیاز به بررسی ندارد';
     
   } else {

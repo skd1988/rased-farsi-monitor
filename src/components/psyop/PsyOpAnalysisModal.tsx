@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
+import { translateSentiment } from '@/utils/sentimentTranslations';
 import { formatIranDate } from '@/lib/dateUtils';
 import {
   Dialog,
@@ -504,7 +505,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
                 <div>
                   <span className="text-sm text-muted-foreground">احساسات</span>
                   <Badge variant="secondary" className="mt-1">
-                    {post.sentiment}
+                    {translateSentiment(post.sentiment)}
                   </Badge>
                 </div>
               )}

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { translateSentiment } from "@/utils/sentimentTranslations";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
