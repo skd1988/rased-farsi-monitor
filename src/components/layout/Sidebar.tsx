@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, FileText, Brain, MessageSquare, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3, Shield, Radar, Target } from 'lucide-react';
+import { Home, FileText, Brain, MessageSquare, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3, Shield, Radar, Target, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +10,7 @@ const menuItems = [
   { icon: Shield, label: 'تشخیص جنگ روانی', path: '/psyop-detection', badge: 'critical' },
   { icon: Radar, label: 'رصد کمپین‌ها', path: '/campaign-tracking', badge: 'campaigns' },
   { icon: Target, label: 'تحلیل اهداف', path: '/target-analysis' },
+  { icon: ShieldCheck, label: 'مدیریت پاسخ‌ها', path: '/response-management', badge: 'urgent' },
   { icon: FileText, label: 'مطالب', path: '/posts' },
   { icon: Brain, label: 'تحلیل هوشمند', path: '/ai-analysis' },
   { icon: MessageSquare, label: 'گفتگو با داده‌ها', path: '/chat' },
@@ -23,6 +24,7 @@ const menuItems = [
 const Sidebar = () => {
   const [criticalCount, setCriticalCount] = useState(0);
   const [activeCampaigns, setActiveCampaigns] = useState(0);
+  const [urgentResponses, setUrgentResponses] = useState(0);
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -46,6 +48,19 @@ const Sidebar = () => {
         
         if (campaignsError) throw campaignsError;
         setActiveCampaigns(campaignsCount || 0);
+
+        // Fetch urgent responses (Critical posts detected in last 2 hours)
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+        const { count: urgentCount, error: urgentError } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_psyop', true)
+          .eq('threat_level', 'Critical')
+          .neq('status', 'حل شده')
+          .gte('published_at', twoHoursAgo);
+        
+        if (urgentError) throw urgentError;
+        setUrgentResponses(urgentCount || 0);
       } catch (error) {
         console.error('Error fetching counts:', error);
       }
@@ -94,6 +109,7 @@ const Sidebar = () => {
   const getBadgeCount = (badgeType: string | undefined) => {
     if (badgeType === 'critical') return criticalCount;
     if (badgeType === 'campaigns') return activeCampaigns;
+    if (badgeType === 'urgent') return urgentResponses;
     return 0;
   };
 

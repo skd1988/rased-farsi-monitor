@@ -22,6 +22,7 @@ import SettingsAPIUsage from "./pages/settings/APIUsage";
 import ComingSoon from "./pages/ComingSoon";
 import Debug from "./pages/Debug";
 import NotFound from "./pages/NotFound";
+import ResponseManagement from "./pages/ResponseManagement";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
                   <Route path="api-usage" element={<APIUsage />} />
                   <Route path="settings/api-usage" element={<SettingsAPIUsage />} />
                   <Route path="alerts" element={<Alerts />} />
+                  <Route path="response-management" element={<ResponseManagement />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="trends" element={<Trends />} />
                   <Route path="debug" element={<Debug />} />
