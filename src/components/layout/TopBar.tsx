@@ -3,31 +3,26 @@ import { Moon, Sun, Bell, LogOut, User } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useNavigate } from 'react-router-dom';
-
 const TopBar = () => {
-  const { isDark, toggleTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const {
+    isDark,
+    toggleTheme
+  } = useTheme();
+  const {
+    user,
+    logout
+  } = useAuth();
   const navigate = useNavigate();
-  
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-  
-  return (
-    <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6">
+  return <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6">
       {/* Right side - Title */}
       <div>
-        <h1 className="text-xl font-bold">سیستم رصد رسانه‌ای</h1>
+        <h1 className="text-xl font-bold">سامانه هوشمند شناسایی عملیات روانی ضد محور مقاومت</h1>
       </div>
       
       {/* Left side - User menu */}
@@ -62,8 +57,6 @@ const TopBar = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </header>
-  );
+    </header>;
 };
-
 export default TopBar;
