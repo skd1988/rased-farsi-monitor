@@ -19,6 +19,7 @@ import { UserStatsCards } from '@/components/users/UserStatsCards';
 import { UserFilters } from '@/components/users/UserFilters';
 import { UsersTable } from '@/components/users/UsersTable';
 import { BulkActionsBar } from '@/components/users/BulkActionsBar';
+import { InviteUserModal } from '@/components/users/InviteUserModal';
 import { DataPagination } from '@/components/common/DataPagination';
 
 export interface User {
@@ -47,6 +48,7 @@ const UserManagement = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -300,7 +302,7 @@ const UserManagement = () => {
               Export لیست
             </Button>
             
-            <Button>
+            <Button onClick={() => setInviteModalOpen(true)}>
               <UserPlus className="ml-2 h-4 w-4" />
               دعوت کاربر جدید
             </Button>
@@ -449,6 +451,16 @@ const UserManagement = () => {
             }}
           />
         )}
+
+        {/* Invite User Modal */}
+        <InviteUserModal
+          open={inviteModalOpen}
+          onClose={() => setInviteModalOpen(false)}
+          onSuccess={() => {
+            fetchUsers();
+            setInviteModalOpen(false);
+          }}
+        />
       </div>
     </div>
   );
