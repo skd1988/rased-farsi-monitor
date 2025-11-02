@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -34,6 +34,7 @@ import { formatDistanceToNow } from 'date-fns';
 import type { User } from '@/pages/settings/UserManagement';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { EditUserModal } from './EditUserModal';
 
 interface UsersTableProps {
   users: User[];
@@ -58,6 +59,8 @@ export const UsersTable: React.FC<UsersTableProps> = ({
   onRefresh,
   currentUser,
 }) => {
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const getRoleBadge = (role: string) => {
     const roleConfig = {
       super_admin: { label: 'مدیر ارشد', variant: 'destructive' as const },
@@ -266,7 +269,12 @@ export const UsersTable: React.FC<UsersTableProps> = ({
                         <Eye className="ml-2 h-4 w-4" />
                         مشاهده پروفایل
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setEditingUser(user);
+                          setEditModalOpen(true);
+                        }}
+                      >
                         <Edit className="ml-2 h-4 w-4" />
                         ویرایش
                       </DropdownMenuItem>
@@ -301,6 +309,22 @@ export const UsersTable: React.FC<UsersTableProps> = ({
           </TableBody>
         </Table>
       </div>
+
+      {/* Edit User Modal */}
+      <EditUserModal
+        user={editingUser}
+        open={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setEditingUser(null);
+        }}
+        onSuccess={() => {
+          onRefresh();
+          setEditModalOpen(false);
+          setEditingUser(null);
+        }}
+        currentUser={currentUser}
+      />
     </div>
   );
 };
