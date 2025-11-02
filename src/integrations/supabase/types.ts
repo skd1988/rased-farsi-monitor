@@ -588,6 +588,51 @@ export type Database = {
           },
         ]
       }
+      target_profiles: {
+        Row: {
+          bio_summary: string | null
+          category: string | null
+          created_at: string | null
+          id: string
+          name_arabic: string | null
+          name_english: string
+          name_persian: string | null
+          organization: string | null
+          photo_source: string | null
+          photo_url: string | null
+          position: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          bio_summary?: string | null
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          name_arabic?: string | null
+          name_english: string
+          name_persian?: string | null
+          organization?: string | null
+          photo_source?: string | null
+          photo_url?: string | null
+          position?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          bio_summary?: string | null
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          name_arabic?: string | null
+          name_english?: string
+          name_persian?: string | null
+          organization?: string | null
+          photo_source?: string | null
+          photo_url?: string | null
+          position?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
