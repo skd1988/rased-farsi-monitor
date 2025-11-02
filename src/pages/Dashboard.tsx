@@ -349,6 +349,7 @@ const Dashboard = () => {
       'blog': 'وبلاگ',
       'social_media': 'شبکه اجتماعی',
       'news': 'خبرگزاری',
+      'news_agency': 'خبرگزاری',
       'forum': 'انجمن',
       'video': 'ویدیو',
       'podcast': 'پادکست',
