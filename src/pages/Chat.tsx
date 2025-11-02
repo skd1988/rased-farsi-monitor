@@ -321,8 +321,9 @@ ${error instanceof Error ? error.message : "خطای نامشخص"}
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
                   <Sparkles className="w-8 h-8 text-primary" />
                 </div>
-                <h2 className="text-3xl font-bold mb-2">👋 سلام! چطور می‌تونم کمکتون کنم؟</h2>
-                <p className="text-muted-foreground">می‌تونید هر سوالی بپرسید - درباره رسانه یا موضوعات دیگر</p>
+                <h2 className="text-3xl font-bold mb-2">🛡️ سلام! من دستیار تحلیل عملیات روانی هستم</h2>
+                <p className="text-muted-foreground">می‌توانم در شناسایی، تحلیل و پاسخ به جنگ روانی علیه محور مقاومت به شما کمک کنم</p>
+                <p className="text-sm text-muted-foreground mt-2">درباره PsyOp های شناسایی‌شده، اهداف حملات، کمپین‌های هماهنگ، و استراتژی پاسخ‌دهی سوال بپرسید</p>
               </div>
 
               <QuickPrompts onSelectPrompt={handleQuickPrompt} />

@@ -1,12 +1,11 @@
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  BarChart,
-  Search,
-  TrendingUp,
   AlertTriangle,
-  FileText,
-  Globe,
+  Shield,
+  Target,
+  Zap,
+  Network,
+  BarChart3,
 } from 'lucide-react';
 
 interface QuickPromptsProps {
@@ -14,74 +13,136 @@ interface QuickPromptsProps {
 }
 
 const QuickPrompts = ({ onSelectPrompt }: QuickPromptsProps) => {
-  const quickActions = [
+  const quickAnalysisPrompts = [
     {
-      icon: BarChart,
-      label: '📊 آمار امروز',
-      prompt: 'آمار مطالب امروز را نشان بده',
-    },
-    {
-      icon: Search,
-      label: '🔍 جستجو در مطالب',
-      prompt: 'مطالب مهم امروز را نشان بده',
-    },
-    {
-      icon: TrendingUp,
-      label: '📈 تحلیل ترندها',
-      prompt: 'ترند کلمات کلیدی 7 روز اخیر چیه؟',
-    },
-    {
+      id: 1,
       icon: AlertTriangle,
-      label: '⚠️ هشدارهای فعال',
-      prompt: 'مطالب با سطح تهدید بالا را نشان بده',
+      text: '🚨 چند PsyOp امروز شناسایی شد و کدوم نهادها هدف بودند؟',
+      color: 'border-red-500',
+      iconColor: 'text-red-500',
+    },
+    {
+      id: 2,
+      icon: Shield,
+      text: '⚠️ بحرانی‌ترین تهدیدات فعلی چی هستند؟',
+      color: 'border-orange-500',
+      iconColor: 'text-orange-500',
+    },
+    {
+      id: 6,
+      icon: BarChart3,
+      text: '📊 خلاصه وضعیت امنیت اطلاعاتی',
+      color: 'border-green-500',
+      iconColor: 'text-green-500',
     },
   ];
 
-  const suggestedPrompts = [
-    'مطالب امروز با threat level بالا',
-    'ترند کلمات کلیدی 7 روز اخیر',
-    'منابع با محتوای منفی',
-    'کمپین‌های هماهنگ شده',
-    'خلاصه وضعیت امروز',
-    'تحلیل منبع الجزیره',
+  const targetAnalysisPrompts = [
+    {
+      id: 3,
+      icon: Target,
+      text: '🎯 محبوب‌ترین اهداف حملات این هفته کدومن؟',
+      color: 'border-blue-500',
+      iconColor: 'text-blue-500',
+    },
+    {
+      id: 4,
+      icon: Zap,
+      text: '🔧 کدوم تاکتیک‌های جنگ روانی بیشتر استفاده شده؟',
+      color: 'border-purple-500',
+      iconColor: 'text-purple-500',
+    },
+  ];
+
+  const campaignPrompts = [
+    {
+      id: 5,
+      icon: Network,
+      text: '🕸️ آیا کمپین هماهنگ‌شده‌ای فعال هست؟',
+      color: 'border-yellow-500',
+      iconColor: 'text-yellow-500',
+    },
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {quickActions.map((action, idx) => (
-          <Card
-            key={idx}
-            className="p-4 cursor-pointer hover:bg-accent transition-colors group"
-            onClick={() => onSelectPrompt(action.prompt)}
-          >
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                <action.icon className="w-6 h-6 text-primary" />
-              </div>
-              <p className="text-sm font-medium">{action.label}</p>
-            </div>
-          </Card>
-        ))}
+    <div className="space-y-8">
+      {/* Quick Analysis */}
+      <div>
+        <h3 className="text-sm font-semibold mb-4 text-muted-foreground">
+          🔍 تحلیل سریع:
+        </h3>
+        <div className="grid grid-cols-1 gap-3">
+          {quickAnalysisPrompts.map((prompt) => (
+            <button
+              key={prompt.id}
+              onClick={() => onSelectPrompt(prompt.text)}
+              className={`
+                w-full text-right p-4 rounded-lg
+                bg-gray-50 dark:bg-gray-800/50
+                hover:bg-gray-100 dark:hover:bg-gray-700/50
+                border-r-4 ${prompt.color}
+                transition-all hover:scale-[1.02] active:scale-[0.98]
+                flex items-center gap-3
+                group
+              `}
+            >
+              <prompt.icon className={`w-5 h-5 ${prompt.iconColor} flex-shrink-0`} />
+              <span className="flex-1 text-sm font-medium">{prompt.text}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Suggested Prompts */}
+      {/* Target Analysis */}
       <div>
-        <h3 className="text-sm font-semibold mb-3 text-muted-foreground">
-          پرسش‌های پیشنهادی:
+        <h3 className="text-sm font-semibold mb-4 text-muted-foreground">
+          🎯 تحلیل اهداف و تاکتیک‌ها:
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {suggestedPrompts.map((prompt, idx) => (
-            <Button
-              key={idx}
-              variant="outline"
-              className="justify-start h-auto py-3 text-right"
-              onClick={() => onSelectPrompt(prompt)}
+        <div className="grid grid-cols-1 gap-3">
+          {targetAnalysisPrompts.map((prompt) => (
+            <button
+              key={prompt.id}
+              onClick={() => onSelectPrompt(prompt.text)}
+              className={`
+                w-full text-right p-4 rounded-lg
+                bg-gray-50 dark:bg-gray-800/50
+                hover:bg-gray-100 dark:hover:bg-gray-700/50
+                border-r-4 ${prompt.color}
+                transition-all hover:scale-[1.02] active:scale-[0.98]
+                flex items-center gap-3
+                group
+              `}
             >
-              <span className="mr-2">💬</span>
-              {prompt}
-            </Button>
+              <prompt.icon className={`w-5 h-5 ${prompt.iconColor} flex-shrink-0`} />
+              <span className="flex-1 text-sm font-medium">{prompt.text}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Campaign Detection */}
+      <div>
+        <h3 className="text-sm font-semibold mb-4 text-muted-foreground">
+          🕸️ شناسایی کمپین:
+        </h3>
+        <div className="grid grid-cols-1 gap-3">
+          {campaignPrompts.map((prompt) => (
+            <button
+              key={prompt.id}
+              onClick={() => onSelectPrompt(prompt.text)}
+              className={`
+                w-full text-right p-4 rounded-lg
+                bg-gray-50 dark:bg-gray-800/50
+                hover:bg-gray-100 dark:hover:bg-gray-700/50
+                border-r-4 ${prompt.color}
+                transition-all hover:scale-[1.02] active:scale-[0.98]
+                flex items-center gap-3
+                group
+              `}
+            >
+              <prompt.icon className={`w-5 h-5 ${prompt.iconColor} flex-shrink-0`} />
+              <span className="flex-1 text-sm font-medium">{prompt.text}</span>
+            </button>
           ))}
         </div>
       </div>
