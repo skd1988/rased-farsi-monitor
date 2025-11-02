@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { TrendingUp, TrendingDown, ChevronDown, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { TargetAvatar } from './TargetAvatar';
 
 interface EntityCardProps {
   entity: {
@@ -35,17 +36,27 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onExpand }) => {
   return (
     <Card className="p-6 space-y-4 hover:shadow-lg transition-all">
       <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <h3 className="text-xl font-bold flex items-center gap-2">
-            <Target className="h-5 w-5 text-danger" />
-            {entity.name_persian}
-          </h3>
-          {entity.name_english && (
-            <p className="text-sm text-muted-foreground mt-1">{entity.name_english}</p>
-          )}
-          <div className="flex gap-2 mt-2">
-            <Badge variant="outline">{entity.entity_type}</Badge>
-            <Badge variant="secondary">{entity.location}</Badge>
+        <div className="flex items-center gap-3 flex-1">
+          {/* Avatar with photo support */}
+          <TargetAvatar 
+            target={{
+              name_persian: entity.name_persian,
+              name_english: entity.name_english,
+              photo_url: (entity as any).photo_url
+            }}
+            size="md"
+            showUpload={false}
+          />
+          
+          <div className="flex-1">
+            <h3 className="text-xl font-bold">{entity.name_persian}</h3>
+            {entity.name_english && (
+              <p className="text-sm text-muted-foreground mt-1">{entity.name_english}</p>
+            )}
+            <div className="flex gap-2 mt-2">
+              <Badge variant="outline">{entity.entity_type}</Badge>
+              <Badge variant="secondary">{entity.location}</Badge>
+            </div>
           </div>
         </div>
 

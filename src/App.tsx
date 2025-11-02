@@ -18,6 +18,7 @@ import Settings from "./pages/Settings";
 import IntelligenceAndTrends from "./pages/IntelligenceAndTrends";
 import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
+import PhotoManagement from "./pages/settings/PhotoManagement";
 import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
@@ -47,6 +48,7 @@ const App = () => (
                   <Route path="chat" element={<Chat />} />
                   <Route path="api-usage" element={<APIUsage />} />
                   <Route path="settings/api-usage" element={<SettingsAPIUsage />} />
+                  <Route path="settings/photo-management" element={<PhotoManagement />} />
                   <Route path="response-management" element={<ResponseManagement />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="intelligence" element={<IntelligenceAndTrends />} />

@@ -2454,6 +2454,29 @@ const Settings = () => {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>مدیریت تصاویر اهداف</CardTitle>
+                <CardDescription>آپلود و مدیریت تصاویر شخصیت‌ها و سازمان‌های مورد هدف</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    در این بخش می‌توانید تصاویر شخصیت‌ها و سازمان‌های مورد هدف را مدیریت کنید.
+                    امکان آپلود دستی تصویر، دریافت خودکار از Wikipedia و مدیریت تصاویر موجود.
+                  </p>
+                  <Button 
+                    variant="default" 
+                    className="w-full"
+                    onClick={() => window.location.href = '/settings/photo-management'}
+                  >
+                    <Users className="h-4 w-4 ms-2" />
+                    مدیریت تصاویر اهداف
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">

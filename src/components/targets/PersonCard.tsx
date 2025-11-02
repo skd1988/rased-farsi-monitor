@@ -6,6 +6,7 @@ import { Users, AlertTriangle, TrendingUp, Briefcase, Building, MapPin, Target }
 import { cn } from '@/lib/utils';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { translateNarrativeTheme } from '@/utils/narrativeTranslations';
+import { TargetAvatar } from './TargetAvatar';
 
 interface PersonCardProps {
   person: {
@@ -94,10 +95,17 @@ const PersonCard: React.FC<PersonCardProps> = ({ person, onViewDetails }) => {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          {/* Avatar */}
-          <div className={cn('w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg', colors.badge)}>
-            {displayName?.[0]?.toUpperCase() || '?'}
-          </div>
+          {/* Avatar with photo support */}
+          <TargetAvatar 
+            target={{
+              name_persian: person.name_persian,
+              name_english: person.name_english,
+              name_arabic: person.name_arabic,
+              photo_url: (person as any).photo_url
+            }}
+            size="md"
+            showUpload={false}
+          />
           
           <div>
             {/* Name in multiple languages */}
