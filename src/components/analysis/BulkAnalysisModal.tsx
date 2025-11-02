@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, CheckSquare } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, CheckSquare, Brain, Zap } from 'lucide-react';
 import { formatPersianDateTime } from '@/lib/dateUtils';
 
 interface BulkAnalysisModalProps {
@@ -19,14 +19,19 @@ interface BulkAnalysisModalProps {
 const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps) => {
   const [posts, setPosts] = useState<any[]>([]);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentPost, setCurrentPost] = useState(0);
-  const [currentPostTitle, setCurrentPostTitle] = useState('');
-  const [results, setResults] = useState<Record<string, 'success' | 'error'>>({});
-  const [showManualSelection, setShowManualSelection] = useState(false);
-  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0);
+  const [status, setStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
+  const [progress, setProgress] = useState({
+    current: 0,
+    total: 0,
+    quickDetections: 0,
+    deepAnalyses: 0,
+    failed: 0,
+    recentActivity: [] as any[]
+  });
   const [batchResults, setBatchResults] = useState<any>(null);
+  const [showManualSelection, setShowManualSelection] = useState(false);
+  const [startTime, setStartTime] = useState<number>(0);
+  const intervalRef = useRef<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -34,11 +39,35 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       fetchUnanalyzedPosts();
       setShowManualSelection(false);
       setSelectedPosts(new Set());
-      setIsAnalyzing(false);
-      setProgress(0);
-      setResults({});
+      setStatus('idle');
+      setProgress({
+        current: 0,
+        total: 0,
+        quickDetections: 0,
+        deepAnalyses: 0,
+        failed: 0,
+        recentActivity: []
+      });
+      setBatchResults(null);
     }
   }, [open]);
+
+  // Real-time progress polling
+  useEffect(() => {
+    if (status === 'running') {
+      const pollInterval = setInterval(async () => {
+        await fetchProgress();
+      }, 2000); // Poll every 2 seconds
+      
+      intervalRef.current = pollInterval;
+      
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    }
+  }, [status, startTime]);
 
   const fetchUnanalyzedPosts = async () => {
     try {
@@ -96,6 +125,45 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     }
   };
 
+  // Fetch real-time progress from database
+  const fetchProgress = async () => {
+    if (!startTime) return;
+    
+    try {
+      const startTimeISO = new Date(startTime).toISOString();
+      
+      const { data: analyzed, error } = await supabase
+        .from('posts')
+        .select('id, title, analysis_stage, analyzed_at, is_psyop')
+        .gte('analyzed_at', startTimeISO)
+        .order('analyzed_at', { ascending: false })
+        .limit(20);
+      
+      if (error) throw error;
+      
+      if (analyzed && analyzed.length > 0) {
+        const quickCount = analyzed.filter(p => p.analysis_stage === 'quick').length;
+        const deepCount = analyzed.filter(p => p.analysis_stage === 'deep').length;
+        
+        setProgress(prev => ({
+          ...prev,
+          current: analyzed.length,
+          quickDetections: quickCount,
+          deepAnalyses: deepCount,
+          recentActivity: analyzed.slice(0, 5).map(p => ({
+            title: p.title,
+            stage: p.analysis_stage,
+            isPsyop: p.is_psyop,
+            time: formatPersianDateTime(p.analyzed_at)
+          }))
+        }));
+      }
+      
+    } catch (error) {
+      console.error('Failed to fetch progress:', error);
+    }
+  };
+
   const analyzeSelected = async (postsToAnalyze: any[]) => {
     if (postsToAnalyze.length === 0) {
       toast({
@@ -106,22 +174,24 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       return;
     }
 
-    setIsAnalyzing(true);
-    setProgress(0);
-    setCurrentPost(0);
-    setResults({});
+    setStatus('running');
+    setStartTime(Date.now());
+    setProgress({
+      current: 0,
+      total: postsToAnalyze.length,
+      quickDetections: 0,
+      deepAnalyses: 0,
+      failed: 0,
+      recentActivity: []
+    });
     setBatchResults(null);
-    const total = postsToAnalyze.length;
-    
-    // New estimate: ~2 sec/post average (quick: 1s, deep: 4s, 70% quick only)
-    setEstimatedTimeRemaining(Math.ceil(total * 2));
 
     try {
-      console.log(`🚀 Starting two-stage batch analysis for ${total} posts`);
+      console.log(`🚀 Starting two-stage batch analysis for ${postsToAnalyze.length} posts`);
       
       const response = await supabase.functions.invoke('batch-analyze-posts', {
         body: {
-          limit: total === posts.length ? null : total, // null = all unanalyzed
+          limit: postsToAnalyze.length === posts.length ? null : postsToAnalyze.length,
           batchSize: 10
         }
       });
@@ -137,43 +207,36 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       }
       
       const batchData = response.data.results;
+      
+      // Stop polling
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      // Set final results
       setBatchResults(batchData);
+      setStatus('completed');
       
       console.log('✅ Batch analysis completed:', batchData);
       
-      // Simulate progress updates during processing
-      const updateInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 95) {
-            clearInterval(updateInterval);
-            return 95;
-          }
-          return prev + 5;
-        });
-      }, (batchData.processing_time_ms / 20));
+      const improvement = Math.round((batchData.time_saved_ms / batchData.estimated_old_time_ms) * 100);
       
-      // Wait for completion
-      setTimeout(() => {
-        clearInterval(updateInterval);
-        setProgress(100);
-        setIsAnalyzing(false);
-        
-        const improvement = Math.round((batchData.time_saved_ms / batchData.estimated_old_time_ms) * 100);
-        
-        toast({
-          title: '✅ تحلیل گروهی تکمیل شد',
-          description: `${batchData.total} مطلب در ${(batchData.processing_time_ms / 1000).toFixed(1)} ثانیه | ${improvement}% سریع‌تر`,
-        });
-
-        setTimeout(() => {
-          onComplete();
-          onClose();
-        }, 3000);
-      }, 1000);
+      toast({
+        title: '✅ تحلیل گروهی تکمیل شد',
+        description: `${batchData.total} مطلب در ${(batchData.processing_time_ms / 1000).toFixed(1)} ثانیه | ${improvement}% سریع‌تر`,
+      });
+      
+      // Call onComplete but DON'T close modal - let user close manually
+      onComplete();
 
     } catch (error) {
       console.error('❌ Error in batch analysis:', error);
-      setIsAnalyzing(false);
+      setStatus('error');
+      
+      // Stop polling on error
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
       
       toast({
         title: 'خطا در تحلیل گروهی',
@@ -181,6 +244,31 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         variant: 'destructive',
       });
     }
+  };
+
+  const handleClose = () => {
+    if (status === 'running') {
+      const confirmed = confirm('تحلیل در حال انجام است. آیا مطمئن هستید؟');
+      if (!confirmed) return;
+      
+      // Stop polling
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    }
+    
+    onClose();
+  };
+
+  const calculateRemainingTime = (): number => {
+    const remaining = progress.total - progress.current;
+    const avgTime = 2.5; // seconds per post average
+    return Math.round(remaining * avgTime);
+  };
+
+  const calculateProgress = (): number => {
+    if (progress.total === 0) return 0;
+    return Math.round((progress.current / progress.total) * 100);
   };
 
   const handleAnalyzeAll = () => {
@@ -205,8 +293,8 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     <Dialog 
       open={open} 
       onOpenChange={(isOpen) => {
-        if (!isOpen && !isAnalyzing) {
-          onClose();
+        if (!isOpen && status !== 'running') {
+          handleClose();
         }
       }}
     >
@@ -214,104 +302,193 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         <DialogHeader>
           <DialogTitle className="text-2xl">تحلیل گروهی مطالب</DialogTitle>
           <DialogDescription>
-            {isAnalyzing
-              ? `در حال تحلیل: ${currentPost} از ${posts.length}`
+            {status === 'running'
+              ? `در حال تحلیل: ${progress.current} از ${progress.total}`
+              : status === 'completed'
+              ? 'تحلیل با موفقیت تکمیل شد'
               : `${posts.length} مطلب تحلیل نشده یافت شد`
             }
           </DialogDescription>
         </DialogHeader>
 
-        {isAnalyzing ? (
+        {status === 'running' ? (
           <div className="space-y-6 py-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                <span>در حال پردازش...</span>
-                <span>زمان تخمینی: {Math.ceil(estimatedTimeRemaining / 60)} دقیقه</span>
+            {/* Progress Header */}
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-bold">در حال پردازش...</div>
+              <div className="text-sm text-muted-foreground">
+                {progress.current} از {progress.total} ({calculateProgress()}%)
               </div>
-              <Progress value={progress} className="w-full h-3" />
             </div>
-            
-            {batchResults && (
-              <div className="grid grid-cols-3 gap-4 mt-6">
-                <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                      {batchResults.quick_only}
-                    </div>
-                    <div className="text-sm font-medium mt-1">تحلیل سریع</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      پست‌های عادی
-                    </div>
-                  </CardContent>
-                </Card>
 
-                <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                      {batchResults.deep_analyzed}
-                    </div>
-                    <div className="text-sm font-medium mt-1">تحلیل عمیق</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      PsyOp تأیید شده
-                    </div>
-                  </CardContent>
-                </Card>
+            {/* Progress Bar */}
+            <Progress value={calculateProgress()} className="w-full h-3" />
 
-                <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                      {batchResults.alerts_created}
-                    </div>
-                    <div className="text-sm font-medium mt-1">هشدار ایجاد شده</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      تهدید بالا/بحرانی
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+            {/* Stats Cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+                <CardContent className="p-4 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">مرحله اول</div>
+                  <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                    {progress.quickDetections}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">غربالگری سریع</div>
+                </CardContent>
+              </Card>
 
-            {batchResults && (
-              <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+              <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+                <CardContent className="p-4 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">مرحله دوم</div>
+                  <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+                    {progress.deepAnalyses}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">تحلیل عمیق</div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
+                <CardContent className="p-4 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">تکمیل شده</div>
+                  <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                    {progress.current}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">موفق</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Activity */}
+            {progress.recentActivity.length > 0 && (
+              <Card>
                 <CardContent className="p-4">
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <span className="text-2xl">⚡</span>
-                    مقایسه عملکرد
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">روش قبلی (تک‌مرحله‌ای):</span>
-                      <span className="font-medium">{(batchResults.estimated_old_time_ms / 1000).toFixed(1)} ثانیه</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">روش جدید (دومرحله‌ای):</span>
-                      <span className="font-medium">{(batchResults.processing_time_ms / 1000).toFixed(1)} ثانیه</span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t">
-                      <span className="font-semibold text-green-600 dark:text-green-400">بهبود سرعت:</span>
-                      <span className="font-bold text-green-600 dark:text-green-400 text-lg">
-                        {Math.round((batchResults.time_saved_ms / batchResults.estimated_old_time_ms) * 100)}% سریع‌تر 🚀
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">صرفه‌جویی زمان:</span>
-                      <span className="font-medium">{(batchResults.time_saved_ms / 1000).toFixed(1)} ثانیه</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">صرفه‌جویی هزینه:</span>
-                      <span className="font-medium">${batchResults.cost_saved_usd.toFixed(4)}</span>
-                    </div>
+                  <h4 className="font-semibold mb-3">فعالیت‌های اخیر:</h4>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {progress.recentActivity.map((activity, idx) => (
+                      <div 
+                        key={idx}
+                        className="flex items-center gap-2 text-xs p-3 bg-muted rounded border"
+                      >
+                        {activity.stage === 'quick' ? (
+                          <Zap className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        ) : (
+                          <Brain className="w-4 h-4 text-red-600 flex-shrink-0" />
+                        )}
+                        <span className="flex-1 truncate font-medium">{activity.title}</span>
+                        <span className="text-muted-foreground flex-shrink-0">{activity.time}</span>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            <div className="bg-muted/50 p-4 rounded-lg">
-              <div className="flex items-center gap-3">
+            {/* Estimated Time */}
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-3 bg-muted/50 p-4 rounded-lg">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="font-medium">در حال اتمام...</span>
+                <div>
+                  <div className="font-medium">در حال اجرا...</div>
+                  <div className="text-sm text-muted-foreground">
+                    زمان تخمینی باقیمانده: {calculateRemainingTime()} ثانیه
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
+        ) : status === 'completed' && batchResults ? (
+          <div className="space-y-6 py-6">
+            {/* Success Header */}
+            <div className="text-center">
+              <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold mb-2">
+                تحلیل با موفقیت تکمیل شد! 🎉
+              </h2>
+              <p className="text-muted-foreground">
+                {batchResults.total} مطلب در {(batchResults.processing_time_ms / 1000).toFixed(1)} ثانیه
+              </p>
+            </div>
+
+            {/* Results Summary */}
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
+                <CardContent className="p-6 text-center">
+                  <div className="text-4xl font-bold text-green-600 dark:text-green-400 mb-2">
+                    {batchResults.quick_only}
+                  </div>
+                  <div className="text-sm font-medium">تحلیل سریع</div>
+                  <div className="text-xs text-muted-foreground mt-1">خبر عادی</div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+                <CardContent className="p-6 text-center">
+                  <div className="text-4xl font-bold text-red-600 dark:text-red-400 mb-2">
+                    {batchResults.deep_analyzed}
+                  </div>
+                  <div className="text-sm font-medium">تحلیل عمیق</div>
+                  <div className="text-xs text-muted-foreground mt-1">PsyOp شناسایی شده</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Performance Metrics */}
+            <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+              <CardContent className="p-6">
+                <h4 className="font-semibold mb-4 flex items-center gap-2 text-lg">
+                  <span className="text-2xl">⚡</span>
+                  مقایسه عملکرد
+                </h4>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">روش قبلی (تک‌مرحله‌ای):</span>
+                    <span className="font-bold">{(batchResults.estimated_old_time_ms / 1000).toFixed(1)} ثانیه</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">روش جدید (دومرحله‌ای):</span>
+                    <span className="font-bold">{(batchResults.processing_time_ms / 1000).toFixed(1)} ثانیه</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-3 border-t-2 border-primary/20">
+                    <span className="font-bold text-green-600 dark:text-green-400 text-base">بهبود سرعت:</span>
+                    <span className="font-bold text-green-600 dark:text-green-400 text-2xl">
+                      {Math.round((batchResults.time_saved_ms / batchResults.estimated_old_time_ms) * 100)}% 🚀
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">صرفه‌جویی زمان:</span>
+                    <span className="font-medium">{(batchResults.time_saved_ms / 1000).toFixed(1)} ثانیه</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => window.location.href = '/psyop-detection'}
+                variant="default"
+                size="lg"
+                className="flex-1"
+              >
+                مشاهده PsyOp های شناسایی شده
+              </Button>
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                size="lg"
+                className="flex-1"
+              >
+                بستن
+              </Button>
+            </div>
+          </div>
+        ) : status === 'error' ? (
+          <div className="text-center py-12">
+            <XCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2">خطا در تحلیل گروهی</h3>
+            <p className="text-muted-foreground mb-6">لطفا دوباره تلاش کنید</p>
+            <Button onClick={handleClose} variant="outline">
+              بستن
+            </Button>
           </div>
         ) : showManualSelection ? (
           <div className="space-y-4">
