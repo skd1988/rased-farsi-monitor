@@ -14,16 +14,13 @@ import TargetAnalysis from "./pages/TargetAnalysis";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
 import Chat from "./pages/Chat";
-import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import IntelligenceAndTrends from "./pages/IntelligenceAndTrends";
 import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
 import ComingSoon from "./pages/ComingSoon";
-import Debug from "./pages/Debug";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
-import BatchAnalysis from "./pages/BatchAnalysis";
 import SystemTest from "./pages/SystemTest";
 
 const queryClient = new QueryClient();
@@ -50,13 +47,10 @@ const App = () => (
                   <Route path="chat" element={<Chat />} />
                   <Route path="api-usage" element={<APIUsage />} />
                   <Route path="settings/api-usage" element={<SettingsAPIUsage />} />
-                  <Route path="alerts" element={<Alerts />} />
                   <Route path="response-management" element={<ResponseManagement />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="intelligence" element={<IntelligenceAndTrends />} />
-                  <Route path="batch-analysis" element={<BatchAnalysis />} />
                   <Route path="system-test" element={<SystemTest />} />
-                  <Route path="debug" element={<Debug />} />
                 </Route>
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
