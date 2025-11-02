@@ -7,9 +7,12 @@ interface KPICardProps {
   value: number;
   subtitle: string;
   icon: LucideIcon;
-  gradient: 'blue' | 'green' | 'orange' | 'purple';
+  gradient: 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'yellow';
   change?: number;
   isAlert?: boolean;
+  pulse?: boolean;
+  onClick?: () => void;
+  timer?: string;
 }
 
 const KPICard: React.FC<KPICardProps> = ({
@@ -20,6 +23,9 @@ const KPICard: React.FC<KPICardProps> = ({
   gradient,
   change,
   isAlert,
+  pulse,
+  onClick,
+  timer,
 }) => {
   const [displayValue, setDisplayValue] = useState(0);
   
@@ -43,10 +49,19 @@ const KPICard: React.FC<KPICardProps> = ({
   }, [value]);
   
   return (
-    <div className={cn(
-      'rounded-lg p-6 shadow-card transition-smooth hover:shadow-elevated',
-      `gradient-${gradient}`
-    )}>
+    <div 
+      className={cn(
+        'rounded-lg p-6 shadow-card transition-smooth hover:shadow-elevated relative overflow-hidden',
+        `gradient-${gradient}`,
+        onClick && 'cursor-pointer hover:scale-[1.02]',
+        pulse && value > 0 && 'animate-pulse'
+      )}
+      onClick={onClick}
+    >
+      {pulse && value > 0 && (
+        <div className="absolute inset-0 bg-danger/10 animate-pulse pointer-events-none" />
+      )}
+      
       <div className="flex items-start justify-between mb-4">
         <div className="text-right flex-1">
           <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
@@ -72,6 +87,9 @@ const KPICard: React.FC<KPICardProps> = ({
           </span>
         )}
         <span className="text-muted-foreground">{subtitle}</span>
+        {timer && (
+          <span className="mr-auto text-xs bg-white/20 px-2 py-1 rounded">{timer}</span>
+        )}
       </div>
     </div>
   );

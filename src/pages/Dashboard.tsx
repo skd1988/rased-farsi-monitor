@@ -1,481 +1,273 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Newspaper, FileText, AlertTriangle, Globe } from 'lucide-react';
+import { Shield, AlertTriangle, Siren, Clock } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
-import PostsLineChart from '@/components/dashboard/PostsLineChart';
-import LanguagePieChart from '@/components/dashboard/LanguagePieChart';
-import SourceTypePieChart from '@/components/dashboard/SourceTypePieChart';
-import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
-import SourcesBarChart from '@/components/dashboard/SourcesBarChart';
-import CountryPieChart from '@/components/dashboard/CountryPieChart';
+import ThreatLevelTimeline from '@/components/dashboard/ThreatLevelTimeline';
+import TargetedEntitiesChart from '@/components/dashboard/TargetedEntitiesChart';
+import AttackVectorChart from '@/components/dashboard/AttackVectorChart';
+import CampaignHeatmap from '@/components/dashboard/CampaignHeatmap';
 import PostsTable from '@/components/dashboard/PostsTable';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
-import { detectCountryFromSource } from '@/utils/countryDetector';
 import { toast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
+import { faIR } from 'date-fns/locale';
+import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [selectedPost, setSelectedPost] = useState<EnrichedPost | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [posts, setPosts] = useState<EnrichedPost[]>([]);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [aiAnalysis, setAiAnalysis] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Fetch real data from Supabase
   useEffect(() => {
-    const fetchPosts = async () => {
+    const fetchData = async () => {
       try {
-        let allPosts: any[] = [];
-        let from = 0;
-        const batchSize = 1000;
-        let hasMore = true;
-
-        // Fetch all posts in batches of 1000 to bypass Supabase's default limit
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('posts')
-            .select('*')
-            .order('published_at', { ascending: false })
-            .range(from, from + batchSize - 1);
-          
-          if (error) throw error;
-          
-          if (data && data.length > 0) {
-            allPosts = [...allPosts, ...data];
-            from += batchSize;
-            hasMore = data.length === batchSize;
-          } else {
-            hasMore = false;
-          }
-        }
+        setLoading(true);
         
-        // Map Supabase data to EnrichedPost format
-        const mappedPosts: EnrichedPost[] = allPosts.map(post => ({
-          id: post.id,
-          title: post.title,
-          contents: post.contents || '',
-          date: post.published_at,
-          source: post.source,
-          sourceURL: post.source_url || undefined,
-          author: post.author || 'نامشخص',
-          language: post.language,
-          status: post.status,
-          articleURL: post.article_url || '',
-          keywords: post.keywords || [],
-          source_country: post.source_country || null,
-        }));
+        // Fetch posts with PsyOp data
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select('*')
+          .order('published_at', { ascending: false });
         
-        setPosts(mappedPosts);
+        if (postsError) throw postsError;
+        
+        // Fetch AI analysis data
+        const { data: analysisData, error: analysisError } = await supabase
+          .from('ai_analysis')
+          .select('*');
+        
+        if (analysisError) throw analysisError;
+        
+        // Fetch campaigns data
+        const { data: campaignsData, error: campaignsError } = await supabase
+          .from('psyop_campaigns')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (campaignsError) throw campaignsError;
+        
+        setPosts(postsData || []);
+        setAiAnalysis(analysisData || []);
+        setCampaigns(campaignsData || []);
       } catch (error) {
-        console.error('Error fetching posts:', error);
+        console.error('Error fetching data:', error);
+        toast({
+          title: "خطا در دریافت داده‌ها",
+          description: "مشکلی در دریافت اطلاعات پیش آمد",
+          variant: "destructive",
+        });
       } finally {
         setLoading(false);
       }
     };
     
-    fetchPosts();
+    fetchData();
   }, []);
 
-  // Auto-migration for source_country field
-  useEffect(() => {
-    const checkAndMigrateCountries = async () => {
-      try {
-        // Check if migration has already run in this session
-        const hasRunMigration = sessionStorage.getItem('country_migration_done');
-        if (hasRunMigration) return;
-
-        // Check how many posts don't have source_country
-        const { count, error: countError } = await supabase
-          .from('posts')
-          .select('*', { count: 'exact', head: true })
-          .is('source_country', null);
-
-        if (countError) {
-          console.error('Error counting posts:', countError);
-          return;
-        }
-
-        // If more than 50 posts need migration, start auto-migration
-        if (count && count > 50) {
-          toast({
-            title: "🌍 شناسایی کشور منابع",
-            description: "در حال به‌روزرسانی کشور منابع... این کار چند ثانیه طول می‌کشد",
-          });
-
-          let totalUpdated = 0;
-          let totalFailed = 0;
-          const batchSize = 100;
-          let offset = 0;
-
-          while (offset < count) {
-            const { data: postsToUpdate, error: fetchError } = await supabase
-              .from('posts')
-              .select('id, source, source_url')
-              .is('source_country', null)
-              .range(offset, offset + batchSize - 1);
-
-            if (fetchError) {
-              console.error('Error fetching posts for migration:', fetchError);
-              totalFailed += batchSize;
-              offset += batchSize;
-              continue;
-            }
-
-            if (postsToUpdate && postsToUpdate.length > 0) {
-              // Update each post
-              for (const post of postsToUpdate) {
-                try {
-                  const country = detectCountryFromSource(post.source, post.source_url || '');
-                  
-                  if (country) {
-                    const { error: updateError } = await supabase
-                      .from('posts')
-                      .update({ source_country: country })
-                      .eq('id', post.id);
-
-                    if (updateError) {
-                      console.error('Error updating post:', post.id, updateError);
-                      totalFailed++;
-                    } else {
-                      totalUpdated++;
-                    }
-                  }
-                } catch (err) {
-                  console.error('Error processing post:', post.id, err);
-                  totalFailed++;
-                }
-              }
-            }
-
-            offset += batchSize;
-
-            // Show progress for large migrations
-            if (count > 200 && offset < count) {
-              const progress = Math.min(Math.round((offset / count) * 100), 100);
-              toast({
-                title: "پیشرفت Migration",
-                description: `${progress}٪ تکمیل شده...`,
-              });
-            }
-          }
-
-          // Show completion message
-          if (totalUpdated > 0) {
-            toast({
-              title: "✅ Migration موفق",
-              description: `${totalUpdated} مطلب به‌روزرسانی شد${totalFailed > 0 ? ` (${totalFailed} خطا)` : ''}`,
-            });
-
-            // Refresh the posts after migration
-            setTimeout(() => {
-              window.location.reload();
-            }, 2000);
-          }
-
-          // Mark migration as done
-          sessionStorage.setItem('country_migration_done', 'true');
-        }
-      } catch (error) {
-        console.error('Error in country migration:', error);
-        toast({
-          title: "خطا در Migration",
-          description: "مشکلی در به‌روزرسانی کشور منابع پیش آمد",
-          variant: "destructive",
-        });
-      }
-    };
-
-    // Run migration check after posts are loaded
-    if (!loading && posts.length > 0) {
-      checkAndMigrateCountries();
-    }
-  }, [loading, posts.length]);
-  
   // Calculate KPIs
-  const todayPosts = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  const activePsyOpsToday = useMemo(() => {
+    const today = startOfDay(new Date());
     return posts.filter(post => {
-      const postDate = new Date(post.date);
-      postDate.setHours(0, 0, 0, 0);
-      return postDate.getTime() === today.getTime();
+      const postDate = startOfDay(new Date(post.published_at));
+      return post.is_psyop === true && postDate.getTime() === today.getTime();
     }).length;
   }, [posts]);
-  
-  const totalPosts = posts.length;
-  const activeAlerts = 0; // Placeholder for future implementation
-  const uniqueSources = useMemo(() => {
-    return new Set(posts.map(post => post.source)).size;
-  }, [posts]);
-  
-  // Calculate yesterday's posts for percentage change
-  const yesterdayPosts = useMemo(() => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
+
+  const activePsyOpsYesterday = useMemo(() => {
+    const yesterday = subDays(startOfDay(new Date()), 1);
     return posts.filter(post => {
-      const postDate = new Date(post.date);
-      postDate.setHours(0, 0, 0, 0);
-      return postDate.getTime() === yesterday.getTime();
+      const postDate = startOfDay(new Date(post.published_at));
+      return post.is_psyop === true && postDate.getTime() === yesterday.getTime();
     }).length;
   }, [posts]);
-  
-  const changePercentage = yesterdayPosts > 0 
-    ? Math.round(((todayPosts - yesterdayPosts) / yesterdayPosts) * 100)
+
+  const psyOpChangePercentage = activePsyOpsYesterday > 0 
+    ? Math.round(((activePsyOpsToday - activePsyOpsYesterday) / activePsyOpsYesterday) * 100)
     : 0;
-  
-  // Prepare line chart data (last 30 days)
-  const lineChartData = useMemo(() => {
+
+  const criticalThreats = useMemo(() => {
+    return posts.filter(post => 
+      post.threat_level === 'Critical' && post.status !== 'حل شده'
+    ).length;
+  }, [posts]);
+
+  const activeCampaigns = useMemo(() => {
+    return campaigns.filter(c => c.status === 'Active').length;
+  }, [campaigns]);
+
+  const pendingResponses = useMemo(() => {
+    return posts.filter(post => 
+      (post.threat_level === 'High' || post.threat_level === 'Critical') &&
+      post.counter_narrative_ready === false
+    ).length;
+  }, [posts]);
+
+  const oldestPendingTime = useMemo(() => {
+    const pending = posts.filter(post => 
+      (post.threat_level === 'High' || post.threat_level === 'Critical') &&
+      post.counter_narrative_ready === false
+    );
+    
+    if (pending.length === 0) return null;
+    
+    const oldest = pending.reduce((oldest, current) => {
+      return new Date(current.published_at) < new Date(oldest.published_at) ? current : oldest;
+    });
+    
+    return formatDistanceToNow(new Date(oldest.published_at), { 
+      locale: faIR, 
+      addSuffix: false 
+    });
+  }, [posts]);
+
+  // Threat Level Timeline (last 30 days)
+  const threatTimelineData = useMemo(() => {
     const days = 30;
     const data = [];
     const today = new Date();
     
     for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
+      const date = subDays(startOfDay(today), i);
+      const dateStr = format(date, 'yyyy-MM-dd');
       
-      const count = posts.filter(post => {
-        const postDate = new Date(post.date);
-        postDate.setHours(0, 0, 0, 0);
-        return postDate.getTime() === date.getTime();
-      }).length;
+      const dayPosts = posts.filter(post => {
+        const postDate = startOfDay(new Date(post.published_at));
+        return postDate.getTime() === date.getTime() && post.is_psyop === true;
+      });
       
       data.push({
-        date: date.toISOString(),
-        count,
+        date: dateStr,
+        Critical: dayPosts.filter(p => p.threat_level === 'Critical').length,
+        High: dayPosts.filter(p => p.threat_level === 'High').length,
+        Medium: dayPosts.filter(p => p.threat_level === 'Medium').length,
+        Low: dayPosts.filter(p => p.threat_level === 'Low').length,
       });
     }
     
     return data;
   }, [posts]);
-  
-  // Prepare pie chart data (language distribution)
-  const pieChartData = useMemo(() => {
-    const languageCounts: Record<string, number> = {};
+
+  // Top Targeted Entities
+  const targetedEntitiesData = useMemo(() => {
+    const entityCounts: Record<string, { count: number; critical: number; high: number }> = {};
+    
     posts.forEach(post => {
-      languageCounts[post.language] = (languageCounts[post.language] || 0) + 1;
+      if (post.is_psyop && post.target_entity && Array.isArray(post.target_entity)) {
+        post.target_entity.forEach((entity: string) => {
+          if (!entityCounts[entity]) {
+            entityCounts[entity] = { count: 0, critical: 0, high: 0 };
+          }
+          entityCounts[entity].count += 1;
+          if (post.threat_level === 'Critical') entityCounts[entity].critical += 1;
+          if (post.threat_level === 'High') entityCounts[entity].high += 1;
+        });
+      }
     });
     
-    return Object.entries(languageCounts).map(([name, value]) => ({
-      name,
-      value,
-      percentage: (value / totalPosts) * 100,
-    }));
-  }, [posts, totalPosts]);
-  
-  // Helper functions for source classification
-  const classifySource = (source: string): 'social' | 'website' | 'unknown' => {
-    if (!source) return 'unknown';
+    const totalAttacks = Object.values(entityCounts).reduce((sum, e) => sum + e.count, 0);
     
-    const sourceLower = source.toLowerCase();
-    
-    // Check for social media domains
-    const socialDomains = [
-      't.me', 'telegram.me', 'telegram.org',
-      'twitter.com', 'x.com',
-      'facebook.com', 'fb.com', 'fb.watch',
-      'instagram.com', 'instagr.am',
-      'youtube.com', 'youtu.be',
-      'tiktok.com',
-      'linkedin.com',
-      'snapchat.com',
-      'whatsapp.com', 'wa.me',
-      'reddit.com',
-      'pinterest.com',
-      'discord.gg', 'discord.com'
-    ];
-    
-    // Check for social media keywords
-    const socialKeywords = [
-      'twitter', 'توییتر', 'تويتر',
-      'facebook', 'فيسبوك', 'فیسبوک',
-      'instagram', 'إنستغرام', 'اینستاگرام',
-      'youtube', 'يوتيوب', 'یوتیوب',
-      'tiktok', 'تيك توك', 'تیک‌تاک',
-      'telegram', 'تلغرام', 'تلگرام',
-      'linkedin', 'لينكد إن',
-      'snapchat', 'سناب شات',
-      'whatsapp', 'واتساب',
-      'reddit', 'ردیت',
-      'pinterest', 'پینترست',
-      'discord', 'دیسکورد'
-    ];
-    
-    const isSocialDomain = socialDomains.some(domain => sourceLower.includes(domain));
-    const isSocialKeyword = socialKeywords.some(keyword => sourceLower.includes(keyword));
-    
-    return (isSocialDomain || isSocialKeyword) ? 'social' : 'website';
-  };
-
-  const getSocialPlatform = (source: string): string => {
-    if (!source) return 'سایر';
-    const sourceLower = source.toLowerCase();
-    
-    // Check for Telegram
-    if (sourceLower.includes('t.me') || sourceLower.includes('telegram.me') || 
-        sourceLower.includes('telegram.org') || sourceLower.includes('telegram') || 
-        sourceLower.includes('تلغرام') || sourceLower.includes('تلگرام')) {
-      return 'تلگرام';
-    }
-    
-    // Check for Twitter/X
-    if (sourceLower.includes('twitter.com') || sourceLower.includes('x.com') ||
-        sourceLower.includes('twitter') || sourceLower.includes('توییتر') || 
-        sourceLower.includes('تويتر')) {
-      return 'توییتر';
-    }
-    
-    // Check for Facebook
-    if (sourceLower.includes('facebook.com') || sourceLower.includes('fb.com') || 
-        sourceLower.includes('fb.watch') || sourceLower.includes('facebook') || 
-        sourceLower.includes('فيسبوك') || sourceLower.includes('فیسبوک')) {
-      return 'فیسبوک';
-    }
-    
-    // Check for Instagram
-    if (sourceLower.includes('instagram.com') || sourceLower.includes('instagr.am') ||
-        sourceLower.includes('instagram') || sourceLower.includes('إنستغرام') || 
-        sourceLower.includes('اینستاگرام')) {
-      return 'اینستاگرام';
-    }
-    
-    // Check for YouTube
-    if (sourceLower.includes('youtube.com') || sourceLower.includes('youtu.be') ||
-        sourceLower.includes('youtube') || sourceLower.includes('يوتيوب') || 
-        sourceLower.includes('یوتیوب')) {
-      return 'یوتیوب';
-    }
-    
-    // Check for TikTok
-    if (sourceLower.includes('tiktok.com') || sourceLower.includes('tiktok') || 
-        sourceLower.includes('تيك توك') || sourceLower.includes('تیک')) {
-      return 'تیک‌تاک';
-    }
-    
-    // Check for LinkedIn
-    if (sourceLower.includes('linkedin.com') || sourceLower.includes('linkedin') || 
-        sourceLower.includes('لينكد')) {
-      return 'لینکدین';
-    }
-    
-    // Check for WhatsApp
-    if (sourceLower.includes('whatsapp.com') || sourceLower.includes('wa.me') ||
-        sourceLower.includes('whatsapp') || sourceLower.includes('واتساب')) {
-      return 'واتساپ';
-    }
-    
-    // Check for Reddit
-    if (sourceLower.includes('reddit.com') || sourceLower.includes('reddit') || 
-        sourceLower.includes('ردیت')) {
-      return 'ردیت';
-    }
-    
-    return 'سایر';
-  };
-
-  // Prepare source type pie chart data
-  const sourceTypeData = useMemo(() => {
-    const sourceTypes = posts.reduce((acc, post) => {
-      const type = classifySource(post.source);
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return [
-      { name: 'وب‌سایت‌ها', value: sourceTypes.website || 0, fill: '#3B82F6' },
-      { name: 'شبکه‌های اجتماعی', value: sourceTypes.social || 0, fill: '#10B981' }
-    ];
-  }, [posts]);
-
-  // Prepare social media breakdown pie chart data
-  const socialMediaData = useMemo(() => {
-    const socialOnly = posts.filter(p => classifySource(p.source) === 'social');
-    const platforms = socialOnly.reduce((acc, post) => {
-      const platform = getSocialPlatform(post.source);
-      if (platform) {
-        acc[platform] = (acc[platform] || 0) + 1;
-      }
-      return acc;
-    }, {} as Record<string, number>);
-
-    const platformColors: Record<string, string> = {
-      'توییتر': '#1DA1F2',
-      'فیسبوک': '#4267B2',
-      'اینستاگرام': '#E1306C',
-      'یوتیوب': '#FF0000',
-      'تیک‌تاک': '#000000',
-      'تلگرام': '#0088cc',
-      'لینکدین': '#0077b5',
-      'واتساپ': '#25D366',
-      'ردیت': '#FF4500',
-      'سایر': '#6B7280'
-    };
-
-    return Object.entries(platforms).map(([name, value]) => ({
-      name,
-      value,
-      fill: platformColors[name] || '#6B7280'
-    }));
-  }, [posts]);
-
-  // Prepare bar chart data (top 10 sources)
-  const barChartData = useMemo(() => {
-    const sourceCounts: Record<string, { count: number; sourceURL?: string }> = {};
-    posts.forEach(post => {
-      if (!sourceCounts[post.source]) {
-        sourceCounts[post.source] = { count: 0, sourceURL: post.sourceURL };
-      }
-      sourceCounts[post.source].count += 1;
-    });
-    
-    return Object.entries(sourceCounts)
-      .map(([source, data]) => ({ source, count: data.count, sourceURL: data.sourceURL }))
+    return Object.entries(entityCounts)
+      .map(([entity, data]) => ({
+        entity,
+        count: data.count,
+        percentage: totalAttacks > 0 ? (data.count / totalAttacks) * 100 : 0,
+        severity: data.critical > 0 ? 'Critical' as const : 
+                  data.high > 0 ? 'High' as const : 
+                  'Medium' as const
+      }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   }, [posts]);
 
-  // Prepare country distribution data
-  const countryData = useMemo(() => {
-    const countryCounts: Record<string, number> = {};
-    const totalPosts = posts.length;
-
+  // Attack Vector Distribution
+  const attackVectorData = useMemo(() => {
+    const vectorCounts: Record<string, number> = {};
+    
     posts.forEach(post => {
-      const country = post.source_country || 'نامشخص';
-      countryCounts[country] = (countryCounts[country] || 0) + 1;
+      if (post.is_psyop && post.psyop_technique && Array.isArray(post.psyop_technique)) {
+        post.psyop_technique.forEach((technique: string) => {
+          vectorCounts[technique] = (vectorCounts[technique] || 0) + 1;
+        });
+      }
     });
+    
+    return Object.entries(vectorCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+  }, [posts]);
 
-    const colorMap: Record<string, string> = {
-      'ایران': '#239B56',
-      'قطر': '#8E44AD',
-      'عربستان سعودی': '#E67E22',
-      'امارات': '#3498DB',
-      'مصر': '#E74C3C',
-      'عراق': '#F39C12',
-      'لبنان': '#1ABC9C',
-      'آمریکا': '#34495E',
-      'بریتانیا': '#2980B9',
-      'فرانسه': '#9B59B6',
-      'آلمان': '#16A085',
-      'ترکیه': '#C0392B',
-      'روسیه': '#7F8C8D',
-      'نامشخص': '#BDC3C7'
-    };
+  // Campaign Heatmap (last 90 days)
+  const heatmapData = useMemo(() => {
+    const days = 90;
+    const data = [];
+    const today = new Date();
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const date = subDays(startOfDay(today), i);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      
+      const count = posts.filter(post => {
+        const postDate = startOfDay(new Date(post.published_at));
+        return postDate.getTime() === date.getTime() && post.is_psyop === true;
+      }).length;
+      
+      data.push({ date: dateStr, count });
+    }
+    
+    return data;
+  }, [posts]);
 
-    return Object.entries(countryCounts)
-      .map(([country, count]) => ({
-        country,
-        count,
-        percentage: totalPosts > 0 ? (count / totalPosts) * 100 : 0,
-        fill: colorMap[country] || '#95A5A6'
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // Top 10 countries
+  // PsyOp Posts for table (only posts with is_psyop = true)
+  const psyopPosts = useMemo(() => {
+    return posts
+      .filter(post => post.is_psyop === true)
+      .map(post => ({
+        id: post.id,
+        title: post.title,
+        contents: post.contents || '',
+        date: post.published_at,
+        source: post.source,
+        sourceURL: post.source_url || undefined,
+        author: post.author || 'نامشخص',
+        language: post.language,
+        status: post.status,
+        articleURL: post.article_url || '',
+        keywords: post.keywords || [],
+        source_country: post.source_country || null,
+      } as EnrichedPost))
+      .sort((a, b) => {
+        // Sort by threat level first
+        const threatOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
+        const postA = posts.find(p => p.id === a.id);
+        const postB = posts.find(p => p.id === b.id);
+        const threatA = threatOrder[postA?.threat_level as keyof typeof threatOrder] ?? 999;
+        const threatB = threatOrder[postB?.threat_level as keyof typeof threatOrder] ?? 999;
+        
+        if (threatA !== threatB) return threatA - threatB;
+        
+        // Then by date
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      })
+      .slice(0, 15);
   }, [posts]);
   
   const handleViewPost = (post: EnrichedPost) => {
     setSelectedPost(post);
     setIsModalOpen(true);
+  };
+
+  const handleDayClick = (date: string) => {
+    // Navigate to Posts Explorer with date filter
+    navigate(`/posts-explorer?date=${date}`);
   };
   
   if (loading) {
@@ -488,60 +280,77 @@ const Dashboard = () => {
   
   return (
     <div className="p-6 space-y-6" dir="rtl">
-      {/* KPI Cards */}
+      {/* KPI Cards - PsyOp Focused */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          title="مطالب امروز"
-          value={todayPosts}
+          title="حملات جنگ روانی امروز"
+          value={activePsyOpsToday}
           subtitle="نسبت به دیروز"
-          icon={Newspaper}
-          gradient="blue"
-          change={changePercentage}
+          icon={Shield}
+          gradient="red"
+          change={psyOpChangePercentage}
+          isAlert
+          onClick={() => navigate('/posts-explorer?filter=psyop')}
         />
         <KPICard
-          title="مجموع مطالب"
-          value={totalPosts}
-          subtitle="از ابتدای رصد"
-          icon={FileText}
-          gradient="green"
-        />
-        <KPICard
-          title="هشدارهای فعال"
-          value={activeAlerts}
-          subtitle="نیازمند بررسی"
+          title="تهدیدهای بحرانی"
+          value={criticalThreats}
+          subtitle="نیازمند واکنش فوری"
           icon={AlertTriangle}
           gradient="orange"
-          isAlert
+          pulse={criticalThreats > 0}
+          onClick={() => navigate('/ai-analysis?threat=critical')}
         />
         <KPICard
-          title="منابع فعال"
-          value={uniqueSources}
-          subtitle="منبع خبری"
-          icon={Globe}
-          gradient="purple"
+          title="کمپین‌های فعال"
+          value={activeCampaigns}
+          subtitle="در حال رصد"
+          icon={Siren}
+          gradient="yellow"
+          onClick={() => navigate('/coming-soon')}
+        />
+        <KPICard
+          title="پاسخ‌های در انتظار"
+          value={pendingResponses}
+          subtitle="نیاز به روایت مقابل"
+          icon={Clock}
+          gradient={pendingResponses > 10 ? 'red' : pendingResponses > 5 ? 'orange' : 'green'}
+          timer={oldestPendingTime || undefined}
+          onClick={() => navigate('/coming-soon')}
         />
       </div>
       
-      {/* Charts Row 1 */}
+      {/* Charts Row 1 - Threat Timeline and Targeted Entities */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <PostsLineChart data={lineChartData} />
-        <LanguagePieChart data={pieChartData} />
+        <ThreatLevelTimeline data={threatTimelineData} />
+        <TargetedEntitiesChart data={targetedEntitiesData} />
       </div>
       
-      {/* Charts Row 2 - New Source Analysis */}
+      {/* Charts Row 2 - Attack Vectors and Campaign Heatmap */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SourceTypePieChart data={sourceTypeData} />
-        <SocialMediaPieChart data={socialMediaData} />
+        <AttackVectorChart 
+          data={attackVectorData}
+          onVectorClick={(vector) => navigate(`/posts-explorer?vector=${vector}`)}
+        />
+        <CampaignHeatmap 
+          data={heatmapData}
+          onDayClick={handleDayClick}
+        />
       </div>
       
-      {/* Charts Row 3 - Sources & Country Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SourcesBarChart data={barChartData} />
-        <CountryPieChart data={countryData} loading={loading} />
+      {/* PsyOp Detections Table */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">آخرین تشخیص‌های جنگ روانی</h2>
+          <button 
+            className="text-sm text-primary hover:underline"
+            onClick={() => navigate('/ai-analysis')}
+          >
+            مشاهده همه
+          </button>
+        </div>
+        <PostsTable posts={psyopPosts} onViewPost={handleViewPost} />
       </div>
-      
-      {/* Posts Table */}
-      <PostsTable posts={posts.slice(0, 20)} onViewPost={handleViewPost} />
       
       {/* Detail Modal */}
       <PostDetailModal
