@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ChatResponseRich } from './ChatResponseRich';
+import { FollowUpSuggestions } from './FollowUpSuggestions';
 
 interface Message {
   id: string;
@@ -26,13 +27,15 @@ interface Message {
     recommendations?: string[];
     related_posts?: string[];
   };
+  followUpQuestions?: string[];
 }
 
 interface ChatMessageProps {
   message: Message;
+  onFollowUpSelect?: (question: string) => void;
 }
 
-const ChatMessage = ({ message }: ChatMessageProps) => {
+const ChatMessage = ({ message, onFollowUpSelect }: ChatMessageProps) => {
   const { toast } = useToast();
   const isUser = message.role === 'user';
 
@@ -67,7 +70,15 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
           )}
         >
           {!isUser && message.structured_data ? (
-            <ChatResponseRich data={message.structured_data} />
+            <>
+              <ChatResponseRich data={message.structured_data} />
+              {message.followUpQuestions && onFollowUpSelect && (
+                <FollowUpSuggestions
+                  questions={message.followUpQuestions}
+                  onSelect={onFollowUpSelect}
+                />
+              )}
+            </>
           ) : (
             <div className="whitespace-pre-wrap break-words">{message.content}</div>
           )}

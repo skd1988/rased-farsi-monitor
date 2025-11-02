@@ -56,6 +56,14 @@ serve(async (req) => {
     const processingTime = Date.now() - startTime;
     console.log(`Response generated in ${processingTime}ms`);
 
+    // Generate follow-up questions
+    const followUpQuestions = generateFollowUpQuestions(
+      relevantData.type,
+      aiResponse,
+      question,
+      conversationHistory
+    );
+
     return new Response(
       JSON.stringify({
         answer: aiResponse.answer,
@@ -67,6 +75,7 @@ serve(async (req) => {
         actionable_insights: aiResponse.actionable_insights,
         recommendations: aiResponse.recommendations,
         related_posts: aiResponse.related_posts,
+        followUpQuestions: followUpQuestions,
         keyFindings: aiResponse.keyFindings,
         statistics: aiResponse.statistics,
         sources: aiResponse.sources,
@@ -686,6 +695,121 @@ ${dataArray.slice(0, 5).map((p: any) => `- ${p.title} (${p.source || 'نامشخ
   }
   
   return context.trim();
+}
+
+function generateFollowUpQuestions(
+  queryType: string,
+  responseData: any,
+  originalQuestion: string,
+  conversationHistory: any[]
+): string[] {
+  const followUps: string[] = [];
+  
+  // Check what user already asked
+  const previousTopics = conversationHistory
+    .filter((m: any) => m.role === 'user')
+    .map((m: any) => m.content.toLowerCase());
+  
+  const isAlreadyAsked = (keywords: string[]) => 
+    previousTopics.some((q: string) => keywords.some(k => q.includes(k)));
+  
+  switch(queryType) {
+    case 'psyop_count':
+      if (responseData.key_stats?.critical_threats > 0) {
+        followUps.push("جزئیات موارد Critical رو بیشتر توضیح بده");
+      }
+      if (responseData.top_targets?.length > 0) {
+        const topTarget = responseData.top_targets[0].entity;
+        followUps.push(`چرا ${topTarget} بیشترین هدف حملات بوده؟`);
+      }
+      if (!isAlreadyAsked(['منبع', 'source'])) {
+        followUps.push("کدوم منابع بیشترین حمله رو داشتن؟");
+      }
+      break;
+    
+    case 'target_analysis':
+      if (responseData.top_targets?.length > 0) {
+        const entity = responseData.top_targets[0].entity;
+        if (!isAlreadyAsked(['تاکتیک', 'technique'])) {
+          followUps.push(`چه تاکتیک‌هایی علیه ${entity} استفاده شده؟`);
+        }
+        if (!isAlreadyAsked(['روند', 'trend'])) {
+          followUps.push(`روند حملات به ${entity} در این هفته چطور بوده؟`);
+        }
+      }
+      if (!isAlreadyAsked(['پاسخ', 'response', 'استراتژی'])) {
+        followUps.push("بهترین استراتژی پاسخ‌دهی چیه؟");
+      }
+      break;
+    
+    case 'threat_assessment':
+      if (responseData.critical?.length > 0) {
+        followUps.push("موارد Critical چه اتهاماتی دارن؟");
+      }
+      followUps.push("کدوم یک فوری‌ترین نیاز به پاسخ دارن؟");
+      if (!isAlreadyAsked(['کمپین', 'campaign'])) {
+        followUps.push("آیا این تهدیدات بخشی از کمپین هماهنگ هستند؟");
+      }
+      break;
+    
+    case 'campaign_detection':
+      if (responseData.activeCampaigns?.length > 0) {
+        followUps.push("جزئیات کمپین فعال رو بیشتر بگو");
+        followUps.push("چطور می‌تونیم این کمپین رو خنثی کنیم؟");
+      }
+      if (!isAlreadyAsked(['الگو', 'pattern', 'زمان'])) {
+        followUps.push("الگوهای زمانی این کمپین چیه؟");
+      }
+      break;
+    
+    case 'technique_analysis':
+      if (responseData.top_techniques?.length > 0) {
+        const topTech = responseData.top_techniques[0].technique;
+        followUps.push(`چطور باید به تاکتیک "${topTech}" پاسخ بدیم؟`);
+      }
+      if (!isAlreadyAsked(['افزایش', 'increase'])) {
+        followUps.push("کدوم تاکتیک‌ها در حال افزایش هستند؟");
+      }
+      if (!isAlreadyAsked(['گذشته', 'تاریخ'])) {
+        followUps.push("تاکتیک‌های مشابه در گذشته چطور بودن؟");
+      }
+      break;
+    
+    case 'source_analysis':
+      if (responseData.top_sources?.length > 0) {
+        const topSource = responseData.top_sources[0].source;
+        followUps.push(`${topSource} معمولاً چه روایتی داره؟`);
+      }
+      if (!isAlreadyAsked(['هماهنگ', 'coordinated'])) {
+        followUps.push("کدوم منابع با هم هماهنگ کار می‌کنن؟");
+      }
+      if (!isAlreadyAsked(['اعتبار', 'credibility'])) {
+        followUps.push("اعتبار این منابع چقدره؟");
+      }
+      break;
+    
+    case 'temporal_analysis':
+      followUps.push("نقاط اوج حملات در کدوم روزها بوده؟");
+      if (!isAlreadyAsked(['مقایسه', 'compare'])) {
+        followUps.push("مقایسه با هفته گذشته چطوره؟");
+      }
+      followUps.push("پیش‌بینی روند برای روزهای آینده");
+      break;
+    
+    default:
+      if (!isAlreadyAsked(['آمار', 'statistics'])) {
+        followUps.push("آمار دقیق‌تر نشون بده");
+      }
+      if (!isAlreadyAsked(['مقایسه', 'compare'])) {
+        followUps.push("مقایسه با دیروز/هفته گذشته");
+      }
+      if (!isAlreadyAsked(['پیشنهاد', 'recommend'])) {
+        followUps.push("پیشنهاد برای پاسخ‌دهی");
+      }
+  }
+  
+  // Return max 3 follow-ups
+  return followUps.slice(0, 3);
 }
 
 async function logAPIUsage(supabase: any, question: string, usage: any) {

@@ -24,6 +24,7 @@ interface Message {
     recommendations?: string[];
     related_posts?: string[];
   };
+  followUpQuestions?: string[];
 }
 
 interface Conversation {
@@ -249,6 +250,7 @@ const Chat = () => {
           recommendations: response.data.recommendations,
           related_posts: response.data.related_posts,
         },
+        followUpQuestions: response.data.followUpQuestions || [],
       };
 
       setMessages((prev) => [...prev, aiMessage]);
@@ -307,6 +309,10 @@ ${error instanceof Error ? error.message : "خطای نامشخص"}
     handleSendMessage(prompt);
   };
 
+  const handleFollowUpSelect = (question: string) => {
+    handleSendMessage(question);
+  };
+
   return (
     <div className="flex h-screen bg-background">
       <ChatSidebar
@@ -353,7 +359,11 @@ ${error instanceof Error ? error.message : "خطای نامشخص"}
           ) : (
             <div className="max-w-3xl mx-auto space-y-6">
               {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
+                <ChatMessage 
+                  key={message.id} 
+                  message={message}
+                  onFollowUpSelect={handleFollowUpSelect}
+                />
               ))}
               {isLoading && (
                 <div className="flex justify-start">
