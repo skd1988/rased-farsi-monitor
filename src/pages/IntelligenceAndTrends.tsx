@@ -13,10 +13,11 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, Brain, Filter, ArrowUp, ArrowDown,
-  Globe, Languages, Shield, Clock, Target
+  Globe, Languages, Shield, Clock, Target, Bug, AlertCircle
 } from 'lucide-react';
 import { formatPersianDate } from '@/lib/dateUtils';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/hooks/use-toast';
 
 type TimeRange = '24h' | '7d' | '30d' | '90d';
 
@@ -43,6 +44,12 @@ const IntelligenceAndTrends = () => {
   // Geographic Intelligence
   const [geoData, setGeoData] = useState<any[]>([]);
   const [languageData, setLanguageData] = useState<any[]>([]);
+  
+  // Narratives Intelligence
+  const [narratives, setNarratives] = useState<any[]>([]);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [narrativesLoading, setNarrativesLoading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchAllData();
@@ -316,6 +323,246 @@ const IntelligenceAndTrends = () => {
           .map(([language, count]) => ({ language, count }))
           .sort((a, b) => b.count - a.count)
       );
+    }
+  };
+
+  // Narratives Debug and Data Functions
+  const checkDatabaseData = async () => {
+    try {
+      // Check 1: Count total PsyOps
+      const { count: totalPsyOps, error: e1 } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_psyop', true);
+      
+      // Check 2: Count PsyOps with narrative_theme
+      const { count: withNarrative, error: e2 } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_psyop', true)
+        .not('narrative_theme', 'is', null);
+      
+      // Check 3: Sample of actual data
+      const { data: sample, error: e3 } = await supabase
+        .from('posts')
+        .select('id, title, is_psyop, narrative_theme, analyzed_at, analysis_stage, psyop_type, attack_vectors')
+        .eq('is_psyop', true)
+        .order('analyzed_at', { ascending: false })
+        .limit(10);
+      
+      // Check 4: Narrative themes distribution
+      const { data: themes, error: e4 } = await supabase
+        .from('posts')
+        .select('narrative_theme')
+        .eq('is_psyop', true)
+        .not('narrative_theme', 'is', null);
+      
+      const themeCount = themes?.reduce((acc: any, post) => {
+        const theme = post.narrative_theme || 'null';
+        acc[theme] = (acc[theme] || 0) + 1;
+        return acc;
+      }, {});
+      
+      setDebugInfo({
+        totalPsyOps: totalPsyOps || 0,
+        withNarrative: withNarrative || 0,
+        coverage: totalPsyOps && totalPsyOps > 0 
+          ? Math.round(((withNarrative || 0) / totalPsyOps) * 100) 
+          : 0,
+        samplePosts: sample || [],
+        themeDistribution: themeCount || {},
+        errors: [e1, e2, e3, e4].filter(e => e !== null)
+      });
+      
+      console.log('Debug info:', {
+        totalPsyOps,
+        withNarrative,
+        sample,
+        themeCount
+      });
+      
+    } catch (error) {
+      console.error('Debug check failed:', error);
+    }
+  };
+
+  const inferNarrativeTheme = (post: any): string => {
+    const title = (post.title || '').toLowerCase();
+    const content = (post.contents || '').toLowerCase();
+    const combined = title + ' ' + content;
+    
+    // Check for terrorism/extremism → Demonization
+    if (combined.match(/تروریس|terrorist|extremist|افراطی|داعش|isis/)) {
+      return 'Demonization';
+    }
+    
+    // Check for victimization
+    if (combined.match(/قربانی|victim|ضحیة|مظلوم/)) {
+      return 'Victimization';
+    }
+    
+    // Check for delegitimization
+    if (combined.match(/غیرقانون|illegal|نامشروع|illegitimate/)) {
+      return 'Delegitimization';
+    }
+    
+    // Check for fear-mongering
+    if (combined.match(/خطر|threat|تهدید|خطرناک|dangerous/)) {
+      return 'Fear-Mongering';
+    }
+    
+    // Check attack vectors for more clues
+    if (post.attack_vectors && Array.isArray(post.attack_vectors)) {
+      const vectors = JSON.stringify(post.attack_vectors).toLowerCase();
+      if (vectors.includes('terrorism')) return 'Demonization';
+      if (vectors.includes('legitimacy')) return 'Delegitimization';
+    }
+    
+    // Default
+    return 'Demonization';
+  };
+
+  const fixNarrativeFields = async () => {
+    const confirmed = confirm(
+      'این عملیات فیلد narrative_theme را برای پست‌های PsyOp که این فیلد را ندارند پر می‌کند. ادامه می‌دهید؟'
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      toast({
+        title: 'در حال تعمیر...',
+        description: 'لطفا صبر کنید',
+      });
+
+      // Get PsyOps without narrative_theme
+      const { data: posts, error: fetchError } = await supabase
+        .from('posts')
+        .select('id, title, contents, psyop_type, attack_vectors')
+        .eq('is_psyop', true)
+        .is('narrative_theme', null);
+      
+      if (fetchError) throw fetchError;
+      
+      if (!posts || posts.length === 0) {
+        toast({
+          title: 'هیچ پستی برای تعمیر یافت نشد',
+          variant: 'default',
+        });
+        return;
+      }
+      
+      console.log(`Fixing ${posts.length} posts...`);
+      
+      let fixedCount = 0;
+      // Infer narrative_theme from existing data
+      for (const post of posts) {
+        const inferredTheme = inferNarrativeTheme(post);
+        
+        const { error: updateError } = await supabase
+          .from('posts')
+          .update({ 
+            narrative_theme: inferredTheme
+          })
+          .eq('id', post.id);
+        
+        if (updateError) {
+          console.error(`Failed to update post ${post.id}:`, updateError);
+        } else {
+          fixedCount++;
+        }
+        
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      toast({
+        title: `✅ ${fixedCount} پست تعمیر شد!`,
+        description: 'اکنون می‌توانید روایت‌ها را مشاهده کنید',
+      });
+      
+      // Refresh debug info
+      await checkDatabaseData();
+      
+      // Refresh narratives display
+      await fetchNarratives();
+      
+    } catch (error) {
+      console.error('Fix failed:', error);
+      toast({
+        title: '❌ خطا در تعمیر',
+        description: error instanceof Error ? error.message : 'خطای ناشناخته',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const fetchNarratives = async () => {
+    setNarrativesLoading(true);
+    
+    try {
+      const days = getDaysFromRange();
+      const timeStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      
+      let query = supabase
+        .from('posts')
+        .select('id, title, narrative_theme, target_entity, published_at, source, threat_level')
+        .eq('is_psyop', true)
+        .not('narrative_theme', 'is', null)
+        .gte('published_at', timeStart)
+        .order('published_at', { ascending: false });
+      
+      if (threatFilter !== 'all') {
+        query = query.eq('threat_level', threatFilter);
+      }
+      
+      const { data: posts, error } = await query;
+      
+      if (error) {
+        console.error('Query error:', error);
+        throw error;
+      }
+      
+      console.log(`Found ${posts?.length || 0} posts with narratives`);
+      
+      if (!posts || posts.length === 0) {
+        setNarratives([]);
+        setNarrativesLoading(false);
+        return;
+      }
+      
+      // Group by theme
+      const themeMap: Record<string, any> = {};
+      posts.forEach(post => {
+        const theme = post.narrative_theme || 'Unknown';
+        if (!themeMap[theme]) {
+          themeMap[theme] = {
+            theme,
+            count: 0,
+            posts: [],
+            threatBreakdown: { Critical: 0, High: 0, Medium: 0, Low: 0 }
+          };
+        }
+        themeMap[theme].count++;
+        themeMap[theme].posts.push(post);
+        if (post.threat_level) {
+          themeMap[theme].threatBreakdown[post.threat_level]++;
+        }
+      });
+      
+      const narrativesList = Object.values(themeMap)
+        .sort((a: any, b: any) => b.count - a.count);
+      
+      setNarratives(narrativesList);
+      
+    } catch (error) {
+      console.error('Failed to fetch narratives:', error);
+      toast({
+        title: 'خطا در بارگذاری روایت‌ها',
+        variant: 'destructive',
+      });
+    } finally {
+      setNarrativesLoading(false);
     }
   };
 
