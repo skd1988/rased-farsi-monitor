@@ -187,16 +187,23 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             {campaign.target_persons && Array.isArray(campaign.target_persons) && campaign.target_persons.length > 0 && (
               <>
                 {campaign.target_persons.slice(0, 2).map((person: any, idx: number) => {
-                  // Only render if person is a valid string
-                  if (typeof person !== 'string' || !person.trim()) return null;
+                  // Extract clean string value
+                  let displayName = '';
+                  if (typeof person === 'string' && person.trim()) {
+                    displayName = person;
+                  } else if (typeof person === 'object' && person) {
+                    displayName = person.name_persian || person.name_arabic || person.name_english || person.name || '';
+                  }
+                  
+                  if (!displayName) return null;
                   
                   return (
                     <Badge key={idx} variant="outline" className="gap-1">
                       <Users className="h-3 w-3" />
-                      {person}
+                      {displayName}
                     </Badge>
                   );
-                })}
+                }).filter(Boolean)}
                 {campaign.target_persons.length > 2 && (
                   <Badge variant="outline">
                     +{campaign.target_persons.length - 2} نفر
