@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LucideIcon } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface KPICardProps {
@@ -13,6 +14,7 @@ interface KPICardProps {
   pulse?: boolean;
   onClick?: () => void;
   timer?: string;
+  tooltip?: React.ReactNode;
 }
 
 const KPICard: React.FC<KPICardProps> = ({
@@ -26,6 +28,7 @@ const KPICard: React.FC<KPICardProps> = ({
   pulse,
   onClick,
   timer,
+  tooltip,
 }) => {
   const [displayValue, setDisplayValue] = useState(0);
   
@@ -48,7 +51,7 @@ const KPICard: React.FC<KPICardProps> = ({
     return () => clearInterval(timer);
   }, [value]);
   
-  return (
+  const content = (
     <div 
       className={cn(
         'rounded-lg p-6 shadow-card transition-smooth hover:shadow-elevated relative overflow-hidden',
@@ -93,6 +96,23 @@ const KPICard: React.FC<KPICardProps> = ({
       </div>
     </div>
   );
+
+  if (tooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {content}
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs" dir="rtl">
+            {tooltip}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return content;
 };
 
 export default KPICard;

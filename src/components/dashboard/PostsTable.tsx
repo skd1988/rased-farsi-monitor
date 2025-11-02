@@ -1,7 +1,8 @@
 import React from 'react';
-import { Eye, ExternalLink } from 'lucide-react';
+import { Eye, ExternalLink, Zap, Brain, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatPersianDate, getRelativeTime } from '@/lib/dateUtils';
 import { EnrichedPost } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,7 @@ const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
               <th className="px-4 py-3 text-right text-sm font-medium">نویسنده</th>
               <th className="px-4 py-3 text-right text-sm font-medium">تاریخ</th>
               <th className="px-4 py-3 text-right text-sm font-medium">زبان</th>
+              <th className="px-4 py-3 text-right text-sm font-medium">نوع تحلیل</th>
               <th className="px-4 py-3 text-right text-sm font-medium">کلمات کلیدی</th>
               <th className="px-4 py-3 text-right text-sm font-medium">وضعیت</th>
               <th className="px-4 py-3 text-right text-sm font-medium">عملیات</th>
@@ -95,6 +97,43 @@ const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
                   <span className="text-lg" title={post.language}>
                     {getLanguageFlag(post.language)}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  <TooltipProvider>
+                    {(post as any).analysis_stage === 'deep' ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2 justify-end cursor-help">
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-xs font-medium text-red-700 dark:text-red-400">
+                              عمیق
+                            </span>
+                            <Info className="w-3 h-3 text-gray-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">
+                          <p className="text-xs">تحلیل کامل 25+ فیلد</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (post as any).analysis_stage === 'quick' ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-2 justify-end cursor-help">
+                            <div className="w-2 h-2 rounded-full bg-green-500" />
+                            <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                              سریع
+                            </span>
+                            <Info className="w-3 h-3 text-gray-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">
+                          <p className="text-xs">غربالگری اولیه</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-xs text-gray-400 text-center block">-</span>
+                    )}
+                  </TooltipProvider>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1 flex-wrap justify-end">
