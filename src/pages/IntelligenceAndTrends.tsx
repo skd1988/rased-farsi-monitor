@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, Brain, Filter, ArrowUp, ArrowDown,
-  Globe, Languages, Shield, Clock, Target, Bug, AlertCircle
+  Globe, Languages, Shield, Clock, Target, Bug, AlertCircle, CheckCircle, Loader2
 } from 'lucide-react';
 import { formatPersianDate } from '@/lib/dateUtils';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -963,17 +963,227 @@ const IntelligenceAndTrends = () => {
           </div>
         </TabsContent>
 
-        {/* SECTION 5: NARRATIVES (Placeholder) */}
+        {/* SECTION 5: NARRATIVES */}
         <TabsContent value="narratives" className="space-y-6">
-          <Card>
+          {/* DEBUG PANEL */}
+          <Card className="border-2 border-dashed border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20">
             <CardHeader>
-              <CardTitle>تحلیل روایت‌ها</CardTitle>
-              <CardDescription>این بخش به زودی تکمیل خواهد شد</CardDescription>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Bug className="w-5 h-5 text-yellow-600" />
+                  پنل دیباگ (موقت)
+                </CardTitle>
+                <Button
+                  onClick={checkDatabaseData}
+                  variant="outline"
+                  size="sm"
+                  className="bg-yellow-600 text-white hover:bg-yellow-700"
+                >
+                  بررسی داده‌ها
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="h-64 flex items-center justify-center text-muted-foreground">
-              <p>تحلیل روایت‌ها و تکامل آن‌ها در حال توسعه است</p>
-            </CardContent>
+            {debugInfo && (
+              <CardContent className="space-y-4">
+                {/* Status Summary */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <div className="text-xs text-muted-foreground mb-1">کل PsyOp ها</div>
+                    <div className="text-3xl font-bold">{debugInfo.totalPsyOps}</div>
+                  </div>
+                  <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <div className="text-xs text-muted-foreground mb-1">با روایت</div>
+                    <div className="text-3xl font-bold">{debugInfo.withNarrative}</div>
+                  </div>
+                  <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <div className="text-xs text-muted-foreground mb-1">پوشش</div>
+                    <div className="text-3xl font-bold">{debugInfo.coverage}%</div>
+                  </div>
+                </div>
+                
+                {/* Issue Detection */}
+                {debugInfo.totalPsyOps === 0 && (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border-2 border-red-200">
+                    <div className="flex items-center gap-2 font-bold text-red-800 dark:text-red-200 mb-2">
+                      <AlertCircle className="w-5 h-5" />
+                      مشکل: هیچ PsyOp شناسایی نشده
+                    </div>
+                    <div className="text-sm text-red-700 dark:text-red-300">
+                      لطفاً ابتدا مطالب را تحلیل کنید (صفحه تحلیل هوش مصنوعی)
+                    </div>
+                  </div>
+                )}
+                
+                {debugInfo.totalPsyOps > 0 && debugInfo.withNarrative === 0 && (
+                  <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border-2 border-orange-200">
+                    <div className="flex items-center gap-2 font-bold text-orange-800 dark:text-orange-200 mb-2">
+                      <AlertCircle className="w-5 h-5" />
+                      مشکل: فیلد narrative_theme خالی است
+                    </div>
+                    <div className="text-sm text-orange-700 dark:text-orange-300 mb-3">
+                      {debugInfo.totalPsyOps} PsyOp شناسایی شده اما هیچکدام narrative_theme ندارند
+                    </div>
+                    <Button
+                      onClick={fixNarrativeFields}
+                      size="sm"
+                      className="bg-orange-600 hover:bg-orange-700 text-white"
+                    >
+                      تعمیر خودکار
+                    </Button>
+                  </div>
+                )}
+                
+                {debugInfo.withNarrative > 0 && (
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border-2 border-green-200">
+                    <div className="flex items-center gap-2 font-bold text-green-800 dark:text-green-200 mb-1">
+                      <CheckCircle className="w-5 h-5" />
+                      ✅ داده‌ها موجود است
+                    </div>
+                    <div className="text-sm text-green-700 dark:text-green-300">
+                      {debugInfo.withNarrative} پست با روایت یافت شد
+                    </div>
+                    <Button
+                      onClick={fetchNarratives}
+                      size="sm"
+                      variant="outline"
+                      className="mt-2"
+                    >
+                      بارگذاری روایت‌ها
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Theme Distribution */}
+                {Object.keys(debugInfo.themeDistribution).length > 0 && (
+                  <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <div className="font-bold mb-3">توزیع روایت‌ها:</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(debugInfo.themeDistribution).map(([theme, count]: [string, any]) => (
+                        <div key={theme} className="flex justify-between text-sm p-2 bg-muted rounded">
+                          <span>{theme}</span>
+                          <span className="font-bold">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Sample Posts */}
+                {debugInfo.samplePosts.length > 0 && (
+                  <details className="p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <summary className="font-bold cursor-pointer hover:text-primary">
+                      نمونه پست‌ها ({debugInfo.samplePosts.length}) - کلیک کنید
+                    </summary>
+                    <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
+                      {debugInfo.samplePosts.map((post: any) => (
+                        <div key={post.id} className="text-xs p-3 bg-muted rounded border">
+                          <div className="font-medium truncate mb-1">{post.title}</div>
+                          <div className="text-muted-foreground space-y-1">
+                            <div>narrative_theme: {post.narrative_theme || '❌ خالی'}</div>
+                            <div>analysis_stage: {post.analysis_stage || '-'}</div>
+                            <div>psyop_type: {post.psyop_type || '-'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </CardContent>
+            )}
           </Card>
+
+          {/* Narratives Display */}
+          {narrativesLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : narratives.length > 0 ? (
+            <div className="space-y-6">
+              {/* Narrative Distribution Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>توزیع روایت‌های جنگ روانی</CardTitle>
+                  <CardDescription>{narratives.reduce((sum, n) => sum + n.count, 0)} روایت شناسایی شده</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={narratives}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="theme" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="hsl(var(--primary))" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Narrative Details */}
+              {narratives.map((narrative, idx) => (
+                <Card key={idx}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl">{narrative.theme}</CardTitle>
+                        <CardDescription>{narrative.count} پست</CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        {narrative.threatBreakdown.Critical > 0 && (
+                          <Badge variant="destructive">{narrative.threatBreakdown.Critical} بحرانی</Badge>
+                        )}
+                        {narrative.threatBreakdown.High > 0 && (
+                          <Badge className="bg-orange-500">{narrative.threatBreakdown.High} بالا</Badge>
+                        )}
+                        {narrative.threatBreakdown.Medium > 0 && (
+                          <Badge className="bg-yellow-500">{narrative.threatBreakdown.Medium} متوسط</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {narrative.posts.slice(0, 5).map((post: any) => (
+                        <div key={post.id} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="font-medium line-clamp-2">{post.title}</div>
+                              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                <span>{post.source}</span>
+                                <span>•</span>
+                                <span>{formatPersianDate(post.published_at)}</span>
+                              </div>
+                            </div>
+                            {post.threat_level && (
+                              <Badge variant={
+                                post.threat_level === 'Critical' ? 'destructive' :
+                                post.threat_level === 'High' ? 'default' :
+                                'secondary'
+                              }>
+                                {post.threat_level}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {narrative.posts.length > 5 && (
+                        <div className="text-center text-sm text-muted-foreground">
+                          و {narrative.posts.length - 5} پست دیگر...
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+                <Target className="w-12 h-12 mb-4 opacity-50" />
+                <p className="text-lg font-medium">هیچ روایتی یافت نشد</p>
+                <p className="text-sm mt-2">با استفاده از پنل دیباگ بالا، وضعیت را بررسی کنید</p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

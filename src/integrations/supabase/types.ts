@@ -313,9 +313,11 @@ export type Database = {
           keywords: string[] | null
           language: string
           main_topic: string | null
+          narrative_theme: string | null
           processing_time: number | null
           psyop_confidence: number | null
           psyop_technique: string[] | null
+          psyop_type: string | null
           published_at: string
           recommended_action: string | null
           sentiment: string | null
@@ -348,9 +350,11 @@ export type Database = {
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
+          narrative_theme?: string | null
           processing_time?: number | null
           psyop_confidence?: number | null
           psyop_technique?: string[] | null
+          psyop_type?: string | null
           published_at?: string
           recommended_action?: string | null
           sentiment?: string | null
@@ -383,9 +387,11 @@ export type Database = {
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
+          narrative_theme?: string | null
           processing_time?: number | null
           psyop_confidence?: number | null
           psyop_technique?: string[] | null
+          psyop_type?: string | null
           published_at?: string
           recommended_action?: string | null
           sentiment?: string | null
