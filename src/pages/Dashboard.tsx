@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Shield, AlertTriangle, Siren, Clock } from 'lucide-react';
+import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
+import DataCollectionKPI from '@/components/dashboard/DataCollectionKPI';
+import SourceTypeChart from '@/components/dashboard/SourceTypeChart';
+import CollectionTimelineChart from '@/components/dashboard/CollectionTimelineChart';
 import ThreatLevelTimeline from '@/components/dashboard/ThreatLevelTimeline';
 import TargetedEntitiesChart from '@/components/dashboard/TargetedEntitiesChart';
 import AttackVectorChart from '@/components/dashboard/AttackVectorChart';
@@ -15,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-fns';
+import { Separator } from '@/components/ui/separator';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -269,6 +273,90 @@ const Dashboard = () => {
     // Navigate to Posts Explorer with date filter
     navigate(`/posts-explorer?date=${date}`);
   };
+
+  // Data Collection Metrics
+  const totalPosts = posts.length;
+  const postsYesterday = useMemo(() => {
+    const yesterday = subDays(startOfDay(new Date()), 1);
+    return posts.filter(post => {
+      const postDate = startOfDay(new Date(post.published_at));
+      return postDate.getTime() === yesterday.getTime();
+    }).length;
+  }, [posts]);
+
+  const totalPostsChangePercentage = postsYesterday > 0 
+    ? Math.round(((totalPosts - postsYesterday) / postsYesterday) * 100)
+    : 0;
+
+  const postsLast24h = useMemo(() => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return posts.filter(post => new Date(post.published_at) >= yesterday).length;
+  }, [posts]);
+
+  const activeSources = useMemo(() => {
+    const sevenDaysAgo = subDays(new Date(), 7);
+    const recentSources = new Set(
+      posts
+        .filter(post => new Date(post.published_at) >= sevenDaysAgo)
+        .map(post => post.source)
+    );
+    return recentSources.size;
+  }, [posts]);
+
+  const totalSources = useMemo(() => {
+    return new Set(posts.map(post => post.source)).size;
+  }, [posts]);
+
+  const postsToday = useMemo(() => {
+    const today = startOfDay(new Date());
+    return posts.filter(post => {
+      const postDate = startOfDay(new Date(post.published_at));
+      return postDate.getTime() === today.getTime();
+    }).length;
+  }, [posts]);
+
+  const hourlyRate = useMemo(() => {
+    const hoursElapsed = new Date().getHours() || 1;
+    return (postsToday / hoursElapsed).toFixed(1);
+  }, [postsToday]);
+
+  const expectedDailyVolume = 100; // Configure this based on your needs
+  const collectionHealth = Math.min(100, Math.round((postsToday / expectedDailyVolume) * 100));
+  const healthStatus: 'good' | 'warning' | 'error' = 
+    collectionHealth >= 80 ? 'good' : collectionHealth >= 50 ? 'warning' : 'error';
+
+  // Source Type Distribution
+  const sourceTypeData = useMemo(() => {
+    const typeCounts: Record<string, number> = {};
+    posts.forEach(post => {
+      const type = post.source_type || 'other';
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    return Object.entries(typeCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [posts]);
+
+  // Collection Timeline (last 7 days)
+  const collectionTimelineData = useMemo(() => {
+    const days = 7;
+    const data = [];
+    const today = new Date();
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const date = subDays(startOfDay(today), i);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      
+      const count = posts.filter(post => {
+        const postDate = startOfDay(new Date(post.published_at));
+        return postDate.getTime() === date.getTime();
+      }).length;
+      
+      data.push({ date: dateStr, count });
+    }
+    
+    return data;
+  }, [posts]);
   
   if (loading) {
     return (
@@ -280,8 +368,81 @@ const Dashboard = () => {
   
   return (
     <div className="p-6 space-y-6" dir="rtl">
-      {/* KPI Cards - PsyOp Focused */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Data Collection Status Section */}
+      <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-lg space-y-4">
+        <div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            📊 وضعیت جمع‌آوری داده
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            رصد سیستم و معیارهای دریافت داده
+          </p>
+        </div>
+
+        {/* Data Collection KPI Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <DataCollectionKPI
+            title="کل پست‌های جمع‌آوری شده"
+            value={totalPosts.toLocaleString('fa-IR')}
+            subtitle={`24 ساعت اخیر: ${postsLast24h} پست`}
+            icon={Database}
+            colorScheme="blue"
+            trend={totalPostsChangePercentage > 0 ? `↑ ${totalPostsChangePercentage}%` : totalPostsChangePercentage < 0 ? `↓ ${Math.abs(totalPostsChangePercentage)}%` : '—'}
+            onClick={() => navigate('/posts')}
+          />
+          <DataCollectionKPI
+            title="منابع فعال"
+            value={activeSources}
+            subtitle={`کل تنظیم شده: ${totalSources} منبع`}
+            icon={Rss}
+            colorScheme="green"
+          />
+          <DataCollectionKPI
+            title="پست‌های امروز"
+            value={postsToday}
+            subtitle={`${hourlyRate} پست در ساعت`}
+            icon={TrendingUp}
+            colorScheme="purple"
+            onClick={() => {
+              const today = format(new Date(), 'yyyy-MM-dd');
+              navigate(`/posts?date=${today}`);
+            }}
+          />
+          <DataCollectionKPI
+            title="سلامت جمع‌آوری"
+            value={`${collectionHealth}%`}
+            subtitle={`انتظار: ~${expectedDailyVolume} پست/روز`}
+            icon={Activity}
+            colorScheme="health"
+            healthStatus={healthStatus}
+          />
+        </div>
+
+        {/* Charts */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <SourceTypeChart
+            data={sourceTypeData}
+            totalSources={totalSources}
+            onSegmentClick={(type) => navigate(`/posts?sourceType=${type}`)}
+          />
+          <CollectionTimelineChart
+            data={collectionTimelineData}
+            onClick={() => navigate('/posts')}
+          />
+        </div>
+      </div>
+
+      {/* Divider */}
+      <Separator className="my-6" />
+
+      {/* PsyOp Detection Section */}
+      <div>
+        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
+          🎯 تشخیص عملیات روانی
+        </h2>
+
+        {/* KPI Cards - PsyOp Focused */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="حملات جنگ روانی امروز"
           value={activePsyOpsToday}
@@ -318,6 +479,7 @@ const Dashboard = () => {
           timer={oldestPendingTime || undefined}
           onClick={() => navigate('/coming-soon')}
         />
+        </div>
       </div>
       
       {/* Charts Row 1 - Threat Timeline and Targeted Entities */}
