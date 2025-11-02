@@ -344,12 +344,27 @@ const Dashboard = () => {
   // Source Type Distribution
   const sourceTypeData = useMemo(() => {
     const typeCounts: Record<string, number> = {};
+    const typeTranslations: Record<string, string> = {
+      'website': 'وب‌سایت',
+      'blog': 'وبلاگ',
+      'social_media': 'شبکه اجتماعی',
+      'news': 'خبرگزاری',
+      'forum': 'انجمن',
+      'video': 'ویدیو',
+      'podcast': 'پادکست',
+      'other': 'سایر'
+    };
+    
     posts.forEach(post => {
       const type = post.source_type || 'other';
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
+    
     return Object.entries(typeCounts)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, value]) => ({ 
+        name: typeTranslations[name] || name, 
+        value 
+      }))
       .sort((a, b) => b.value - a.value);
   }, [posts]);
 
