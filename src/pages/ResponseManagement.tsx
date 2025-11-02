@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { Shield, AlertTriangle, Plus, List, Columns3, BarChart3 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -69,7 +70,7 @@ const ResponseManagement = () => {
           threatLevel: post.threat_level,
           urgency,
           detectedAt: new Date(post.published_at),
-          psyopType: post.psyop_technique?.[0] || 'Unknown'
+          psyopType: translatePsyopTechnique(post.psyop_technique?.[0] || 'Unknown')
         };
       });
 

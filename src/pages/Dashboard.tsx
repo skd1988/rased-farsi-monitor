@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import DataCollectionKPI from '@/components/dashboard/DataCollectionKPI';
@@ -226,31 +227,6 @@ const Dashboard = () => {
   // Attack Vector Distribution
   const attackVectorData = useMemo(() => {
     const vectorCounts: Record<string, number> = {};
-    const vectorTranslations: Record<string, string> = {
-      'Corruption Allegations': 'اتهامات فساد',
-      'Weakness Portrayal': 'نمایش ضعف',
-      'Legitimacy Questioning': 'زیر سوال بردن مشروعیت',
-      'Internal Conflict': 'درگیری داخلی',
-      'Human Rights Violations': 'نقض حقوق بشر',
-      'Historical Revisionism': 'بازنگری تاریخی',
-      'Terrorism Labeling': 'برچسب تروریسم',
-      'Sectarian Division': 'تفرقه مذهبی',
-      'Foreign Interference': 'دخالت خارجی',
-      'Demonization': 'شیطان‌سازی',
-      'Normalization of Enemy': 'عادی‌سازی دشمن',
-      'Fear Mongering': 'ایجاد ترس',
-      'False Flag': 'عملیات پرچم جعلی',
-      'Disinformation': 'اطلاعات نادرست',
-      'Propaganda': 'تبلیغات',
-      'Character Assassination': 'ترور شخصیت',
-      'Divide and Conquer': 'تفرقه‌اندازی',
-      'Victimhood Narrative': 'روایت قربانی‌سازی',
-      'Discrediting': 'بی‌اعتبارسازی',
-      'Emotional Manipulation': 'دستکاری احساسی',
-      'Amplification': 'تقویت و گسترش',
-      'Astroturfing': 'جعل افکار عمومی',
-      'Bandwagon Effect': 'اثر موج‌سواری'
-    };
     
     posts.forEach(post => {
       if (post.is_psyop && post.psyop_technique && Array.isArray(post.psyop_technique)) {
@@ -262,7 +238,7 @@ const Dashboard = () => {
     
     return Object.entries(vectorCounts)
       .map(([name, value]) => ({ 
-        name: vectorTranslations[name] || name, 
+        name: translatePsyopTechnique(name), 
         value 
       }))
       .sort((a, b) => b.value - a.value)

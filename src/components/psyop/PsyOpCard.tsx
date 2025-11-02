@@ -1,4 +1,4 @@
-import React from 'react';
+import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -253,7 +253,7 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
               <span className="text-xs text-muted-foreground">تکنیک‌ها:</span>
               {post.psyop_technique.slice(0, 3).map((tech: string, idx: number) => (
                 <Badge key={idx} variant="outline" className="text-xs">
-                  {tech}
+                  {translatePsyopTechnique(tech)}
                 </Badge>
               ))}
               {post.psyop_technique.length > 3 && (

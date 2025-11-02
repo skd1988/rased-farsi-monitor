@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
@@ -140,7 +141,7 @@ const TargetAnalysis = () => {
       topVectors: Array.from(stat.topVectors.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([vector]) => vector),
+        .map(([vector]) => translatePsyopTechnique(vector)),
       weekTrend: stat.weekAttacks > 0 
         ? Math.round(((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) / stat.weekAttacks) * 100)
         : 0,
@@ -198,7 +199,7 @@ const TargetAnalysis = () => {
       topAccusations: Array.from(stat.topAccusations.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([acc]) => acc),
+        .map(([acc]) => translatePsyopTechnique(acc)),
       severity: stat.totalAttacks > 20 ? 'Critical' :
                 stat.totalAttacks > 10 ? 'High' :
                 stat.totalAttacks > 5 ? 'Medium' : 'Low',
@@ -217,7 +218,7 @@ const TargetAnalysis = () => {
     });
 
     return Array.from(vectors.entries())
-      .map(([name, count]) => ({ name, count }))
+      .map(([name, count]) => ({ name: translatePsyopTechnique(name), count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   }, [posts]);

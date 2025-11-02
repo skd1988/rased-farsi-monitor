@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import {
   Dialog,
   DialogContent,
@@ -385,7 +386,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
                     <div key={idx} className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
                       <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <div className="font-medium">{technique}</div>
+                        <div className="font-medium">{translatePsyopTechnique(technique)}</div>
                       </div>
                     </div>
                   ))}
