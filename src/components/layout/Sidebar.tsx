@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, FileText, Brain, MessageSquare, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3, Shield } from 'lucide-react';
+import { Home, FileText, Brain, MessageSquare, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3, Shield, Radar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 
 const menuItems = [
   { icon: Home, label: 'داشبورد', path: '/dashboard' },
-  { icon: Shield, label: 'تشخیص جنگ روانی', path: '/psyop-detection', badge: true },
+  { icon: Shield, label: 'تشخیص جنگ روانی', path: '/psyop-detection', badge: 'critical' },
+  { icon: Radar, label: 'رصد کمپین‌ها', path: '/campaign-tracking', badge: 'campaigns' },
   { icon: FileText, label: 'مطالب', path: '/posts' },
   { icon: Brain, label: 'تحلیل هوشمند', path: '/ai-analysis' },
   { icon: MessageSquare, label: 'گفتگو با داده‌ها', path: '/chat' },
@@ -20,29 +21,40 @@ const menuItems = [
 
 const Sidebar = () => {
   const [criticalCount, setCriticalCount] = useState(0);
+  const [activeCampaigns, setActiveCampaigns] = useState(0);
 
   useEffect(() => {
-    const fetchCriticalCount = async () => {
+    const fetchCounts = async () => {
       try {
-        const { count, error } = await supabase
+        // Fetch critical threats count
+        const { count: criticalThreats, error: criticalError } = await supabase
           .from('posts')
           .select('*', { count: 'exact', head: true })
           .eq('is_psyop', true)
           .eq('threat_level', 'Critical')
           .neq('status', 'حل شده');
         
-        if (error) throw error;
-        setCriticalCount(count || 0);
+        if (criticalError) throw criticalError;
+        setCriticalCount(criticalThreats || 0);
+
+        // Fetch active campaigns count
+        const { count: campaignsCount, error: campaignsError } = await supabase
+          .from('psyop_campaigns')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Active');
+        
+        if (campaignsError) throw campaignsError;
+        setActiveCampaigns(campaignsCount || 0);
       } catch (error) {
-        console.error('Error fetching critical count:', error);
+        console.error('Error fetching counts:', error);
       }
     };
 
-    fetchCriticalCount();
+    fetchCounts();
 
-    // Real-time updates
-    const channel = supabase
-      .channel('sidebar-updates')
+    // Real-time updates for posts
+    const postsChannel = supabase
+      .channel('sidebar-posts-updates')
       .on(
         'postgres_changes',
         {
@@ -51,15 +63,38 @@ const Sidebar = () => {
           table: 'posts'
         },
         () => {
-          fetchCriticalCount();
+          fetchCounts();
+        }
+      )
+      .subscribe();
+
+    // Real-time updates for campaigns
+    const campaignsChannel = supabase
+      .channel('sidebar-campaigns-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'psyop_campaigns'
+        },
+        () => {
+          fetchCounts();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(postsChannel);
+      supabase.removeChannel(campaignsChannel);
     };
   }, []);
+
+  const getBadgeCount = (badgeType: string | undefined) => {
+    if (badgeType === 'critical') return criticalCount;
+    if (badgeType === 'campaigns') return activeCampaigns;
+    return 0;
+  };
 
   return (
     <aside className="w-64 bg-card border-r border-border flex flex-col h-screen">
@@ -93,9 +128,9 @@ const Sidebar = () => {
             <span className="flex-1 text-right">{item.label}</span>
             <div className="flex items-center gap-2">
               <item.icon className="w-5 h-5 flex-shrink-0" />
-              {item.badge && criticalCount > 0 && (
+              {item.badge && getBadgeCount(item.badge) > 0 && (
                 <Badge variant="destructive" className="text-xs px-2 animate-pulse">
-                  {criticalCount}
+                  {getBadgeCount(item.badge)}
                 </Badge>
               )}
             </div>
