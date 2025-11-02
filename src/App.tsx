@@ -16,7 +16,7 @@ import AIAnalysis from "./pages/AIAnalysis";
 import Chat from "./pages/Chat";
 import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
-import Trends from "./pages/Trends";
+import IntelligenceAndTrends from "./pages/IntelligenceAndTrends";
 import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
 import ComingSoon from "./pages/ComingSoon";
@@ -51,7 +51,7 @@ const App = () => (
                   <Route path="alerts" element={<Alerts />} />
                   <Route path="response-management" element={<ResponseManagement />} />
                   <Route path="settings" element={<Settings />} />
-                  <Route path="trends" element={<Trends />} />
+                  <Route path="intelligence" element={<IntelligenceAndTrends />} />
                   <Route path="debug" element={<Debug />} />
                 </Route>
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -16,7 +16,7 @@ const menuItems = [
   { icon: MessageSquare, label: 'گفتگو با داده‌ها', path: '/chat' },
   { icon: BarChart3, label: 'مصرف API', path: '/api-usage' },
   { icon: AlertTriangle, label: 'هشدارها', path: '/alerts' },
-  { icon: TrendingUp, label: 'ترندها', path: '/trends' },
+  { icon: TrendingUp, label: 'هوش و روندها', path: '/intelligence' },
   { icon: Settings, label: 'تنظیمات', path: '/settings' },
   { icon: Wrench, label: 'Debug', path: '/debug' },
 ];

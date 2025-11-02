@@ -536,30 +536,11 @@ const PsyOpDetection = () => {
                 });
               }}
               onStatusChange={async (postId, newStatus) => {
-                try {
-                  const { error } = await supabase
-                    .from('posts')
-                    .update({ alert_status: newStatus })
-                    .eq('id', postId);
-                  
-                  if (error) throw error;
-                  
-                  setPosts(prev => prev.map(p => 
-                    p.id === postId ? { ...p, alert_status: newStatus } : p
-                  ));
-                  
-                  toast({
-                    title: "وضعیت به‌روزرسانی شد",
-                    description: `وضعیت به "${newStatus}" تغییر کرد`,
-                  });
-                } catch (error) {
-                  console.error('Error updating status:', error);
-                  toast({
-                    title: "خطا",
-                    description: "مشکلی در به‌روزرسانی وضعیت پیش آمد",
-                    variant: "destructive",
-                  });
-                }
+                // Status change will be implemented after database migration
+                toast({
+                  title: "⚠️ در حال توسعه",
+                  description: "قابلیت تغییر وضعیت به زودی فعال می‌شود",
+                });
               }}
             />
           ))}
