@@ -59,17 +59,8 @@ const CampaignTracking = () => {
       console.log('✅ Detected campaigns:', data.campaigns);
 
       const transformedData = (data.campaigns || []).map((campaign: any) => {
-        console.log('🔍 Processing campaign:', campaign.campaign_name);
-        console.log('  - main_target:', campaign.main_target);
-        console.log('  - target_persons (from API):', campaign.target_persons);
-        console.log('  - sources:', campaign.sources);
-        console.log('  - notes:', campaign.notes);
-        
         const extractedTarget = campaign.main_target || extractFirstTarget(campaign.posts);
         const extractedPersons = extractTargetPersons(campaign.posts);
-        
-        console.log('  - extracted main_target:', extractedTarget);
-        console.log('  - extracted target_persons:', extractedPersons);
         
         return {
           id: campaign.id,
@@ -114,12 +105,18 @@ const CampaignTracking = () => {
     for (const post of posts) {
       if (post.target_entity && Array.isArray(post.target_entity) && post.target_entity.length > 0) {
         const entity = post.target_entity[0];
-        // Handle both string and object formats
-        if (typeof entity === 'string') {
-          return entity;
-        } else if (typeof entity === 'object' && entity !== null) {
-          // Extract name from entity object (prioritize Persian name)
-          return entity.name_persian || entity.name_arabic || entity.name_english || entity.name || 'نامشخص';
+        try {
+          // Handle JSON strings
+          if (typeof entity === 'string' && (entity.startsWith('{') || entity.startsWith('['))) {
+            const parsed = JSON.parse(entity);
+            return parsed.name_persian || parsed.name_arabic || parsed.name_english || parsed.name || 'نامشخص';
+          } else if (typeof entity === 'string') {
+            return entity;
+          } else if (typeof entity === 'object' && entity !== null) {
+            return entity.name_persian || entity.name_arabic || entity.name_english || entity.name || 'نامشخص';
+          }
+        } catch (e) {
+          console.warn('Failed to parse target entity:', entity);
         }
       }
     }
@@ -131,12 +128,23 @@ const CampaignTracking = () => {
     posts.forEach(post => {
       if (post.target_persons && Array.isArray(post.target_persons)) {
         post.target_persons.forEach((p: any) => {
-          // Handle both string and object formats
-          if (typeof p === 'string') {
-            persons.add(p);
-          } else if (typeof p === 'object' && p !== null) {
-            const name = p.name_persian || p.name_arabic || p.name_english || p.name || null;
-            if (name) persons.add(name);
+          try {
+            // Handle JSON strings that need to be parsed
+            if (typeof p === 'string' && (p.startsWith('{') || p.startsWith('['))) {
+              const parsed = JSON.parse(p);
+              const name = parsed.name_persian || parsed.name_arabic || parsed.name_english || parsed.name || null;
+              if (name && typeof name === 'string') persons.add(name);
+            } else if (typeof p === 'string' && p.trim()) {
+              // Regular string name
+              persons.add(p.trim());
+            } else if (typeof p === 'object' && p !== null) {
+              // Already an object
+              const name = p.name_persian || p.name_arabic || p.name_english || p.name || null;
+              if (name && typeof name === 'string') persons.add(name);
+            }
+          } catch (e) {
+            // Skip invalid JSON
+            console.warn('Failed to parse target person:', p);
           }
         });
       }
