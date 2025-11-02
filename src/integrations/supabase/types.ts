@@ -302,6 +302,7 @@ export type Database = {
           analysis_summary: string | null
           analyzed_at: string | null
           article_url: string | null
+          attack_vectors: string[] | null
           author: string | null
           confidence: number | null
           contents: string | null
@@ -339,6 +340,7 @@ export type Database = {
           analysis_summary?: string | null
           analyzed_at?: string | null
           article_url?: string | null
+          attack_vectors?: string[] | null
           author?: string | null
           confidence?: number | null
           contents?: string | null
@@ -376,6 +378,7 @@ export type Database = {
           analysis_summary?: string | null
           analyzed_at?: string | null
           article_url?: string | null
+          attack_vectors?: string[] | null
           author?: string | null
           confidence?: number | null
           contents?: string | null
