@@ -83,7 +83,8 @@ const IntelligenceAndTrends = () => {
         fetchKeywordIntelligence(),
         fetchTemporalIntelligence(),
         fetchPlatformIntelligence(),
-        fetchGeographicIntelligence()
+        fetchGeographicIntelligence(),
+        fetchNarratives()
       ]);
     } catch (error) {
       console.error('Error fetching intelligence data:', error);
