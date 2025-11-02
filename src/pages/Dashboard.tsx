@@ -14,6 +14,8 @@ import CampaignHeatmap from '@/components/dashboard/CampaignHeatmap';
 import PostsTable from '@/components/dashboard/PostsTable';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
+import TopTargetedPersonsChart from '@/components/dashboard/TopTargetedPersonsChart';
+import TopTargetedOrganizationsChart from '@/components/dashboard/TopTargetedOrganizationsChart';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -29,6 +31,7 @@ const Dashboard = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<any[]>([]);
   const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Fetch real data from Supabase
@@ -76,9 +79,17 @@ const Dashboard = () => {
         
         if (campaignsError) throw campaignsError;
         
+        // Fetch target profiles for photos
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('target_profiles')
+          .select('name_english, name_persian, name_arabic, photo_url');
+        
+        if (profilesError) console.error('Error fetching profiles:', profilesError);
+        
         setPosts(allPosts);
         setAiAnalysis(analysisData || []);
         setCampaigns(campaignsData || []);
+        setTargetProfiles(profilesData || []);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
@@ -242,6 +253,114 @@ const Dashboard = () => {
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
   }, [posts]);
+
+  // Top Targeted Persons
+  const topTargetedPersonsData = useMemo(() => {
+    const personCounts: Record<string, { count: number; critical: number; high: number; data: any }> = {};
+    
+    posts.forEach(post => {
+      if (post.is_psyop && post.target_persons && Array.isArray(post.target_persons)) {
+        post.target_persons.forEach((person: any) => {
+          let parsedPerson = person;
+          if (typeof person === 'string') {
+            try {
+              parsedPerson = JSON.parse(person);
+            } catch {
+              parsedPerson = { name_persian: person };
+            }
+          }
+          
+          const key = parsedPerson.name_english || parsedPerson.name_persian || 'نامشخص';
+          
+          if (!personCounts[key]) {
+            personCounts[key] = { count: 0, critical: 0, high: 0, data: parsedPerson };
+          }
+          personCounts[key].count += 1;
+          if (post.threat_level === 'Critical') personCounts[key].critical += 1;
+          if (post.threat_level === 'High') personCounts[key].high += 1;
+        });
+      }
+    });
+    
+    const totalAttacks = Object.values(personCounts).reduce((sum, p) => sum + p.count, 0);
+    
+    return Object.entries(personCounts)
+      .map(([key, info]) => {
+        // Find photo from profiles
+        const profile = targetProfiles.find(p => 
+          p.name_english === info.data.name_english || 
+          p.name_persian === info.data.name_persian
+        );
+        
+        return {
+          name_persian: info.data.name_persian || key,
+          name_english: info.data.name_english,
+          name_arabic: info.data.name_arabic,
+          photo_url: profile?.photo_url,
+          count: info.count,
+          percentage: totalAttacks > 0 ? (info.count / totalAttacks) * 100 : 0,
+          severity: info.critical > 0 ? 'Critical' as const : 
+                    info.high > 0 ? 'High' as const : 
+                    'Medium' as const
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [posts, targetProfiles]);
+
+  // Top Targeted Organizations
+  const topTargetedOrganizationsData = useMemo(() => {
+    const orgCounts: Record<string, { count: number; critical: number; high: number; data: any }> = {};
+    
+    posts.forEach(post => {
+      if (post.is_psyop && post.target_entity && Array.isArray(post.target_entity)) {
+        post.target_entity.forEach((entity: any) => {
+          let parsedEntity = entity;
+          if (typeof entity === 'string') {
+            try {
+              parsedEntity = JSON.parse(entity);
+            } catch {
+              parsedEntity = { name_persian: entity };
+            }
+          }
+          
+          const key = parsedEntity.name_english || parsedEntity.name_persian || 'نامشخص';
+          
+          if (!orgCounts[key]) {
+            orgCounts[key] = { count: 0, critical: 0, high: 0, data: parsedEntity };
+          }
+          orgCounts[key].count += 1;
+          if (post.threat_level === 'Critical') orgCounts[key].critical += 1;
+          if (post.threat_level === 'High') orgCounts[key].high += 1;
+        });
+      }
+    });
+    
+    const totalAttacks = Object.values(orgCounts).reduce((sum, o) => sum + o.count, 0);
+    
+    return Object.entries(orgCounts)
+      .map(([key, info]) => {
+        // Find photo from profiles
+        const profile = targetProfiles.find(p => 
+          p.name_english === info.data.name_english || 
+          p.name_persian === info.data.name_persian
+        );
+        
+        return {
+          name_persian: info.data.name_persian || key,
+          name_english: info.data.name_english,
+          name_arabic: info.data.name_arabic,
+          photo_url: profile?.photo_url,
+          count: info.count,
+          percentage: totalAttacks > 0 ? (info.count / totalAttacks) * 100 : 0,
+          severity: info.critical > 0 ? 'Critical' as const : 
+                    info.high > 0 ? 'High' as const : 
+                    'Medium' as const
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [posts, targetProfiles]);
 
   // Campaign Heatmap (last 90 days)
   const heatmapData = useMemo(() => {
@@ -599,6 +718,18 @@ const Dashboard = () => {
         <CampaignHeatmap 
           data={heatmapData}
           onDayClick={handleDayClick}
+        />
+      </div>
+      
+      {/* Charts Row 3 - Top Targeted Persons and Organizations */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TopTargetedPersonsChart 
+          data={topTargetedPersonsData}
+          onPersonClick={(person) => navigate(`/target-analysis?person=${encodeURIComponent(person)}`)}
+        />
+        <TopTargetedOrganizationsChart 
+          data={topTargetedOrganizationsData}
+          onOrgClick={(org) => navigate(`/target-analysis?org=${encodeURIComponent(org)}`)}
         />
       </div>
       
