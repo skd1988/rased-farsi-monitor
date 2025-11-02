@@ -1,8 +1,7 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { format, parseISO } from 'date-fns';
-import { faIR } from 'date-fns/locale';
+import moment from 'moment-jalaali';
 
 interface ThreatLevelTimelineProps {
   data: Array<{
@@ -41,12 +40,12 @@ const ThreatLevelTimeline: React.FC<ThreatLevelTimelineProps> = ({ data }) => {
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
           <XAxis 
             dataKey="date" 
-            tickFormatter={(value) => format(parseISO(value), 'MMM dd', { locale: faIR })}
+            tickFormatter={(value) => moment(value).format('jMMMM jDD')}
             className="text-xs"
           />
           <YAxis className="text-xs" />
           <Tooltip
-            labelFormatter={(value) => format(parseISO(value), 'PPP', { locale: faIR })}
+            labelFormatter={(value) => moment(value).format('jYYYY/jMM/jDD')}
             contentStyle={{ 
               backgroundColor: 'hsl(var(--card))', 
               border: '1px solid hsl(var(--border))',
