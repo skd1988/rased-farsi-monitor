@@ -13,6 +13,7 @@ import AttackVectorChart from '@/components/dashboard/AttackVectorChart';
 import CampaignHeatmap from '@/components/dashboard/CampaignHeatmap';
 import PostsTable from '@/components/dashboard/PostsTable';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
+import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -395,6 +396,51 @@ const Dashboard = () => {
     
     return data;
   }, [posts]);
+
+  // Social Media Distribution
+  const socialMediaData = useMemo(() => {
+    const platformCounts: Record<string, number> = {};
+    
+    posts.forEach(post => {
+      const source = post.source?.toLowerCase() || 'نامشخص';
+      
+      // Map sources to social media platforms
+      let platform = 'سایر';
+      if (source.includes('telegram') || source.includes('تلگرام')) {
+        platform = 'تلگرام';
+      } else if (source.includes('twitter') || source.includes('x.com') || source.includes('توییتر')) {
+        platform = 'توییتر (X)';
+      } else if (source.includes('instagram') || source.includes('اینستاگرام')) {
+        platform = 'اینستاگرام';
+      } else if (source.includes('facebook') || source.includes('فیسبوک')) {
+        platform = 'فیسبوک';
+      } else if (source.includes('youtube') || source.includes('یوتیوب')) {
+        platform = 'یوتیوب';
+      } else if (source.includes('whatsapp') || source.includes('واتساپ')) {
+        platform = 'واتساپ';
+      }
+      
+      platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+    });
+    
+    const colors = {
+      'تلگرام': 'hsl(200, 98%, 39%)',
+      'توییتر (X)': 'hsl(203, 89%, 53%)',
+      'اینستاگرام': 'hsl(340, 75%, 55%)',
+      'فیسبوک': 'hsl(221, 44%, 41%)',
+      'یوتیوب': 'hsl(0, 100%, 50%)',
+      'واتساپ': 'hsl(142, 70%, 49%)',
+      'سایر': 'hsl(215, 20%, 65%)'
+    };
+    
+    return Object.entries(platformCounts)
+      .map(([name, value]) => ({
+        name,
+        value,
+        fill: colors[name as keyof typeof colors] || colors['سایر']
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [posts]);
   
   if (loading) {
     return (
@@ -457,7 +503,7 @@ const Dashboard = () => {
         </div>
 
         {/* Charts */}
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <SourceTypeChart
             data={sourceTypeData}
             totalSources={totalSources}
@@ -467,6 +513,7 @@ const Dashboard = () => {
             data={collectionTimelineData}
             onClick={() => navigate('/posts')}
           />
+          <SocialMediaPieChart data={socialMediaData} />
         </div>
       </div>
 
