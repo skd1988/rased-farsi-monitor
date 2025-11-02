@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.quick-psyop-detection]
 verify_jwt = false
+
+[functions.detect-campaigns]
+verify_jwt = false
+
+[functions.chat-with-data]
+verify_jwt = false

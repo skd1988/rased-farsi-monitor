@@ -12,30 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Loader2, Search, Calendar as CalendarIcon, Plus, Shield, CheckCircle, Radar, Sparkles, X } from 'lucide-react';
-import { format } from 'date-fns';
-import { faIR } from 'date-fns/locale';
+import { Loader2, Search, Plus, Shield, CheckCircle, Radar, Sparkles, X, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import CampaignCard from '@/components/campaigns/CampaignCard';
 import CampaignDetailModal from '@/components/campaigns/CampaignDetailModal';
 import { toast } from '@/hooks/use-toast';
-import { DateRange } from 'react-day-picker';
 
 const CampaignTracking = () => {
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -49,67 +30,126 @@ const CampaignTracking = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [campaignTypeFilter, setCampaignTypeFilter] = useState<string>('All');
   const [orchestratorFilter, setOrchestratorFilter] = useState<string>('All');
-  const [impactRange, setImpactRange] = useState<number[]>([0, 10]);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [impactRange, setImpactRange] = useState<number[]>([0, 100]);
+  const [timeRange, setTimeRange] = useState<number>(7);
   const [sortBy, setSortBy] = useState<string>('start_date');
 
-  // Fetch campaigns
+  // Detect campaigns using AI
   useEffect(() => {
-    const fetchCampaigns = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('psyop_campaigns')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        setCampaigns(data || []);
-      } catch (error) {
-        console.error('Error fetching campaigns:', error);
+    detectCampaigns();
+  }, [timeRange]);
+
+  const detectCampaigns = async () => {
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase.functions.invoke('detect-campaigns', {
+        body: { timeRange }
+      });
+
+      if (error) {
+        console.error('Error detecting campaigns:', error);
         toast({
-          title: "خطا در دریافت داده‌ها",
+          title: "خطا در شناسایی کمپین‌ها",
           variant: "destructive",
         });
-      } finally {
-        setLoading(false);
+        return;
       }
-    };
 
-    fetchCampaigns();
+      console.log('✅ Detected campaigns:', data.campaigns);
 
-    // Real-time updates
-    const channel = supabase
-      .channel('campaign-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'psyop_campaigns'
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setCampaigns(prev => [payload.new, ...prev]);
-            toast({
-              title: "🎯 کمپین جدید تشخیص داده شد",
-              description: payload.new.campaign_name,
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            setCampaigns(prev => 
-              prev.map(c => c.id === payload.new.id ? payload.new : c)
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setCampaigns(prev => prev.filter(c => c.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
+      const transformedData = (data.campaigns || []).map((campaign: any) => ({
+        id: campaign.id,
+        campaign_name: campaign.campaign_name,
+        campaign_type: campaign.campaign_type,
+        status: campaign.status,
+        orchestrator: campaign.orchestrator,
+        main_target: campaign.main_target || extractFirstTarget(campaign.posts),
+        target_persons: extractTargetPersons(campaign.posts),
+        impact_assessment: campaign.intensity,
+        start_date: getEarliestDate(campaign.posts),
+        end_date: getLatestDate(campaign.posts),
+        postsCount: campaign.posts.length,
+        duration: calculateDuration(campaign.posts),
+        weeklyGrowth: calculateGrowth(campaign.posts),
+        notes: campaign.notes || `${campaign.detection_method} | منابع: ${campaign.sources?.join(', ') || 'Multiple'}`,
+        posts: campaign.posts,
+        threat_level: campaign.threat_level
+      }));
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+      setCampaigns(transformedData);
+      
+      toast({
+        title: "✅ کمپین‌ها شناسایی شد",
+        description: `${transformedData.length} کمپین یافت شد`,
+      });
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      toast({
+        title: "خطای غیرمنتظره",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const extractFirstTarget = (posts: any[]): string => {
+    for (const post of posts) {
+      if (post.target_entity && Array.isArray(post.target_entity) && post.target_entity.length > 0) {
+        return post.target_entity[0];
+      }
+    }
+    return 'نامشخص';
+  };
+
+  const extractTargetPersons = (posts: any[]): string[] => {
+    const persons = new Set<string>();
+    posts.forEach(post => {
+      if (post.target_persons && Array.isArray(post.target_persons)) {
+        post.target_persons.forEach((p: string) => persons.add(p));
+      }
+    });
+    return Array.from(persons).slice(0, 5);
+  };
+
+  const getEarliestDate = (posts: any[]): string => {
+    if (!posts || posts.length === 0) return new Date().toISOString();
+    const timestamps = posts.map(p => new Date(p.published_at).getTime());
+    return new Date(Math.min(...timestamps)).toISOString();
+  };
+
+  const getLatestDate = (posts: any[]): string => {
+    if (!posts || posts.length === 0) return new Date().toISOString();
+    const timestamps = posts.map(p => new Date(p.published_at).getTime());
+    return new Date(Math.max(...timestamps)).toISOString();
+  };
+
+  const calculateDuration = (posts: any[]): string => {
+    if (!posts || posts.length === 0) return 'نامشخص';
+    const timestamps = posts.map(p => new Date(p.published_at).getTime());
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    const days = Math.ceil((maxTime - minTime) / (1000 * 60 * 60 * 24));
+    return days === 0 ? 'کمتر از یک روز' : `${days} روز`;
+  };
+
+  const calculateGrowth = (posts: any[]): number => {
+    if (!posts || posts.length < 2) return 0;
+    
+    const now = Date.now();
+    const oneWeekAgo = now - (7 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = now - (14 * 24 * 60 * 60 * 1000);
+    
+    const lastWeek = posts.filter(p => new Date(p.published_at).getTime() > oneWeekAgo).length;
+    const previousWeek = posts.filter(p => {
+      const time = new Date(p.published_at).getTime();
+      return time > twoWeeksAgo && time <= oneWeekAgo;
+    }).length;
+    
+    if (previousWeek === 0) return lastWeek > 0 ? 100 : 0;
+    return Math.round(((lastWeek - previousWeek) / previousWeek) * 100);
+  };
 
   // Filter campaigns
   const filteredCampaigns = useMemo(() => {
@@ -143,16 +183,9 @@ const CampaignTracking = () => {
       c.impact_assessment >= impactRange[0] && c.impact_assessment <= impactRange[1]
     );
 
-    // Date range filter
-    if (dateRange?.from) {
-      filtered = filtered.filter(c => {
-        const startDate = new Date(c.start_date);
-        return startDate >= dateRange.from! && (!dateRange.to || startDate <= dateRange.to);
-      });
-    }
 
     return filtered;
-  }, [campaigns, searchQuery, statusFilter, campaignTypeFilter, orchestratorFilter, impactRange, dateRange]);
+  }, [campaigns, searchQuery, statusFilter, campaignTypeFilter, orchestratorFilter, impactRange]);
 
   // Sort campaigns
   const sortedCampaigns = useMemo(() => {
@@ -236,10 +269,20 @@ const CampaignTracking = () => {
             شناسایی و پیگیری کمپین‌های هماهنگ جنگ روانی
           </p>
         </div>
-        <Button className="gap-2" onClick={handleCreateCampaign}>
-          <Plus className="h-4 w-4" />
-          ایجاد کمپین دستی
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2" onClick={detectCampaigns} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            تشخیص مجدد
+          </Button>
+          <Button className="gap-2" onClick={handleCreateCampaign}>
+            <Plus className="h-4 w-4" />
+            ایجاد کمپین دستی
+          </Button>
+        </div>
       </div>
 
       {/* Quick Stats */}
@@ -370,36 +413,18 @@ const CampaignTracking = () => {
             </SelectContent>
           </Select>
 
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-60">
-                <CalendarIcon className="ml-2 h-4 w-4" />
-                {dateRange?.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, 'PP', { locale: faIR })} -{' '}
-                      {format(dateRange.to, 'PP', { locale: faIR })}
-                    </>
-                  ) : (
-                    format(dateRange.from, 'PP', { locale: faIR })
-                  )
-                ) : (
-                  <span>بازه زمانی</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={setDateRange}
-                numberOfMonths={2}
-                className="pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
+          <Select value={timeRange.toString()} onValueChange={(v) => setTimeRange(parseInt(v))}>
+            <SelectTrigger className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">۱ روز گذشته</SelectItem>
+              <SelectItem value="3">۳ روز گذشته</SelectItem>
+              <SelectItem value="7">۷ روز گذشته</SelectItem>
+              <SelectItem value="14">۱۴ روز گذشته</SelectItem>
+              <SelectItem value="30">۳۰ روز گذشته</SelectItem>
+            </SelectContent>
+          </Select>
 
           <div className="flex-1 flex items-center gap-3 min-w-[200px]">
             <span className="text-sm text-muted-foreground whitespace-nowrap">تاثیر:</span>
