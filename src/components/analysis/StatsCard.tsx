@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, toPersianNumber } from '@/lib/utils';
 
 interface StatsCardProps {
   title: string;
@@ -24,7 +24,7 @@ const StatsCard = ({ title, value, icon, color, pulse }: StatsCardProps) => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground mb-1">{title}</p>
-            <p className="text-3xl font-bold">{value}</p>
+            <p className="text-3xl font-bold">{toPersianNumber(value)}</p>
           </div>
           <div className={cn('text-4xl p-3 rounded-lg', colorClasses[color])}>
             {icon}

@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle, XCircle, CheckSquare, Brain, Zap } from 'lucide-react';
+import { toPersianNumber } from '@/lib/utils';
 import { formatPersianDateTime } from '@/lib/dateUtils';
 
 interface BulkAnalysisModalProps {
@@ -223,7 +224,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       
       toast({
         title: '✅ تحلیل گروهی تکمیل شد',
-        description: `${batchData.total} مطلب در ${(batchData.processing_time_ms / 1000).toFixed(1)} ثانیه | ${improvement}% سریع‌تر`,
+        description: `${batchData.total} مطلب در ${toPersianNumber((batchData.processing_time_ms / 1000).toFixed(1))} ثانیه | ${toPersianNumber(improvement)}% سریع‌تر`,
       });
       
       // Call onComplete but DON'T close modal - let user close manually
@@ -305,10 +306,10 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           <DialogTitle className="text-2xl">تحلیل گروهی مطالب</DialogTitle>
           <DialogDescription>
             {status === 'running'
-              ? `در حال تحلیل: ${progress.current} از ${progress.total}`
+              ? `در حال تحلیل: ${toPersianNumber(progress.current)} از ${toPersianNumber(progress.total)}`
               : status === 'completed'
               ? 'تحلیل با موفقیت تکمیل شد'
-              : `${posts.length} مطلب تحلیل نشده یافت شد`
+              : `${toPersianNumber(posts.length)} مطلب تحلیل نشده یافت شد`
             }
           </DialogDescription>
         </DialogHeader>
@@ -319,7 +320,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
             <div className="flex items-center justify-between">
               <div className="text-lg font-bold">در حال پردازش...</div>
               <div className="text-sm text-muted-foreground">
-                {progress.current} از {progress.total} ({calculateProgress()}%)
+                {toPersianNumber(progress.current)} از {toPersianNumber(progress.total)} ({toPersianNumber(calculateProgress())}%)
               </div>
             </div>
 
@@ -332,7 +333,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 <CardContent className="p-4 text-center">
                   <div className="text-xs text-muted-foreground mb-1">مرحله اول</div>
                   <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                    {progress.quickDetections}
+                    {toPersianNumber(progress.quickDetections)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">غربالگری سریع</div>
                 </CardContent>
@@ -342,7 +343,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 <CardContent className="p-4 text-center">
                   <div className="text-xs text-muted-foreground mb-1">مرحله دوم</div>
                   <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                    {progress.deepAnalyses}
+                    {toPersianNumber(progress.deepAnalyses)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">تحلیل عمیق</div>
                 </CardContent>
@@ -352,7 +353,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 <CardContent className="p-4 text-center">
                   <div className="text-xs text-muted-foreground mb-1">تکمیل شده</div>
                   <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                    {progress.current}
+                    {toPersianNumber(progress.current)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">موفق</div>
                 </CardContent>
@@ -391,7 +392,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 <div>
                   <div className="font-medium">در حال اجرا...</div>
                   <div className="text-sm text-muted-foreground">
-                    زمان تخمینی باقیمانده: {calculateRemainingTime()} دقیقه
+                    زمان تخمینی باقیمانده: {toPersianNumber(calculateRemainingTime())} دقیقه
                   </div>
                 </div>
               </div>
@@ -406,7 +407,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 تحلیل با موفقیت تکمیل شد! 🎉
               </h2>
               <p className="text-muted-foreground">
-                {batchResults.total} مطلب در {(batchResults.processing_time_ms / 1000).toFixed(1)} ثانیه
+                {toPersianNumber(batchResults.total)} مطلب در {toPersianNumber((batchResults.processing_time_ms / 1000).toFixed(1))} ثانیه
               </p>
             </div>
 
@@ -415,7 +416,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
               <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
                 <CardContent className="p-6 text-center">
                   <div className="text-4xl font-bold text-green-600 dark:text-green-400 mb-2">
-                    {batchResults.quick_only}
+                    {toPersianNumber(batchResults.quick_only)}
                   </div>
                   <div className="text-sm font-medium">تحلیل سریع</div>
                   <div className="text-xs text-muted-foreground mt-1">خبر عادی</div>
@@ -425,7 +426,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
               <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
                 <CardContent className="p-6 text-center">
                   <div className="text-4xl font-bold text-red-600 dark:text-red-400 mb-2">
-                    {batchResults.deep_analyzed}
+                    {toPersianNumber(batchResults.deep_analyzed)}
                   </div>
                   <div className="text-sm font-medium">تحلیل عمیق</div>
                   <div className="text-xs text-muted-foreground mt-1">PsyOp شناسایی شده</div>
@@ -443,21 +444,21 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">روش قبلی (تک‌مرحله‌ای):</span>
-                    <span className="font-bold">{(batchResults.estimated_old_time_ms / 1000).toFixed(1)} ثانیه</span>
+                    <span className="font-bold">{toPersianNumber((batchResults.estimated_old_time_ms / 1000).toFixed(1))} ثانیه</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">روش جدید (دومرحله‌ای):</span>
-                    <span className="font-bold">{(batchResults.processing_time_ms / 1000).toFixed(1)} ثانیه</span>
+                    <span className="font-bold">{toPersianNumber((batchResults.processing_time_ms / 1000).toFixed(1))} ثانیه</span>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t-2 border-primary/20">
                     <span className="font-bold text-green-600 dark:text-green-400 text-base">بهبود سرعت:</span>
                     <span className="font-bold text-green-600 dark:text-green-400 text-2xl">
-                      {Math.round((batchResults.time_saved_ms / batchResults.estimated_old_time_ms) * 100)}% 🚀
+                      {toPersianNumber(Math.round((batchResults.time_saved_ms / batchResults.estimated_old_time_ms) * 100))}% 🚀
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">صرفه‌جویی زمان:</span>
-                    <span className="font-medium">{(batchResults.time_saved_ms / 1000).toFixed(1)} ثانیه</span>
+                    <span className="font-medium">{toPersianNumber((batchResults.time_saved_ms / 1000).toFixed(1))} ثانیه</span>
                   </div>
                 </div>
               </CardContent>

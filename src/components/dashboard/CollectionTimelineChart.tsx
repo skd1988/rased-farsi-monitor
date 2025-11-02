@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import moment from 'moment-jalaali';
+import { toPersianNumber } from '@/lib/utils';
 
 interface CollectionTimelineChartProps {
   data: Array<{ date: string; count: number }>;
@@ -15,7 +16,7 @@ const CollectionTimelineChart = ({ data, onClick }: CollectionTimelineChartProps
   const formatShortPersian = (dateStr: string): string => {
     try {
       const m = moment(dateStr);
-      const day = m.jDate();
+      const day = toPersianNumber(m.jDate());
       const monthNames = ['فرو', 'ارد', 'خرد', 'تیر', 'مرد', 'شهر', 'مهر', 'آبا', 'آذر', 'دی', 'بهم', 'اسف'];
       const month = monthNames[m.jMonth()];
       return `${day} ${month}`;
@@ -28,7 +29,7 @@ const CollectionTimelineChart = ({ data, onClick }: CollectionTimelineChartProps
   const formatFullPersian = (dateStr: string): string => {
     try {
       const m = moment(dateStr);
-      const day = m.jDate();
+      const day = toPersianNumber(m.jDate());
       const monthNames = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
       const month = monthNames[m.jMonth()];
       return `${day} ${month}`;
@@ -77,7 +78,7 @@ const CollectionTimelineChart = ({ data, onClick }: CollectionTimelineChartProps
         </ResponsiveContainer>
         <div className="text-center mt-2">
           <p className="text-sm text-muted-foreground">
-            کل: <span className="font-bold">{totalPosts}</span> پست
+            کل: <span className="font-bold">{toPersianNumber(totalPosts)}</span> پست
           </p>
         </div>
       </CardContent>

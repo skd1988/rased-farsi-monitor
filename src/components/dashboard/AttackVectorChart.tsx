@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { toPersianNumber } from '@/lib/utils';
 
 interface AttackVectorChartProps {
   data: Array<{
@@ -45,7 +46,7 @@ const AttackVectorChart: React.FC<AttackVectorChartProps> = ({ data, onVectorCli
               borderRadius: '8px',
               direction: 'rtl'
             }}
-            formatter={(value: number) => [value.toLocaleString('fa-IR'), 'تعداد']}
+            formatter={(value: number) => [toPersianNumber(value), 'تعداد']}
           />
           <Bar 
             dataKey="value" 

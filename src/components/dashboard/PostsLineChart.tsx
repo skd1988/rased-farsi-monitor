@@ -2,6 +2,7 @@ import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatPersianDateTime } from '@/lib/dateUtils';
 import moment from 'moment-jalaali';
+import { toPersianNumber } from '@/lib/utils';
 
 interface PostsLineChartProps {
   data: Array<{ date: string; count: number }>;
@@ -32,7 +33,7 @@ const PostsLineChart: React.FC<PostsLineChartProps> = ({ data }) => {
                       تاریخ: {formatPersianDateTime(payload[0].payload.date)}
                     </p>
                     <p className="text-sm text-primary font-bold">
-                      تعداد: {payload[0].value} مطلب
+                      تعداد: {toPersianNumber(payload[0].value as number)} مطلب
                     </p>
                   </div>
                 );

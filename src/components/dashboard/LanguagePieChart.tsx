@@ -1,5 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { toPersianNumber } from '@/lib/utils';
 
 interface LanguagePieChartProps {
   data: Array<{ name: string; value: number; percentage: number }>;
@@ -22,7 +23,7 @@ const LanguagePieChart: React.FC<LanguagePieChartProps> = ({ data }) => {
             cx="50%"
             cy="50%"
             labelLine={false}
-            label={({ percentage }) => `${percentage.toFixed(0)}%`}
+            label={({ percentage }) => `${toPersianNumber(percentage.toFixed(0))}%`}
             outerRadius={80}
             fill="#8884d8"
             dataKey="value"
@@ -38,9 +39,9 @@ const LanguagePieChart: React.FC<LanguagePieChartProps> = ({ data }) => {
                 return (
                   <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
                     <p className="text-sm font-medium">{data.name}</p>
-                    <p className="text-sm">تعداد: {data.value}</p>
+                    <p className="text-sm">تعداد: {toPersianNumber(data.value)}</p>
                     <p className="text-sm text-primary font-bold">
-                      {data.percentage.toFixed(1)}%
+                      {toPersianNumber(data.percentage.toFixed(1))}%
                     </p>
                   </div>
                 );

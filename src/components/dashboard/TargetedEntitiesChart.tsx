@@ -1,6 +1,7 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { toPersianNumber } from '@/lib/utils';
 
 interface TargetedEntitiesChartProps {
   data: Array<{
@@ -44,7 +45,7 @@ const TargetedEntitiesChart: React.FC<TargetedEntitiesChartProps> = ({ data }) =
               direction: 'rtl'
             }}
             formatter={(value: number, name: string, props: any) => [
-              `${value.toLocaleString('fa-IR')} حمله (${props.payload.percentage.toFixed(1)}%)`,
+              `${toPersianNumber(value)} حمله (${toPersianNumber(props.payload.percentage.toFixed(1))}%)`,
               'تعداد'
             ]}
           />

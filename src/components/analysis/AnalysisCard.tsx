@@ -4,6 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { toPersianNumber } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -263,7 +264,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
               <Badge className={sentiment.color}>
                 {sentiment.icon} {sentiment.label}
               </Badge>
-              <span className="text-sm text-muted-foreground">{post.sentiment_score?.toFixed(2)}</span>
+              <span className="text-sm text-muted-foreground">{toPersianNumber(post.sentiment_score?.toFixed(2) || '0')}</span>
             </div>
           </div>
           <Progress value={sentimentProgress} className="h-2" />
@@ -328,7 +329,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         {post.processing_time && (
           <>
             <span>•</span>
-            <span>زمان پردازش: {post.processing_time.toFixed(1)} ثانیه</span>
+            <span>زمان پردازش: {toPersianNumber(post.processing_time.toFixed(1))} ثانیه</span>
           </>
         )}
       </CardFooter>

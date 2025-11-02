@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { cn, toPersianNumber } from '@/lib/utils';
 
 interface KPICardProps {
   title: string;
@@ -72,7 +72,7 @@ const KPICard: React.FC<KPICardProps> = ({
             'text-3xl font-bold animate-counter',
             isAlert && value > 0 && 'text-danger'
           )}>
-            {displayValue.toLocaleString('fa-IR')}
+            {toPersianNumber(displayValue)}
           </h3>
         </div>
         <div className="bg-white/50 dark:bg-black/20 p-3 rounded-lg">
@@ -86,7 +86,7 @@ const KPICard: React.FC<KPICardProps> = ({
             'font-medium',
             change >= 0 ? 'text-success' : 'text-danger'
           )}>
-            {change >= 0 ? '+' : ''}{change}%
+            {change >= 0 ? '+' : ''}{toPersianNumber(Math.abs(change))}%
           </span>
         )}
         <span className="text-muted-foreground">{subtitle}</span>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { toPersianNumber } from '@/lib/utils';
 
 interface SocialMediaPieChartProps {
   data: Array<{
@@ -15,7 +16,7 @@ const SocialMediaPieChart: React.FC<SocialMediaPieChartProps> = ({ data }) => {
 
   const renderLabel = (entry: any) => {
     const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
-    return `${percentage}%`;
+    return `${toPersianNumber(percentage)}%`;
   };
 
   return (
@@ -44,7 +45,7 @@ const SocialMediaPieChart: React.FC<SocialMediaPieChartProps> = ({ data }) => {
             <Tooltip
               formatter={(value: number, name: string) => {
                 const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                return [`${value} (${percentage}%)`, name];
+                return [`${toPersianNumber(value)} (${toPersianNumber(percentage)}%)`, name];
               }}
             />
             <Legend

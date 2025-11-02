@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { formatPersianDateTime } from '@/lib/dateUtils';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toPersianNumber } from '@/lib/utils';
 
 interface AnalysisDetailModalProps {
   post: any;
@@ -89,7 +90,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
                   <div>
                     <p className="font-bold text-lg">{sentiment.label}</p>
                     <p className="text-xs text-muted-foreground">
-                      امتیاز: {post.sentiment_score?.toFixed(2)}
+                      امتیاز: {toPersianNumber(post.sentiment_score?.toFixed(2) || '0')}
                     </p>
                   </div>
                 </div>
@@ -147,7 +148,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
               {post.processing_time && (
                 <>
                   <span>•</span>
-                  <span>زمان پردازش: {post.processing_time.toFixed(2)} ثانیه</span>
+                  <span>زمان پردازش: {toPersianNumber(post.processing_time.toFixed(2))} ثانیه</span>
                 </>
               )}
             </div>
