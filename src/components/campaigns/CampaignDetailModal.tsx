@@ -47,11 +47,9 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
 
-  if (!campaign) return null;
-
-  // Generate real activity data from campaign posts
+  // Generate real activity data from campaign posts - MUST be before early return
   const activityData = React.useMemo(() => {
-    if (!campaign.posts || campaign.posts.length === 0) return [];
+    if (!campaign || !campaign.posts || campaign.posts.length === 0) return [];
     
     // Group posts by date
     const postsByDate = new Map<string, number>();
@@ -65,10 +63,13 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
       .map(([date, posts]) => ({ date, posts }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .slice(-30); // Last 30 days
-  }, [campaign.posts]);
+  }, [campaign?.posts]);
 
   // Use real posts from campaign
-  const campaignPosts = campaign.posts || [];
+  const campaignPosts = campaign?.posts || [];
+
+  // Early return AFTER all hooks
+  if (!campaign) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
