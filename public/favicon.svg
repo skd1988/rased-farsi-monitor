@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <!-- Shield outline -->
+  <path d="M32 4 L52 12 L52 28 Q52 44 32 60 Q12 44 12 28 L12 12 Z" fill="#1e40af" stroke="#1e3a8a" stroke-width="2" stroke-linejoin="round"></path>
+
+  <!-- Inner gradient -->
+  <path d="M32 8 L48 14 L48 28 Q48 42 32 56 Q16 42 16 28 L16 14 Z" fill="url(#gradient1)" stroke="none"></path>
+
+  <!-- Eye (intelligence / detection) -->
+  <ellipse cx="32" cy="30" rx="12" ry="8" fill="#60a5fa" stroke="#1e3a8a" stroke-width="1.5"></ellipse>
+  <circle cx="32" cy="30" r="5" fill="#1e3a8a"></circle>
+  <circle cx="33" cy="29" r="2" fill="#ffffff"></circle>
+
+  <!-- Radar scan lines -->
+  <path d="M32 18 Q38 18 38 24" stroke="#60a5fa" stroke-width="1.5" fill="none" opacity="0.6"></path>
+  <path d="M32 16 Q40 16 40 26" stroke="#60a5fa" stroke-width="1.5" fill="none" opacity="0.4"></path>
+
+  <!-- Alert pulse -->
+  <circle cx="44" cy="18" r="4" fill="#ef4444">
+    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"></animate>
+  </circle>
+
+  <defs>
+    <linearGradient id="gradient1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"></stop>
+      <stop offset="100%" stop-color="#1e40af"></stop>
+    </linearGradient>
+  </defs>
+</svg>
