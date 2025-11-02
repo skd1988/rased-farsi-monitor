@@ -14,6 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_analysis: {
+        Row: {
+          analyzed_at: string | null
+          attack_vectors: string[] | null
+          campaign_indicators: Json | null
+          coordination_indicators: string[] | null
+          counter_narrative_points: string[] | null
+          created_at: string | null
+          evidence_type: string[] | null
+          id: string
+          is_psyop: string | null
+          narrative_theme: string | null
+          post_id: string
+          primary_target: string | null
+          psyop_type: string | null
+          recommended_response: string | null
+          response_channels: string[] | null
+          secondary_targets: string[] | null
+          source_credibility: string | null
+          suggested_spokespeople: string[] | null
+          target_category: string | null
+          targeted_persons: string[] | null
+          urgency_level: string | null
+          virality_potential: number | null
+        }
+        Insert: {
+          analyzed_at?: string | null
+          attack_vectors?: string[] | null
+          campaign_indicators?: Json | null
+          coordination_indicators?: string[] | null
+          counter_narrative_points?: string[] | null
+          created_at?: string | null
+          evidence_type?: string[] | null
+          id?: string
+          is_psyop?: string | null
+          narrative_theme?: string | null
+          post_id: string
+          primary_target?: string | null
+          psyop_type?: string | null
+          recommended_response?: string | null
+          response_channels?: string[] | null
+          secondary_targets?: string[] | null
+          source_credibility?: string | null
+          suggested_spokespeople?: string[] | null
+          target_category?: string | null
+          targeted_persons?: string[] | null
+          urgency_level?: string | null
+          virality_potential?: number | null
+        }
+        Update: {
+          analyzed_at?: string | null
+          attack_vectors?: string[] | null
+          campaign_indicators?: Json | null
+          coordination_indicators?: string[] | null
+          counter_narrative_points?: string[] | null
+          created_at?: string | null
+          evidence_type?: string[] | null
+          id?: string
+          is_psyop?: string | null
+          narrative_theme?: string | null
+          post_id?: string
+          primary_target?: string | null
+          psyop_type?: string | null
+          recommended_response?: string | null
+          response_channels?: string[] | null
+          secondary_targets?: string[] | null
+          source_credibility?: string | null
+          suggested_spokespeople?: string[] | null
+          target_category?: string | null
+          targeted_persons?: string[] | null
+          urgency_level?: string | null
+          virality_potential?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_analysis_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alerts: {
         Row: {
           alert_type: string
@@ -114,6 +197,39 @@ export type Database = {
           },
         ]
       }
+      campaign_posts: {
+        Row: {
+          added_at: string | null
+          campaign_id: string
+          post_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          campaign_id: string
+          post_id: string
+        }
+        Update: {
+          added_at?: string | null
+          campaign_id?: string
+          post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_posts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "psyop_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_posts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_conversations: {
         Row: {
           created_at: string | null
@@ -188,13 +304,17 @@ export type Database = {
           author: string | null
           confidence: number | null
           contents: string | null
+          counter_narrative_ready: boolean | null
           created_at: string
           id: string
+          is_psyop: boolean | null
           key_points: string[] | null
           keywords: string[] | null
           language: string
           main_topic: string | null
           processing_time: number | null
+          psyop_confidence: number | null
+          psyop_technique: string[] | null
           published_at: string
           recommended_action: string | null
           sentiment: string | null
@@ -204,6 +324,8 @@ export type Database = {
           source_type: string | null
           source_url: string | null
           status: string
+          target_entity: string[] | null
+          target_persons: string[] | null
           threat_level: string | null
           title: string
           updated_at: string
@@ -216,13 +338,17 @@ export type Database = {
           author?: string | null
           confidence?: number | null
           contents?: string | null
+          counter_narrative_ready?: boolean | null
           created_at?: string
           id?: string
+          is_psyop?: boolean | null
           key_points?: string[] | null
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
           processing_time?: number | null
+          psyop_confidence?: number | null
+          psyop_technique?: string[] | null
           published_at?: string
           recommended_action?: string | null
           sentiment?: string | null
@@ -232,6 +358,8 @@ export type Database = {
           source_type?: string | null
           source_url?: string | null
           status?: string
+          target_entity?: string[] | null
+          target_persons?: string[] | null
           threat_level?: string | null
           title: string
           updated_at?: string
@@ -244,13 +372,17 @@ export type Database = {
           author?: string | null
           confidence?: number | null
           contents?: string | null
+          counter_narrative_ready?: boolean | null
           created_at?: string
           id?: string
+          is_psyop?: boolean | null
           key_points?: string[] | null
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
           processing_time?: number | null
+          psyop_confidence?: number | null
+          psyop_technique?: string[] | null
           published_at?: string
           recommended_action?: string | null
           sentiment?: string | null
@@ -260,11 +392,138 @@ export type Database = {
           source_type?: string | null
           source_url?: string | null
           status?: string
+          target_entity?: string[] | null
+          target_persons?: string[] | null
           threat_level?: string | null
           title?: string
           updated_at?: string
         }
         Relationships: []
+      }
+      psyop_campaigns: {
+        Row: {
+          campaign_name: string
+          campaign_type: string | null
+          counter_campaign_status: string | null
+          created_at: string | null
+          end_date: string | null
+          id: string
+          impact_assessment: number | null
+          main_target: string | null
+          notes: string | null
+          orchestrator: string | null
+          start_date: string | null
+          status: string | null
+          target_persons: string[] | null
+        }
+        Insert: {
+          campaign_name: string
+          campaign_type?: string | null
+          counter_campaign_status?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          impact_assessment?: number | null
+          main_target?: string | null
+          notes?: string | null
+          orchestrator?: string | null
+          start_date?: string | null
+          status?: string | null
+          target_persons?: string[] | null
+        }
+        Update: {
+          campaign_name?: string
+          campaign_type?: string | null
+          counter_campaign_status?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          impact_assessment?: number | null
+          main_target?: string | null
+          notes?: string | null
+          orchestrator?: string | null
+          start_date?: string | null
+          status?: string | null
+          target_persons?: string[] | null
+        }
+        Relationships: []
+      }
+      resistance_entities: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          description: string | null
+          entity_type: string
+          id: string
+          location: string | null
+          name_arabic: string | null
+          name_english: string | null
+          name_persian: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          entity_type: string
+          id?: string
+          location?: string | null
+          name_arabic?: string | null
+          name_english?: string | null
+          name_persian: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          entity_type?: string
+          id?: string
+          location?: string | null
+          name_arabic?: string | null
+          name_english?: string | null
+          name_persian?: string
+        }
+        Relationships: []
+      }
+      resistance_persons: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          entity_id: string | null
+          id: string
+          name_arabic: string | null
+          name_english: string | null
+          name_persian: string
+          role: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          entity_id?: string | null
+          id?: string
+          name_arabic?: string | null
+          name_english?: string | null
+          name_persian: string
+          role?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          entity_id?: string | null
+          id?: string
+          name_arabic?: string | null
+          name_english?: string | null
+          name_persian?: string
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resistance_persons_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "resistance_entities"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
