@@ -48,6 +48,8 @@ const IntelligenceAndTrends = () => {
   // Narratives Intelligence
   const [narratives, setNarratives] = useState<any[]>([]);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [fixing, setFixing] = useState(false);
+  const [fixProgress, setFixProgress] = useState({ current: 0, total: 0, status: '' });
   const [narrativesLoading, setNarrativesLoading] = useState(false);
   const { toast } = useToast();
 
@@ -386,56 +388,150 @@ const IntelligenceAndTrends = () => {
     }
   };
 
+  // Helper function
+  const countMatches = (text: string, keywords: string[]): number => {
+    return keywords.reduce((count, keyword) => {
+      const regex = new RegExp(keyword, 'gi');
+      const matches = text.match(regex);
+      return count + (matches ? matches.length : 0);
+    }, 0);
+  };
+
+  // Improved narrative theme inference
   const inferNarrativeTheme = (post: any): string => {
     const title = (post.title || '').toLowerCase();
     const content = (post.contents || '').toLowerCase();
     const combined = title + ' ' + content;
     
-    // Check for terrorism/extremism → Demonization
-    if (combined.match(/تروریس|terrorist|extremist|افراطی|داعش|isis/)) {
-      return 'Demonization';
+    // Extract attack_vectors and psyop_type if available
+    const attackVectors = post.attack_vectors ? 
+      JSON.stringify(post.attack_vectors).toLowerCase() : '';
+    const psyopType = (post.psyop_type || '').toLowerCase();
+    
+    const fullText = combined + ' ' + attackVectors + ' ' + psyopType;
+    
+    // DEMONIZATION (شیطان‌سازی) - Most common for anti-resistance content
+    const demonizationKeywords = [
+      'تروریس', 'terrorist', 'إرهاب', 'extremist', 'افراطی', 'متطرف',
+      'داعش', 'isis', 'القاعده', 'al-qaeda',
+      'خطر', 'threat', 'تهدید', 'خطير', 'dangerous', 'خطرناک',
+      'شیطان', 'evil', 'شر', 'شیطانی',
+      'خشونت', 'violence', 'عنف', 'وحشی', 'brutal',
+      'نظامی', 'militant', 'مسلح', 'armed', 'militia', 'شبه‌نظامی'
+    ];
+    
+    // DELEGITIMIZATION (بی‌اعتبارسازی)
+    const delegitimizationKeywords = [
+      'غیرقانون', 'illegal', 'غير قانوني', 'نامشروع', 'illegitimate',
+      'غیرشرعی', 'unlawful', 'غير شرعي',
+      'proxy', 'puppet', 'عروسک', 'دست‌نشانده',
+      'وابسته', 'dependent', 'تابع'
+    ];
+    
+    // VICTIMIZATION (قربانی‌سازی)
+    const victimizationKeywords = [
+      'قربانی', 'victim', 'ضحية', 'مظلوم', 'oppressed',
+      'آسیب', 'harm', 'ضرر', 'suffering', 'رنج'
+    ];
+    
+    // FEAR-MONGERING (ترس‌افکنی)
+    const fearKeywords = [
+      'خطر', 'danger', 'خطير',
+      'تهدید', 'threat', 'تهديد',
+      'ترس', 'fear', 'خوف',
+      'ناامن', 'unsafe', 'غير آمن',
+      'حمله', 'attack', 'هجوم'
+    ];
+    
+    // DIVIDE & CONQUER (تفرقه‌اندازی)
+    const divideKeywords = [
+      'فرقه', 'sectarian', 'طائفي',
+      'تفرقه', 'division', 'انقسام',
+      'شیعه', 'سنی', 'shia', 'sunni',
+      'اختلاف', 'conflict', 'صراع'
+    ];
+    
+    // FALSE FLAG (پرچم دروغین)
+    const falseFlagKeywords = [
+      'ادعا', 'claim', 'يزعم',
+      'گزارش شده', 'reported', 'مزعوم',
+      'بدون مدرک', 'unverified', 'غير مؤكد',
+      'منابع امنیتی', 'security sources', 'مصادر أمنية'
+    ];
+    
+    // WHITEWASHING (سفیدشویی)
+    const whitewashKeywords = [
+      'دموکراسی', 'democracy', 'ديمقراطية',
+      'آزادی', 'freedom', 'حرية',
+      'حقوق بشر', 'human rights', 'حقوق الإنسان'
+    ];
+    
+    // Count keyword matches
+    const scores = {
+      'Demonization': countMatches(fullText, demonizationKeywords),
+      'Delegitimization': countMatches(fullText, delegitimizationKeywords),
+      'Fear-Mongering': countMatches(fullText, fearKeywords),
+      'Divide & Conquer': countMatches(fullText, divideKeywords),
+      'False Flag': countMatches(fullText, falseFlagKeywords),
+      'Victimization': countMatches(fullText, victimizationKeywords),
+      'Whitewashing': countMatches(fullText, whitewashKeywords)
+    };
+    
+    console.log(`Narrative scores for "${title.substring(0, 50)}...":`, scores);
+    
+    // Find highest score
+    let maxScore = 0;
+    let bestTheme = 'Demonization'; // Default
+    
+    for (const [theme, score] of Object.entries(scores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        bestTheme = theme;
+      }
     }
     
-    // Check for victimization
-    if (combined.match(/قربانی|victim|ضحیة|مظلوم/)) {
-      return 'Victimization';
+    // If no matches, use attack_vectors as hint
+    if (maxScore === 0) {
+      if (attackVectors.includes('terrorism')) return 'Demonization';
+      if (attackVectors.includes('legitimacy')) return 'Delegitimization';
+      if (attackVectors.includes('sectarian')) return 'Divide & Conquer';
     }
     
-    // Check for delegitimization
-    if (combined.match(/غیرقانون|illegal|نامشروع|illegitimate/)) {
-      return 'Delegitimization';
+    return bestTheme;
+  };
+
+  const inferNarrativeType = (post: any): string => {
+    const title = (post.title || '').toLowerCase();
+    const content = (post.contents || '').toLowerCase();
+    const combined = title + ' ' + content;
+    
+    const defensiveKeywords = ['دفاع', 'defense', 'دفاع عن', 'تأیید', 'حمایت', 'support'];
+    const supportiveKeywords = ['موفقیت', 'success', 'پیروزی', 'victory', 'نجاح', 'انتصار'];
+    
+    if (defensiveKeywords.some(kw => combined.includes(kw))) {
+      return 'Defense';
     }
     
-    // Check for fear-mongering
-    if (combined.match(/خطر|threat|تهدید|خطرناک|dangerous/)) {
-      return 'Fear-Mongering';
+    if (supportiveKeywords.some(kw => combined.includes(kw))) {
+      return 'Supportive';
     }
     
-    // Check attack vectors for more clues
-    if (post.attack_vectors && Array.isArray(post.attack_vectors)) {
-      const vectors = JSON.stringify(post.attack_vectors).toLowerCase();
-      if (vectors.includes('terrorism')) return 'Demonization';
-      if (vectors.includes('legitimacy')) return 'Delegitimization';
-    }
-    
-    // Default
-    return 'Demonization';
+    // Most anti-resistance content is Attack
+    return 'Attack';
   };
 
   const fixNarrativeFields = async () => {
     const confirmed = confirm(
-      'این عملیات فیلد narrative_theme را برای پست‌های PsyOp که این فیلد را ندارند پر می‌کند. ادامه می‌دهید؟'
+      `این عملیات ${debugInfo?.totalPsyOps || 0} پست را تعمیر می‌کند. ادامه می‌دهید؟`
     );
     
     if (!confirmed) return;
     
+    setFixing(true);
+    setFixProgress({ current: 0, total: 0, status: 'در حال آماده‌سازی...' });
+    
     try {
-      toast({
-        title: 'در حال تعمیر...',
-        description: 'لطفا صبر کنید',
-      });
-
-      // Get PsyOps without narrative_theme
+      // Get posts
       const { data: posts, error: fetchError } = await supabase
         .from('posts')
         .select('id, title, contents, psyop_type, attack_vectors')
@@ -449,51 +545,72 @@ const IntelligenceAndTrends = () => {
           title: 'هیچ پستی برای تعمیر یافت نشد',
           variant: 'default',
         });
+        setFixing(false);
         return;
       }
       
-      console.log(`Fixing ${posts.length} posts...`);
+      setFixProgress({ current: 0, total: posts.length, status: 'در حال پردازش...' });
       
-      let fixedCount = 0;
-      // Infer narrative_theme from existing data
-      for (const post of posts) {
-        const inferredTheme = inferNarrativeTheme(post);
+      let successCount = 0;
+      let failCount = 0;
+      
+      // Process posts
+      for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
         
-        const { error: updateError } = await supabase
-          .from('posts')
-          .update({ 
-            narrative_theme: inferredTheme
-          })
-          .eq('id', post.id);
-        
-        if (updateError) {
-          console.error(`Failed to update post ${post.id}:`, updateError);
-        } else {
-          fixedCount++;
+        try {
+          const theme = inferNarrativeTheme(post);
+          const type = inferNarrativeType(post);
+          
+          const { error: updateError } = await supabase
+            .from('posts')
+            .update({ 
+              narrative_theme: theme,
+              narrative_type: type
+            })
+            .eq('id', post.id);
+          
+          if (updateError) throw updateError;
+          
+          successCount++;
+          
+        } catch (error) {
+          console.error(`Failed to fix post ${post.id}:`, error);
+          failCount++;
         }
         
-        // Small delay
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Update progress
+        setFixProgress({ 
+          current: i + 1, 
+          total: posts.length, 
+          status: `پردازش ${i + 1} از ${posts.length}...` 
+        });
+        
+        // Small delay every 10 posts
+        if ((i + 1) % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
       
+      setFixing(false);
+      
       toast({
-        title: `✅ ${fixedCount} پست تعمیر شد!`,
-        description: 'اکنون می‌توانید روایت‌ها را مشاهده کنید',
+        title: `✅ تعمیر کامل شد!`,
+        description: `موفق: ${successCount} | خطا: ${failCount}`,
       });
       
-      // Refresh debug info
+      // Refresh
       await checkDatabaseData();
-      
-      // Refresh narratives display
       await fetchNarratives();
       
     } catch (error) {
       console.error('Fix failed:', error);
       toast({
-        title: '❌ خطا در تعمیر',
+        title: '❌ خطا',
         description: error instanceof Error ? error.message : 'خطای ناشناخته',
         variant: 'destructive',
       });
+      setFixing(false);
     }
   };
 
@@ -1186,6 +1303,32 @@ const IntelligenceAndTrends = () => {
           )}
         </TabsContent>
       </Tabs>
+      
+      {/* Progress Modal */}
+      {fixing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="text-center mb-4">
+              <Loader2 className="w-12 h-12 animate-spin mx-auto mb-3 text-blue-600" />
+              <div className="text-lg font-bold">در حال تعمیر...</div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {fixProgress.status}
+              </div>
+            </div>
+            <div className="relative h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div 
+                className="absolute top-0 right-0 h-full bg-blue-600 transition-all duration-300"
+                style={{ 
+                  width: `${fixProgress.total > 0 ? (fixProgress.current / fixProgress.total) * 100 : 0}%` 
+                }}
+              />
+            </div>
+            <div className="text-center text-sm text-muted-foreground mt-2">
+              {fixProgress.current} / {fixProgress.total}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
