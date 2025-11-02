@@ -8,6 +8,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Login from "./pages/Login";
 import DashboardLayout from "./pages/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
+import PsyOpDetection from "./pages/PsyOpDetection";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
 import Chat from "./pages/Chat";
@@ -36,6 +37,7 @@ const App = () => (
                 <Route path="/login" element={<Login />} />
                 <Route path="/" element={<DashboardLayout />}>
                   <Route path="dashboard" element={<Dashboard />} />
+                  <Route path="psyop-detection" element={<PsyOpDetection />} />
                   <Route path="posts" element={<PostsExplorer />} />
                   <Route path="ai-analysis" element={<AIAnalysis />} />
                   <Route path="chat" element={<Chat />} />
