@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { translateSourceType } from '@/utils/sourceTypeTranslations';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -251,19 +252,20 @@ const IntelligenceAndTrends = () => {
       
       data.forEach(post => {
         const platform = post.source_type || 'Unknown';
-        if (!platformMap[platform]) {
-          platformMap[platform] = { 
-            platform, 
+        const platformFa = translateSourceType(platform);
+        if (!platformMap[platformFa]) {
+          platformMap[platformFa] = { 
+            platform: platformFa, 
             total: 0, 
             psyops: 0,
             critical: 0,
             high: 0
           };
         }
-        platformMap[platform].total++;
-        if (post.is_psyop) platformMap[platform].psyops++;
-        if (post.threat_level === 'Critical') platformMap[platform].critical++;
-        if (post.threat_level === 'High') platformMap[platform].high++;
+        platformMap[platformFa].total++;
+        if (post.is_psyop) platformMap[platformFa].psyops++;
+        if (post.threat_level === 'Critical') platformMap[platformFa].critical++;
+        if (post.threat_level === 'High') platformMap[platformFa].high++;
       });
 
       const platformStats = Object.values(platformMap).map((p: any) => ({

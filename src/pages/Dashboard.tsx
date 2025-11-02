@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
+import { translateSourceType } from '@/utils/sourceTypeTranslations';
 import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import DataCollectionKPI from '@/components/dashboard/DataCollectionKPI';
@@ -364,17 +365,6 @@ const Dashboard = () => {
   // Source Type Distribution
   const sourceTypeData = useMemo(() => {
     const typeCounts: Record<string, number> = {};
-    const typeTranslations: Record<string, string> = {
-      'website': 'وب‌سایت',
-      'blog': 'وبلاگ',
-      'social_media': 'شبکه اجتماعی',
-      'news': 'خبرگزاری',
-      'news_agency': 'خبرگزاری',
-      'forum': 'انجمن',
-      'video': 'ویدیو',
-      'podcast': 'پادکست',
-      'other': 'سایر'
-    };
     
     posts.forEach(post => {
       const type = post.source_type || 'other';
@@ -383,7 +373,7 @@ const Dashboard = () => {
     
     return Object.entries(typeCounts)
       .map(([name, value]) => ({ 
-        name: typeTranslations[name] || name, 
+        name: translateSourceType(name), 
         value 
       }))
       .sort((a, b) => b.value - a.value);
