@@ -119,11 +119,9 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     try {
       console.log(`🚀 Starting two-stage batch analysis for ${total} posts`);
       
-      const postIds = postsToAnalyze.map(p => p.id);
-      
       const response = await supabase.functions.invoke('batch-analyze-posts', {
         body: {
-          postIds: postIds,
+          limit: total === posts.length ? null : total, // null = all unanalyzed
           batchSize: 10
         }
       });

@@ -13,24 +13,59 @@ serve(async (req) => {
   }
 
   try {
-    const { postIds, batchSize = 10 } = await req.json();
+    const { limit, batchSize = 10 } = await req.json();
     
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
     
-    console.log(`Starting two-stage analysis for ${postIds.length} posts`);
-    
-    // Fetch posts to analyze
-    const { data: posts, error: fetchError } = await supabase
+    // Fetch unanalyzed posts directly (no ID array needed)
+    let query = supabase
       .from('posts')
       .select('id, title, contents, source, language, published_at')
-      .in('id', postIds);
+      .is('analyzed_at', null)
+      .order('published_at', { ascending: false });
     
-    if (fetchError || !posts) {
-      throw new Error(`Failed to fetch posts: ${fetchError?.message}`);
+    if (limit) {
+      query = query.limit(limit);
     }
+    
+    const { data: posts, error: fetchError } = await query;
+    
+    if (fetchError) {
+      console.error('Fetch error:', fetchError);
+      throw new Error(`Failed to fetch posts: ${fetchError.message}`);
+    }
+    
+    if (!posts || posts.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          results: {
+            total: 0,
+            quick_only: 0,
+            deep_analyzed: 0,
+            failed: 0,
+            alerts_created: 0,
+            processing_time_ms: 0,
+            estimated_old_time_ms: 0,
+            time_saved_ms: 0,
+            cost_saved_usd: 0,
+            detailed_results: []
+          }
+        }),
+        {
+          status: 200,
+          headers: { 
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    }
+    
+    console.log(`Starting two-stage analysis for ${posts.length} posts`);
     
     const results = {
       total: posts.length,
