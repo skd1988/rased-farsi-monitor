@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { translateSentiment } from '@/utils/sentimentTranslations';
+import { translateNarrativeTheme } from '@/utils/narrativeTranslations';
 import { formatIranDate, formatPersianDateLong } from '@/lib/dateUtils';
 import {
   Dialog,
@@ -400,7 +401,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
               <div>
                 <span className="text-sm text-muted-foreground mb-2 block">موضوع روایت</span>
                 <Badge className="text-base px-4 py-2 bg-orange-600 text-white">
-                  {post.narrative_theme}
+                  {translateNarrativeTheme(post.narrative_theme)}
                 </Badge>
               </div>
             )}

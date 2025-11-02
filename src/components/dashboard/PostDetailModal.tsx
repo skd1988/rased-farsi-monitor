@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatPersianDateTime, getRelativeTime } from '@/lib/dateUtils';
 import { EnrichedPost } from '@/lib/mockData';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { translateNarrativeTheme } from '@/utils/narrativeTranslations';
 
 interface PostDetailModalProps {
   post: EnrichedPost | null;
@@ -205,7 +206,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
                     <CheckCircle className="w-3 h-3" />
                   </div>
                   <div className={(post as any).narrative_theme ? 'text-green-600 flex items-center gap-1 justify-end' : 'text-gray-400 flex items-center gap-1 justify-end'}>
-                    <span>Narrative Theme</span>
+                    <span>موضوع روایت</span>
                     <CheckCircle className="w-3 h-3" />
                   </div>
                   <div className={(post as any).recommended_action ? 'text-green-600 flex items-center gap-1 justify-end' : 'text-gray-400 flex items-center gap-1 justify-end'}>

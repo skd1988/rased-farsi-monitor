@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Trash2, Upload, Save, Send } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { translateNarrativeTheme } from '@/utils/narrativeTranslations';
 
 interface ResponsePreparationModalProps {
   open: boolean;
@@ -94,7 +95,9 @@ const ResponsePreparationModal = ({ open, onOpenChange, post }: ResponsePreparat
                 <div className="flex gap-2 flex-wrap">
                   <Badge variant="destructive">{post.threat_level}</Badge>
                   <Badge>{aiAnalysis?.psyop_type || 'نامشخص'}</Badge>
-                  <Badge variant="outline">{aiAnalysis?.narrative_theme || 'نامشخص'}</Badge>
+                  <Badge variant="outline">
+                    {aiAnalysis?.narrative_theme ? translateNarrativeTheme(aiAnalysis.narrative_theme) : 'نامشخص'}
+                  </Badge>
                 </div>
                 <p className="text-sm">{post.analysis_summary}</p>
               </CardContent>

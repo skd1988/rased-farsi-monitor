@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { translateSourceType } from '@/utils/sourceTypeTranslations';
+import { translateNarrativeTheme } from '@/utils/narrativeTranslations';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -652,9 +653,11 @@ const IntelligenceAndTrends = () => {
       const themeMap: Record<string, any> = {};
       posts.forEach(post => {
         const theme = post.narrative_theme || 'Unknown';
+        const themeFa = translateNarrativeTheme(theme);
         if (!themeMap[theme]) {
           themeMap[theme] = {
-            theme,
+            theme: themeFa,
+            themeEn: theme,
             count: 0,
             posts: [],
             threatBreakdown: { Critical: 0, High: 0, Medium: 0, Low: 0 }
@@ -1174,10 +1177,10 @@ const IntelligenceAndTrends = () => {
                 {Object.keys(debugInfo.themeDistribution).length > 0 && (
                   <div className="p-4 bg-white dark:bg-gray-800 rounded-lg">
                     <div className="font-bold mb-3">توزیع روایت‌ها:</div>
-                    <div className="grid grid-cols-2 gap-2">
+                     <div className="grid grid-cols-2 gap-2">
                       {Object.entries(debugInfo.themeDistribution).map(([theme, count]: [string, any]) => (
                         <div key={theme} className="flex justify-between text-sm p-2 bg-muted rounded">
-                          <span>{theme}</span>
+                          <span>{translateNarrativeTheme(theme)}</span>
                           <span className="font-bold">{count}</span>
                         </div>
                       ))}
@@ -1196,7 +1199,7 @@ const IntelligenceAndTrends = () => {
                         <div key={post.id} className="text-xs p-3 bg-muted rounded border">
                           <div className="font-medium truncate mb-1">{post.title}</div>
                           <div className="text-muted-foreground space-y-1">
-                            <div>narrative_theme: {post.narrative_theme || '❌ خالی'}</div>
+                            <div>narrative_theme: {post.narrative_theme ? translateNarrativeTheme(post.narrative_theme) : '❌ خالی'}</div>
                             <div>analysis_stage: {post.analysis_stage || '-'}</div>
                             <div>psyop_type: {post.psyop_type || '-'}</div>
                           </div>
