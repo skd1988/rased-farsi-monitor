@@ -122,18 +122,21 @@ export default function PhotoManagement() {
     setProgress({ current: 0, total: targetsWithoutPhotos.length });
     
     try {
+      console.log(`📋 Starting to fetch photos for ${targetsWithoutPhotos.length} targets`, targetsWithoutPhotos);
+      
       const results = await fetchPhotosForTargets(
         targetsWithoutPhotos,
         (current, total) => setProgress({ current, total })
       );
       
-      toast.success(`${results.size} تصویر از Wikipedia دریافت شد`);
+      console.log(`✅ Fetch complete. Got ${results.size} photos from Wikipedia`);
+      toast.success(`${results.size} تصویر از Wikipedia دریافت و ذخیره شد`);
       
       // Refresh targets
       await fetchTargets();
       
     } catch (error) {
-      console.error('Failed to fetch from Wikipedia:', error);
+      console.error('❌ Failed to fetch from Wikipedia:', error);
       toast.error('خطا در دریافت تصاویر از Wikipedia');
     } finally {
       setFetching(false);

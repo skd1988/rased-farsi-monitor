@@ -71,33 +71,74 @@ export async function fetchPhotosForTargets(
   
   for (let i = 0; i < targets.length; i++) {
     const target = targets[i];
-    const name = target.name_english || target.name_persian;
+    
+    // Extract name from different possible formats
+    let name: string;
+    let namePersian: string;
+    let nameEnglish: string | null = null;
+    let nameArabic: string | null = null;
+    
+    if (typeof target === 'string') {
+      // Simple string format
+      name = target;
+      namePersian = target;
+    } else if (typeof target === 'object') {
+      // Object format
+      name = target.name_english || target.name_persian || target.name_arabic;
+      namePersian = target.name_persian || name;
+      nameEnglish = target.name_english || null;
+      nameArabic = target.name_arabic || null;
+    } else {
+      continue;
+    }
+    
+    if (!name) continue;
     
     if (onProgress) {
       onProgress(i + 1, targets.length);
     }
     
+    // Search using the available name
     const photoUrl = await fetchPhotoFromWikipedia(name);
     
     if (photoUrl) {
       results.set(name, photoUrl);
       
-      // Save to database
+      // Save to database using Persian name as the key
       try {
-        await supabase
+        // First try to find existing profile by Persian name
+        const { data: existing } = await supabase
           .from('target_profiles')
-          .upsert({
-            name_english: target.name_english,
-            name_persian: target.name_persian,
-            name_arabic: target.name_arabic,
-            photo_url: photoUrl,
-            photo_source: 'wikipedia',
-            position: target.position || target.role,
-            organization: target.organization,
-            category: target.category
-          }, {
-            onConflict: 'name_english'
-          });
+          .select('id')
+          .eq('name_persian', namePersian)
+          .maybeSingle();
+        
+        if (existing) {
+          // Update existing record
+          await supabase
+            .from('target_profiles')
+            .update({
+              photo_url: photoUrl,
+              photo_source: 'wikipedia',
+              name_english: nameEnglish || existing.id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existing.id);
+        } else {
+          // Insert new record - use Persian name as English if not available
+          await supabase
+            .from('target_profiles')
+            .insert({
+              name_english: nameEnglish || namePersian,
+              name_persian: namePersian,
+              name_arabic: nameArabic,
+              photo_url: photoUrl,
+              photo_source: 'wikipedia',
+              position: typeof target === 'object' ? (target.position || target.role) : null,
+              organization: typeof target === 'object' ? target.organization : null,
+              category: typeof target === 'object' ? target.category : null
+            });
+        }
         
         console.log(`💾 Saved photo for ${name}`);
       } catch (error) {
