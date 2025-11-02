@@ -69,9 +69,9 @@ serve(async (req) => {
     const mergedCampaigns = mergeSimilarCampaigns(campaigns);
     
     // Calculate campaign metrics
-    const enrichedCampaigns = mergedCampaigns.map(campaign => ({
+    const enrichedCampaigns = mergedCampaigns.map((campaign, index) => ({
       ...campaign,
-      id: generateCampaignId(campaign),
+      id: generateCampaignId(campaign, index),
       intensity: calculateIntensity(campaign),
       reach: estimateReach(campaign),
       threat_level: assessThreatLevel(campaign),
@@ -314,10 +314,15 @@ function mergeSimilarCampaigns(campaigns: any[]): any[] {
   return merged;
 }
 
-function generateCampaignId(campaign: any): string {
-  const postIds = campaign.posts.map((p: any) => p.id).sort().join(',');
-  const hash = postIds.substring(0, 8);
-  return `CAMPAIGN-${hash}`;
+function generateCampaignId(campaign: any, index: number): string {
+  // Create a more unique ID using timestamp, index, and campaign characteristics
+  const timestamp = Date.now();
+  const postCount = campaign.posts.length;
+  const firstPostId = campaign.posts[0]?.id.substring(0, 8) || 'unknown';
+  const type = campaign.type || 'unknown';
+  
+  // Combine multiple factors to ensure uniqueness
+  return `CAMPAIGN-${type}-${firstPostId}-${postCount}-${index}-${timestamp.toString(36)}`;
 }
 
 function calculateIntensity(campaign: any): number {

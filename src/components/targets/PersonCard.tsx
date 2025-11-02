@@ -34,6 +34,16 @@ interface PersonCardProps {
 }
 
 const PersonCard: React.FC<PersonCardProps> = ({ person, onViewDetails }) => {
+  // ⚠️ DEBUG: Log person data structure
+  React.useEffect(() => {
+    console.log('PersonCard received:', {
+      name_persian: person.name_persian,
+      name_persian_type: typeof person.name_persian,
+      category: person.category,
+      full_person: person
+    });
+  }, [person]);
+
   const severityColors = {
     Critical: { bg: 'bg-danger/10', text: 'text-danger', border: 'border-danger', badge: 'bg-danger' },
     High: { bg: 'bg-orange-100 dark:bg-orange-900/20', text: 'text-orange-600', border: 'border-orange-600', badge: 'bg-orange-600' },
@@ -47,6 +57,23 @@ const PersonCard: React.FC<PersonCardProps> = ({ person, onViewDetails }) => {
     Medium: 'خطر متوسط',
     Low: 'خطر پایین'
   };
+
+  // ⚠️ SAFETY: Extract name safely even if structure is malformed
+  const getName = () => {
+    if (typeof person.name_persian === 'string' && person.name_persian) {
+      return person.name_persian;
+    }
+    if (typeof person.name_english === 'string' && person.name_english) {
+      return person.name_english;
+    }
+    // Fallback: try to extract from object if it was stringified
+    if (person.name_persian && typeof person.name_persian === 'object') {
+      return (person.name_persian as any).name_persian || 'نامشخص';
+    }
+    return 'نامشخص';
+  };
+
+  const displayName = getName();
 
   const colors = severityColors[person.severity];
   const sparklineData = person.timeline.map((value, index) => ({ value, index }));
@@ -69,16 +96,16 @@ const PersonCard: React.FC<PersonCardProps> = ({ person, onViewDetails }) => {
         <div className="flex items-center gap-3">
           {/* Avatar */}
           <div className={cn('w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg', colors.badge)}>
-            {person.name_persian?.[0] || person.name_english?.[0] || '?'}
+            {displayName?.[0]?.toUpperCase() || '?'}
           </div>
           
           <div>
             {/* Name in multiple languages */}
-            <h3 className="font-bold text-lg">{person.name_persian}</h3>
-            {person.name_english && person.name_english !== person.name_persian && (
+            <h3 className="font-bold text-lg">{displayName}</h3>
+            {person.name_english && person.name_english !== displayName && typeof person.name_english === 'string' && (
               <div className="text-xs text-muted-foreground">{person.name_english}</div>
             )}
-            {person.name_arabic && (
+            {person.name_arabic && typeof person.name_arabic === 'string' && (
               <div className="text-xs text-muted-foreground font-arabic">{person.name_arabic}</div>
             )}
           </div>
