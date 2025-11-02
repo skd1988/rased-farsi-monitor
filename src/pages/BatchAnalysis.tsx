@@ -106,13 +106,32 @@ export default function BatchAnalysis() {
     setErrors([]);
 
     try {
-      const { data: posts, error } = await supabase
-        .from("posts")
-        .select("id, title, contents, source, language, published_at")
-        .or("analyzed_at.is.null,status.eq.new")
-        .order("published_at", { ascending: false });
+      // Fetch ALL unanalyzed posts with pagination (no 1000 limit)
+      let allPosts: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data: postsData, error } = await supabase
+          .from("posts")
+          .select("id, title, contents, source, language, published_at")
+          .or("analyzed_at.is.null,status.eq.new")
+          .order("published_at", { ascending: false })
+          .range(from, from + pageSize - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+        
+        if (postsData && postsData.length > 0) {
+          allPosts = [...allPosts, ...postsData];
+          from += pageSize;
+          hasMore = postsData.length === pageSize;
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      const posts = allPosts;
       if (!posts || posts.length === 0) {
         toast({ title: "No posts to analyze" });
         setIsAnalyzing(false);

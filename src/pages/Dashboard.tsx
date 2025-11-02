@@ -35,13 +35,29 @@ const Dashboard = () => {
       try {
         setLoading(true);
         
-        // Fetch posts with PsyOp data
-        const { data: postsData, error: postsError } = await supabase
-          .from('posts')
-          .select('*')
-          .order('published_at', { ascending: false });
+        // Fetch ALL posts with pagination (no 1000 limit)
+        let allPosts: any[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
         
-        if (postsError) throw postsError;
+        while (hasMore) {
+          const { data: postsData, error: postsError } = await supabase
+            .from('posts')
+            .select('*')
+            .order('published_at', { ascending: false })
+            .range(from, from + pageSize - 1);
+          
+          if (postsError) throw postsError;
+          
+          if (postsData && postsData.length > 0) {
+            allPosts = [...allPosts, ...postsData];
+            from += pageSize;
+            hasMore = postsData.length === pageSize;
+          } else {
+            hasMore = false;
+          }
+        }
         
         // Fetch AI analysis data
         const { data: analysisData, error: analysisError } = await supabase
@@ -58,7 +74,7 @@ const Dashboard = () => {
         
         if (campaignsError) throw campaignsError;
         
-        setPosts(postsData || []);
+        setPosts(allPosts);
         setAiAnalysis(analysisData || []);
         setCampaigns(campaignsData || []);
       } catch (error) {
