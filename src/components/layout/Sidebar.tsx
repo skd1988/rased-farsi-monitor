@@ -15,10 +15,13 @@ import {
   Network, 
   Target,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 
 interface MenuItem {
@@ -152,6 +155,10 @@ const Sidebar = () => {
   const [criticalCount, setCriticalCount] = useState(0);
   const [activeCampaigns, setActiveCampaigns] = useState(0);
   const [urgentResponses, setUrgentResponses] = useState(0);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
   const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>(() => {
     const saved = localStorage.getItem('sidebar-collapsed-groups');
     return saved ? JSON.parse(saved) : { data: false, system: true };
@@ -261,18 +268,59 @@ const Sidebar = () => {
     });
   };
 
+  const toggleSidebar = () => {
+    setIsCollapsed(prev => {
+      const newState = !prev;
+      localStorage.setItem('sidebar-collapsed', JSON.stringify(newState));
+      return newState;
+    });
+  };
+
   return (
-    <aside className="w-64 bg-card border-r border-border flex flex-col h-screen overflow-y-auto">
+    <aside 
+      className={cn(
+        "bg-card border-r border-border flex flex-col h-screen overflow-y-auto transition-all duration-300 ease-in-out",
+        isCollapsed ? "w-20" : "w-64"
+      )}
+    >
       {/* Logo */}
-      <div className="p-6 border-b border-border sticky top-0 bg-card z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-            <Newspaper className="w-6 h-6 text-primary" />
-          </div>
-          <div className="text-right">
-            <h2 className="font-bold text-lg">رصد رسانه‌ای</h2>
-            <p className="text-xs text-muted-foreground">نسخه 1.0</p>
-          </div>
+      <div className="border-b border-border sticky top-0 bg-card z-10">
+        <div className={cn(
+          "flex items-center transition-all duration-300",
+          isCollapsed ? "justify-center p-4" : "justify-between p-6"
+        )}>
+          {!isCollapsed ? (
+            <>
+              <div className="flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Newspaper className="w-6 h-6 text-primary" />
+                </div>
+                <div className="text-right animate-fade-in">
+                  <h2 className="font-bold text-lg">رصد رسانه‌ای</h2>
+                  <p className="text-xs text-muted-foreground">نسخه 1.0</p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                className="flex-shrink-0"
+                title="بستن سایدبار"
+              >
+                <PanelLeftClose className="w-5 h-5" />
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              title="باز کردن سایدبار"
+              className="animate-fade-in"
+            >
+              <PanelLeftOpen className="w-5 h-5" />
+            </Button>
+          )}
         </div>
       </div>
       
@@ -284,8 +332,8 @@ const Sidebar = () => {
             className={cn(groupIndex > 0 && 'mt-6')}
           >
             {/* Group Header */}
-            {group.title && (
-              <div className="flex items-center justify-between mb-2 px-3">
+            {group.title && !isCollapsed && (
+              <div className="flex items-center justify-between mb-2 px-3 animate-fade-in">
                 <h3 className="text-xs font-bold uppercase text-muted-foreground tracking-wider">
                   {group.title}
                 </h3>
@@ -303,12 +351,17 @@ const Sidebar = () => {
                 )}
               </div>
             )}
+            
+            {/* Collapsed Separator */}
+            {group.title && isCollapsed && groupIndex > 0 && (
+              <div className="h-px bg-border my-4" />
+            )}
 
             {/* Group Items */}
             <div 
               className={cn(
                 'space-y-1 transition-all duration-200',
-                group.collapsible && collapsedGroups[group.id] && 'hidden'
+                !isCollapsed && group.collapsible && collapsedGroups[group.id] && 'hidden'
               )}
             >
               {group.items.map((item) => {
@@ -324,28 +377,59 @@ const Sidebar = () => {
                     to={item.route}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center justify-between px-3 py-2.5 rounded-lg transition-smooth text-right relative group',
+                        'flex items-center rounded-lg transition-smooth relative group',
                         'hover:bg-accent',
-                        isActive && 'bg-primary/10 text-primary font-medium border-r-4 border-primary'
+                        isActive && 'bg-primary/10 text-primary font-medium border-r-4 border-primary',
+                        isCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5 text-right'
                       )
                     }
-                    title={item.description}
+                    title={isCollapsed ? item.label : item.description}
                   >
-                    <div className="flex items-center gap-3 flex-1">
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
-                      <span className="text-sm font-medium">{item.label}</span>
-                    </div>
-                    
-                    {showBadge && (
-                      <Badge 
-                        variant={item.badge?.type === 'count' ? 'destructive' : 'secondary'}
-                        className={cn(
-                          'text-xs px-2',
-                          item.badge?.type === 'count' && 'animate-pulse'
+                    {isCollapsed ? (
+                      <>
+                        <div className="relative">
+                          <item.icon className="w-5 h-5 flex-shrink-0" />
+                          {showBadge && item.badge?.type === 'count' && (
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                              {badgeValue}
+                            </span>
+                          )}
+                        </div>
+                        {/* Tooltip on hover */}
+                        <div className="absolute right-full mr-2 px-3 py-2 bg-popover text-popover-foreground rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50">
+                          <div className="font-medium text-sm">{item.label}</div>
+                          {item.description && (
+                            <div className="text-xs text-muted-foreground mt-1">{item.description}</div>
+                          )}
+                          {showBadge && (
+                            <Badge 
+                              variant={item.badge?.type === 'count' ? 'destructive' : 'secondary'}
+                              className="mt-1"
+                            >
+                              {badgeValue}
+                            </Badge>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3 flex-1 animate-fade-in">
+                          <item.icon className="w-5 h-5 flex-shrink-0" />
+                          <span className="text-sm font-medium">{item.label}</span>
+                        </div>
+                        
+                        {showBadge && (
+                          <Badge 
+                            variant={item.badge?.type === 'count' ? 'destructive' : 'secondary'}
+                            className={cn(
+                              'text-xs px-2 animate-fade-in',
+                              item.badge?.type === 'count' && 'animate-pulse'
+                            )}
+                          >
+                            {badgeValue}
+                          </Badge>
                         )}
-                      >
-                        {badgeValue}
-                      </Badge>
+                      </>
                     )}
                   </NavLink>
                 );
