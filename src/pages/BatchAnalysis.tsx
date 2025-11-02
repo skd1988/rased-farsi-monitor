@@ -53,7 +53,7 @@ export default function BatchAnalysis() {
           title: post.title,
           contents: post.contents,
           source: post.source,
-          language: post.language,
+          language: post.language || "نامشخص",
           published_at: post.published_at,
         },
       });
