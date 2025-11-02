@@ -67,7 +67,11 @@ serve(async (req) => {
           processingTime,
           tokensUsed: aiResponse.usage.total_tokens,
           model: "deepseek-chat",
-          dataUsed: { postsCount: relevantData.posts.length },
+          queryType: relevantData.type,
+          dataUsed: { 
+            postsCount: relevantData.data?.length || 0,
+            type: relevantData.type
+          },
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -86,45 +90,324 @@ serve(async (req) => {
   }
 });
 
-async function fetchRelevantData(supabase: any, question: string) {
-  const query = question.toLowerCase();
+type QueryType = 
+  | 'psyop_count'
+  | 'target_analysis'
+  | 'threat_assessment'
+  | 'campaign_detection'
+  | 'technique_analysis'
+  | 'source_analysis'
+  | 'temporal_analysis'
+  | 'general';
 
-  // Determine time range based on question
-  let timeFilter: string;
+function detectQueryType(question: string): QueryType {
+  const q = question.toLowerCase();
+  
+  // PsyOp count queries
+  if (q.match(/چند|تعداد|count|how many/i) && 
+      q.match(/psyop|جنگ روانی|عملیات روانی/i)) {
+    return 'psyop_count';
+  }
+  
+  // Target analysis queries
+  if (q.match(/هدف|target|نهاد|entity|کی|who/i) && 
+      q.match(/حمله|attack|قرار گرفت/i)) {
+    return 'target_analysis';
+  }
+  
+  // Threat assessment queries
+  if (q.match(/بحران|critical|تهدید|threat|خطرناک|urgent|فوری/i)) {
+    return 'threat_assessment';
+  }
+  
+  // Campaign detection queries
+  if (q.match(/کمپین|campaign|هماهنگ|coordinated|الگو|pattern/i)) {
+    return 'campaign_detection';
+  }
+  
+  // Technique analysis queries
+  if (q.match(/تاکتیک|technique|روش|method|چطور|how/i)) {
+    return 'technique_analysis';
+  }
+  
+  // Source analysis queries
+  if (q.match(/منبع|source|رسانه|media|کدوم|which/i)) {
+    return 'source_analysis';
+  }
+  
+  // Temporal analysis queries
+  if (q.match(/روند|trend|تغییر|change|زمان|time|تاریخچه/i)) {
+    return 'temporal_analysis';
+  }
+  
+  return 'general';
+}
+
+function extractTimeFilter(question: string): string {
   const now = new Date();
-
-  if (query.includes("امروز") || query.includes("today")) {
+  const q = question.toLowerCase();
+  
+  if (q.match(/امروز|today/)) {
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
-    timeFilter = today.toISOString();
-  } else if (query.includes("دیروز") || query.includes("yesterday")) {
+    return today.toISOString();
+  }
+  if (q.match(/دیروز|yesterday/)) {
     const yesterday = new Date(now.getTime() - 86400000);
     yesterday.setHours(0, 0, 0, 0);
-    timeFilter = yesterday.toISOString();
-  } else if (query.includes("هفته") || query.includes("week") || query.includes("۷")) {
+    return yesterday.toISOString();
+  }
+  if (q.match(/این هفته|this week|هفته|۷/)) {
     const weekAgo = new Date(now.getTime() - 7 * 86400000);
-    timeFilter = weekAgo.toISOString();
-  } else {
-    // Default: last 30 days
+    return weekAgo.toISOString();
+  }
+  if (q.match(/این ماه|this month|ماه/)) {
     const monthAgo = new Date(now.getTime() - 30 * 86400000);
-    timeFilter = monthAgo.toISOString();
+    return monthAgo.toISOString();
   }
+  
+  // Default: last 7 days
+  const weekAgo = new Date(now.getTime() - 7 * 86400000);
+  return weekAgo.toISOString();
+}
 
-  // Fetch posts from database
-  const { data: posts, error: postsError } = await supabase
-    .from("posts")
-    .select("*")
-    .gte("published_at", timeFilter)
-    .order("published_at", { ascending: false })
-    .limit(100);
+function groupBy(array: any[], key: string) {
+  if (!array) return {};
+  return array.reduce((acc, item) => {
+    const value = item[key];
+    if (value) {
+      acc[value] = (acc[value] || 0) + 1;
+    }
+    return acc;
+  }, {});
+}
 
-  if (postsError) {
-    console.error("Error fetching posts:", postsError);
+function flattenAndCount(array: any[], key: string) {
+  if (!array) return {};
+  const counts: Record<string, number> = {};
+  array.forEach((item) => {
+    const values = Array.isArray(item[key]) ? item[key] : [item[key]];
+    values.forEach((val) => {
+      if (val) {
+        counts[val] = (counts[val] || 0) + 1;
+      }
+    });
+  });
+  return counts;
+}
+
+async function fetchRelevantData(supabase: any, question: string) {
+  const queryType = detectQueryType(question);
+  const timeFilter = extractTimeFilter(question);
+  
+  console.log(`Query type detected: ${queryType}`);
+  console.log(`Time filter: ${timeFilter}`);
+  
+  try {
+    switch(queryType) {
+      case 'psyop_count': {
+        // Count PsyOps with grouping
+        const { data: countData, count } = await supabase
+          .from('posts')
+          .select('id, target_entity, threat_level, psyop_confidence', { count: 'exact' })
+          .eq('is_psyop', true)
+          .gte('published_at', timeFilter);
+        
+        const byThreatLevel = groupBy(countData, 'threat_level');
+        const byTarget = flattenAndCount(countData, 'target_entity');
+        
+        return {
+          type: 'psyop_count',
+          total: count || 0,
+          byThreatLevel,
+          byTarget,
+          data: countData || []
+        };
+      }
+      
+      case 'target_analysis': {
+        // Analyze which entities are targeted
+        const { data: targetData } = await supabase
+          .from('posts')
+          .select('target_entity, threat_level, psyop_type, published_at, title, source')
+          .eq('is_psyop', true)
+          .not('target_entity', 'is', null)
+          .gte('published_at', timeFilter)
+          .order('published_at', { ascending: false });
+        
+        const targets = flattenAndCount(targetData, 'target_entity');
+        const topTargets = Object.entries(targets)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([entity, count]) => ({ entity, count }));
+        
+        return {
+          type: 'target_analysis',
+          topTargets,
+          data: targetData || []
+        };
+      }
+      
+      case 'threat_assessment': {
+        // Get critical and high threats
+        const { data: threatData } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('is_psyop', true)
+          .in('threat_level', ['Critical', 'High'])
+          .gte('published_at', timeFilter)
+          .order('published_at', { ascending: false })
+          .limit(20);
+        
+        const critical = threatData?.filter((p: any) => p.threat_level === 'Critical') || [];
+        const high = threatData?.filter((p: any) => p.threat_level === 'High') || [];
+        
+        return {
+          type: 'threat_assessment',
+          critical,
+          high,
+          data: threatData || []
+        };
+      }
+      
+      case 'campaign_detection': {
+        // Check for active campaigns
+        const { data: campaigns } = await supabase
+          .from('psyop_campaigns')
+          .select('*')
+          .eq('status', 'Active')
+          .order('start_date', { ascending: false });
+        
+        // Also check coordination indicators
+        const { data: coordinated } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('is_psyop', true)
+          .not('coordination_indicators', 'is', null)
+          .gte('published_at', timeFilter)
+          .limit(50);
+        
+        return {
+          type: 'campaign_detection',
+          activeCampaigns: campaigns || [],
+          coordinatedPosts: coordinated || [],
+          data: coordinated || []
+        };
+      }
+      
+      case 'technique_analysis': {
+        // Analyze techniques used
+        const { data: techData } = await supabase
+          .from('posts')
+          .select('psyop_technique, psyop_type, target_entity, threat_level')
+          .eq('is_psyop', true)
+          .not('psyop_technique', 'is', null)
+          .gte('published_at', timeFilter);
+        
+        const techniques = flattenAndCount(techData, 'psyop_technique');
+        const topTechniques = Object.entries(techniques)
+          .sort((a, b) => b[1] - a[1])
+          .map(([technique, count]) => ({ technique, count }));
+        
+        return {
+          type: 'technique_analysis',
+          topTechniques,
+          data: techData || []
+        };
+      }
+      
+      case 'source_analysis': {
+        // Analyze sources
+        const { data: sourceData } = await supabase
+          .from('posts')
+          .select('source, source_credibility, threat_level')
+          .eq('is_psyop', true)
+          .gte('published_at', timeFilter);
+        
+        const sources: Record<string, any> = {};
+        sourceData?.forEach((post: any) => {
+          const src = post.source;
+          if (!sources[src]) {
+            sources[src] = { 
+              count: 0, 
+              credibility: post.source_credibility, 
+              threats: {} 
+            };
+          }
+          sources[src].count++;
+          const threat = post.threat_level;
+          if (threat) {
+            sources[src].threats[threat] = (sources[src].threats[threat] || 0) + 1;
+          }
+        });
+        
+        const topSources = Object.entries(sources)
+          .sort((a: any, b: any) => b[1].count - a[1].count)
+          .slice(0, 10)
+          .map(([source, data]) => ({ source, ...data as any }));
+        
+        return {
+          type: 'source_analysis',
+          topSources,
+          data: sourceData || []
+        };
+      }
+      
+      case 'temporal_analysis': {
+        // Trend analysis over time
+        const { data: trendData } = await supabase
+          .from('posts')
+          .select('published_at, threat_level, target_entity, is_psyop')
+          .eq('is_psyop', true)
+          .gte('published_at', timeFilter)
+          .order('published_at', { ascending: true });
+        
+        // Group by date
+        const byDate: Record<string, number> = {};
+        trendData?.forEach((post: any) => {
+          const date = new Date(post.published_at).toISOString().split('T')[0];
+          byDate[date] = (byDate[date] || 0) + 1;
+        });
+        
+        return {
+          type: 'temporal_analysis',
+          timeline: byDate,
+          data: trendData || []
+        };
+      }
+      
+      default: {
+        // General query - get recent posts
+        const { data: generalData } = await supabase
+          .from('posts')
+          .select('*')
+          .gte('published_at', timeFilter)
+          .order('published_at', { ascending: false })
+          .limit(50);
+        
+        return {
+          type: 'general',
+          data: generalData || [],
+          posts: generalData || []
+        };
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    // Fallback to general query
+    const { data: fallbackData } = await supabase
+      .from('posts')
+      .select('*')
+      .gte('published_at', timeFilter)
+      .order('published_at', { ascending: false })
+      .limit(50);
+    
+    return {
+      type: 'general',
+      data: fallbackData || [],
+      posts: fallbackData || []
+    };
   }
-
-  console.log(`Fetched ${posts?.length || 0} posts for analysis`);
-
-  return { posts: posts || [], timeRange: timeFilter };
 }
 
 async function callDeepSeekAPI(apiKey: string, question: string, data: any, history: any[]) {
@@ -136,32 +419,36 @@ async function callDeepSeekAPI(apiKey: string, question: string, data: any, hist
     content: msg.content,
   }));
 
-  // Create the prompt (similar to analyze-post approach)
-  const prompt = `تو یک دستیار هوشمند و تحلیلگر رسانه‌ای هستی.
-
-مهم: به هر سوالی پاسخ بده. محدودیتی نداری!
+  // Create intelligent prompt based on query type
+  const prompt = `شما تحلیلگر ارشد عملیات روانی علیه محور مقاومت هستید.
 
 سوال کاربر: ${question}
 
 ${historyMessages.length > 0 ? `تاریخچه گفتگو:\n${historyMessages.map((m) => `${m.role}: ${m.content}`).join("\n")}\n` : ""}
 
-داده‌های رسانه‌ای (در صورت نیاز استفاده کن):
+نوع تحلیل: ${data.type}
+
+داده‌های تحلیل شده:
 ${dataContext}
 
-لطفاً خروجی رو دقیقاً به این فرمت JSON بده:
+قوانین پاسخ:
+1. از داده‌های واقعی استفاده کن (نه تخمین)
+2. آمار دقیق ارائه بده
+3. نهادهای هدف را نام ببر
+4. تاکتیک‌ها و تهدیدات را مشخص کن
+5. سطح تهدید را ذکر کن
+6. پیشنهادات عملیاتی بده
 
+فرمت خروجی JSON:
 {
-  "answer": "پاسخ کامل به فارسی",
-  "keyFindings": ["یافته 1", "یافته 2"] یا [],
-  "statistics": {"total_posts": 10} یا {},
-  "sources": {"posts": ["id1", "id2"]} یا {"posts": []},
-  "recommendations": ["توصیه 1"] یا []
+  "answer": "خلاصه کامل (2-3 پاراگراف فارسی) + جزئیات کلیدی با bullet points",
+  "keyFindings": ["یافته مهم 1", "یافته مهم 2", "یافته مهم 3"],
+  "statistics": {"metric1": value, "metric2": value},
+  "sources": {"posts": ["id1", "id2"]},
+  "recommendations": ["توصیه عملیاتی 1", "توصیه عملیاتی 2"]
 }
 
-قوانین مهم:
-- هیچوقت نگو "من فقط می‌تونم به سوالات زیر پاسخ بدم"
-- اگر سوال عمومی بود (سلام، چطوری، ...) بدون استفاده از داده رسانه‌ای جواب بده
-- همیشه answer رو پر کن`;
+مهم: همیشه به فارسی پاسخ بده و از داده‌های واقعی استفاده کن.`;
 
   console.log("Calling DeepSeek API...");
   console.log("Question:", question);
@@ -241,68 +528,126 @@ ${dataContext}
 }
 
 function buildDataContext(data: any) {
-  const { posts } = data;
-
-  if (!posts || posts.length === 0) {
-    return `هیچ داده رسانه‌ای در بازه زمانی موجود نیست.
-
-اگر سوال درباره داده رسانه‌ای است، به کاربر بگو داده‌ای موجود نیست.
-اگر سوال عمومی است، آزادانه جواب بده.`;
+  const dataArray = data.data || data.posts || [];
+  
+  if (!dataArray || dataArray.length === 0) {
+    return `هیچ داده‌ای در بازه زمانی موجود نیست.`;
   }
 
-  // Group by language
-  const byLanguage: Record<string, number> = {};
-  posts.forEach((p: any) => {
-    const lang = p.language || "نامشخص";
-    byLanguage[lang] = (byLanguage[lang] || 0) + 1;
-  });
+  let context = '';
+  
+  switch(data.type) {
+    case 'psyop_count':
+      context = `
+📊 تعداد PsyOp ها: ${data.total}
 
-  // Group by source
-  const bySource: Record<string, number> = {};
-  posts.forEach((p: any) => {
-    const src = p.source || "نامشخص";
-    bySource[src] = (bySource[src] || 0) + 1;
-  });
+توزیع بر اساس سطح تهدید:
+${JSON.stringify(data.byThreatLevel, null, 2)}
 
-  // Group by sentiment
-  const bySentiment: Record<string, number> = {};
-  posts.forEach((p: any) => {
-    if (p.sentiment) {
-      bySentiment[p.sentiment] = (bySentiment[p.sentiment] || 0) + 1;
-    }
-  });
+اهداف اصلی:
+${JSON.stringify(data.byTarget, null, 2)}
 
-  // Group by threat level
-  const byThreat: Record<string, number> = {};
-  posts.forEach((p: any) => {
-    if (p.threat_level) {
-      byThreat[p.threat_level] = (byThreat[p.threat_level] || 0) + 1;
-    }
-  });
+داده‌های کامل: ${dataArray.length} مورد
+      `;
+      break;
+      
+    case 'target_analysis':
+      context = `
+🎯 تحلیل اهداف حملات
 
-  const summary = {
-    total: posts.length,
-    byLanguage,
-    bySource,
-    bySentiment,
-    byThreat,
-    samplePosts: posts.slice(0, 5).map((p: any) => ({
-      id: p.id,
-      title: p.title,
-      source: p.source,
-      date: p.published_at,
-    })),
-  };
+بیشترین اهداف:
+${data.topTargets.map((t: any) => `- ${t.entity}: ${t.count} حمله`).join('\n')}
 
-  return `داده‌های موجود:
+تعداد کل مطالب: ${dataArray.length}
+نمونه مطالب:
+${dataArray.slice(0, 5).map((p: any) => `- ${p.title} (${p.source})`).join('\n')}
+      `;
+      break;
+      
+    case 'threat_assessment':
+      context = `
+⚠️ ارزیابی تهدیدات
 
-کل مطالب: ${summary.total}
-توزیع زبان: ${JSON.stringify(summary.byLanguage)}
-توزیع منابع: ${JSON.stringify(summary.bySource)}
-${Object.keys(summary.bySentiment).length > 0 ? "احساسات: " + JSON.stringify(summary.bySentiment) : ""}
-${Object.keys(summary.byThreat).length > 0 ? "سطح تهدید: " + JSON.stringify(summary.byThreat) : ""}
+تهدیدات بحرانی: ${data.critical.length}
+تهدیدات سطح بالا: ${data.high.length}
 
-نمونه مطالب: ${JSON.stringify(summary.samplePosts)}`;
+مهم‌ترین تهدیدات:
+${data.critical.slice(0, 3).map((p: any) => 
+  `- ${p.title}\n  هدف: ${p.target_entity?.join(', ') || 'نامشخص'}\n  منبع: ${p.source}`
+).join('\n\n')}
+      `;
+      break;
+      
+    case 'campaign_detection':
+      context = `
+🕸️ شناسایی کمپین‌های هماهنگ
+
+کمپین‌های فعال: ${data.activeCampaigns.length}
+${data.activeCampaigns.map((c: any) => 
+  `- ${c.campaign_name} (${c.campaign_type})\n  هدف: ${c.main_target}\n  وضعیت: ${c.status}`
+).join('\n\n')}
+
+مطالب با نشانه هماهنگی: ${data.coordinatedPosts.length}
+      `;
+      break;
+      
+    case 'technique_analysis':
+      context = `
+🔧 تحلیل تاکتیک‌های جنگ روانی
+
+بیشترین تاکتیک‌ها:
+${data.topTechniques.slice(0, 10).map((t: any) => `- ${t.technique}: ${t.count} مورد`).join('\n')}
+
+تعداد کل مطالب تحلیل شده: ${dataArray.length}
+      `;
+      break;
+      
+    case 'source_analysis':
+      context = `
+📰 تحلیل منابع
+
+بیشترین منابع حمله:
+${data.topSources.map((s: any) => 
+  `- ${s.source} (${s.count} مورد)\n  اعتبار: ${s.credibility}\n  توزیع تهدید: ${JSON.stringify(s.threats)}`
+).join('\n\n')}
+      `;
+      break;
+      
+    case 'temporal_analysis':
+      context = `
+📈 تحلیل روند زمانی
+
+روند روزانه:
+${Object.entries(data.timeline).map(([date, count]) => `- ${date}: ${count} مورد`).join('\n')}
+
+تعداد کل: ${dataArray.length}
+      `;
+      break;
+      
+    default:
+      // General query
+      const byThreat = groupBy(dataArray, 'threat_level');
+      const bySentiment = groupBy(dataArray, 'sentiment');
+      const bySource = groupBy(dataArray, 'source');
+      
+      context = `
+📊 خلاصه داده‌ها
+
+کل مطالب: ${dataArray.length}
+
+${Object.keys(byThreat).length > 0 ? `سطح تهدید:\n${Object.entries(byThreat).map(([k, v]) => `- ${k}: ${v}`).join('\n')}` : ''}
+
+${Object.keys(bySentiment).length > 0 ? `\nاحساسات:\n${Object.entries(bySentiment).map(([k, v]) => `- ${k}: ${v}`).join('\n')}` : ''}
+
+منابع اصلی:
+${Object.entries(bySource).slice(0, 5).map(([k, v]) => `- ${k}: ${v}`).join('\n')}
+
+نمونه مطالب:
+${dataArray.slice(0, 5).map((p: any) => `- ${p.title} (${p.source || 'نامشخص'})`).join('\n')}
+      `;
+  }
+  
+  return context.trim();
 }
 
 async function logAPIUsage(supabase: any, question: string, usage: any) {
