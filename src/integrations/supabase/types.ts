@@ -197,6 +197,57 @@ export type Database = {
           },
         ]
       }
+      batch_analysis_progress: {
+        Row: {
+          batch_id: string
+          completed_at: string | null
+          current_post_id: string | null
+          current_stage: string | null
+          deep_analyzed: number | null
+          error_message: string | null
+          failed: number | null
+          id: string
+          processed_posts: number | null
+          quick_only: number | null
+          started_at: string | null
+          status: string | null
+          total_posts: number
+          updated_at: string | null
+        }
+        Insert: {
+          batch_id: string
+          completed_at?: string | null
+          current_post_id?: string | null
+          current_stage?: string | null
+          deep_analyzed?: number | null
+          error_message?: string | null
+          failed?: number | null
+          id?: string
+          processed_posts?: number | null
+          quick_only?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_posts: number
+          updated_at?: string | null
+        }
+        Update: {
+          batch_id?: string
+          completed_at?: string | null
+          current_post_id?: string | null
+          current_stage?: string | null
+          deep_analyzed?: number | null
+          error_message?: string | null
+          failed?: number | null
+          id?: string
+          processed_posts?: number | null
+          quick_only?: number | null
+          started_at?: string | null
+          status?: string | null
+          total_posts?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       campaign_posts: {
         Row: {
           added_at: string | null
