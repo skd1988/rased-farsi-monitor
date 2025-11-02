@@ -1,12 +1,44 @@
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { format as dateFnsFormat } from 'date-fns';
+import { faIR } from 'date-fns/locale';
 
 // Iran timezone constant
-const IRAN_TIMEZONE = 'Asia/Tehran';
+export const IRAN_TIMEZONE = 'Asia/Tehran';
 
 // Convert UTC date to Iran timezone
 export function toIranTime(date: Date | string): Date {
   const d = typeof date === 'string' ? new Date(date) : date;
   return toZonedTime(d, IRAN_TIMEZONE);
+}
+
+// Wrapper for date-fns format that uses Iran timezone
+export function formatIranDate(date: Date | string, formatStr: string = 'PP', options?: any): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return formatInTimeZone(d, IRAN_TIMEZONE, formatStr, { ...options, locale: faIR });
+}
+
+// Wrapper for formatDistanceToNow with Iran timezone
+export function formatDistanceToNowIran(date: Date | string, options?: any): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const iranDate = toIranTime(d);
+  const iranNow = toIranTime(new Date());
+  
+  const diffMs = iranNow.getTime() - iranDate.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'هم‌اکنون';
+  if (diffMins < 60) return `${diffMins} دقیقه پیش`;
+  if (diffHours < 24) return `${diffHours} ساعت پیش`;
+  if (diffDays === 1) return 'دیروز';
+  if (diffDays < 30) return `${diffDays} روز پیش`;
+  
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) return `${diffMonths} ماه پیش`;
+  
+  const diffYears = Math.floor(diffDays / 365);
+  return `${diffYears} سال پیش`;
 }
 
 // Date utilities for Persian calendar and relative time (in Iran timezone)

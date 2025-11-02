@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
+import { formatIranDate } from '@/lib/dateUtils';
 import {
   Dialog,
   DialogContent,
@@ -206,7 +207,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
               <div className="space-y-2">
                 <span className="text-sm text-muted-foreground">تاریخ انتشار</span>
                 <div className="text-base font-medium">
-                  {format(new Date(post.published_at), 'PPPp', { locale: faIR })}
+                  {formatIranDate(post.published_at, 'PPPp')}
                 </div>
               </div>
 
@@ -304,7 +305,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
                 <div className="text-sm text-muted-foreground mb-2">زمان تشخیص</div>
                 <div className="text-sm mt-4">
                   {post.analyzed_at 
-                    ? format(new Date(post.analyzed_at), 'PPp', { locale: faIR })
+                    ? formatIranDate(post.analyzed_at, 'PPp')
                     : 'نامشخص'}
                 </div>
               </Card>
@@ -624,14 +625,14 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
                     <span className="text-muted-foreground">تاریخ تحلیل</span>
                     <div className="font-medium">
                       {post.analyzed_at 
-                        ? format(new Date(post.analyzed_at), 'PP', { locale: faIR })
+                        ? formatIranDate(post.analyzed_at, 'PP')
                         : 'نامشخص'}
                     </div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">آخرین به‌روزرسانی</span>
                     <div className="font-medium">
-                      {format(new Date(post.updated_at || post.created_at), 'PP', { locale: faIR })}
+                      {formatIranDate(post.updated_at || post.created_at, 'PP')}
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,5 @@
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
+import { formatDistanceToNowIran } from '@/lib/dateUtils';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,8 +32,6 @@ import {
   Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
-import { faIR } from 'date-fns/locale';
 
 interface PsyOpCardProps {
   post: any;
@@ -182,10 +181,7 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(post.published_at), { 
-                locale: faIR, 
-                addSuffix: true 
-              })}
+              {formatDistanceToNowIran(post.published_at)}
             </span>
           </div>
         </div>

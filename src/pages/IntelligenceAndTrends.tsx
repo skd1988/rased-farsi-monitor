@@ -568,7 +568,7 @@ const IntelligenceAndTrends = () => {
                     <Clock className="w-5 h-5 text-warning" />
                     <h4 className="font-bold">شروع حملات هماهنگ</h4>
                   </div>
-                  <p className="text-2xl font-bold">صبح 6 صبح UTC</p>
+                  <p className="text-2xl font-bold">ساعت ۹:۳۰ صبح (به وقت تهران)</p>
                   <p className="text-xs text-muted-foreground">زمان معمول آغاز کمپین‌ها</p>
                 </div>
                 <div className="p-4 border rounded-lg bg-muted/30">

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { translateSourceType } from '@/utils/sourceTypeTranslations';
+import { formatDistanceToNowIran, formatIranDate } from '@/lib/dateUtils';
 import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import DataCollectionKPI from '@/components/dashboard/DataCollectionKPI';
@@ -17,8 +18,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns';
-import { faIR } from 'date-fns/locale';
 import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
 
@@ -160,10 +159,7 @@ const Dashboard = () => {
       return new Date(current.published_at) < new Date(oldest.published_at) ? current : oldest;
     });
     
-    return formatDistanceToNow(new Date(oldest.published_at), { 
-      locale: faIR, 
-      addSuffix: false 
-    });
+    return formatDistanceToNowIran(oldest.published_at);
   }, [posts]);
 
   // Threat Level Timeline (last 30 days)

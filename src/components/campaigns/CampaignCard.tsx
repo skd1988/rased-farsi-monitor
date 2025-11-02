@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatIranDate, formatDistanceToNowIran } from '@/lib/dateUtils';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,8 +25,7 @@ import {
   Activity
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, formatDistanceToNow, differenceInDays } from 'date-fns';
-import { faIR } from 'date-fns/locale';
+import { differenceInDays } from 'date-fns';
 
 interface CampaignCardProps {
   campaign: any;
@@ -108,9 +108,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       {/* Timeline Visualization */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{format(new Date(campaign.start_date), 'PP', { locale: faIR })}</span>
+          <span>{formatIranDate(campaign.start_date, 'PP')}</span>
           {campaign.end_date && (
-            <span>{format(new Date(campaign.end_date), 'PP', { locale: faIR })}</span>
+            <span>{formatIranDate(campaign.end_date, 'PP')}</span>
           )}
         </div>
         <div className="relative h-2 bg-muted rounded-full overflow-hidden">
@@ -126,7 +126,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         <div className="flex items-center gap-2">
           <Activity className="h-3 w-3 text-muted-foreground" />
           <span className="text-xs text-muted-foreground">
-            {formatDistanceToNow(new Date(campaign.start_date), { locale: faIR, addSuffix: true })}
+            {formatDistanceToNowIran(campaign.start_date)}
           </span>
         </div>
       </div>
@@ -271,7 +271,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
-            <span>تشخیص: {format(new Date(campaign.created_at), 'PP', { locale: faIR })}</span>
+            <span>تشخیص: {formatIranDate(campaign.created_at, 'PP')}</span>
           </div>
         </div>
       </div>
