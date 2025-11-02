@@ -1,7 +1,7 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, toPersianNumber } from '@/lib/utils';
 
 interface DataCollectionKPIProps {
   title: string;
@@ -61,7 +61,7 @@ const DataCollectionKPI = ({
           )}
         </div>
         <div className="space-y-1">
-          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-2xl font-bold">{typeof value === 'number' ? toPersianNumber(value) : value}</p>
           <p className="text-xs font-medium text-muted-foreground">{title}</p>
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
