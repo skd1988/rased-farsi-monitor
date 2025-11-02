@@ -4,6 +4,7 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatMessage from "@/components/chat/ChatMessage";
 import ChatInput from "@/components/chat/ChatInput";
 import QuickPrompts from "@/components/chat/QuickPrompts";
+import { ChatActions } from "@/components/chat/ChatActions";
 import { Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -381,6 +382,12 @@ ${error instanceof Error ? error.message : "خطای نامشخص"}
         </div>
 
         {/* Input Area */}
+        {messages.length > 0 && (
+          <ChatActions 
+            messages={messages} 
+            conversationId={currentConversationId || undefined}
+          />
+        )}
         <ChatInput onSend={handleSendMessage} isLoading={isLoading} />
       </div>
     </div>
