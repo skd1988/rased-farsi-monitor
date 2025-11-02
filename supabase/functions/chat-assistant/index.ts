@@ -59,10 +59,17 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         answer: aiResponse.answer,
+        summary: aiResponse.summary,
+        key_stats: aiResponse.key_stats,
+        top_targets: aiResponse.top_targets,
+        top_techniques: aiResponse.top_techniques,
+        top_sources: aiResponse.top_sources,
+        actionable_insights: aiResponse.actionable_insights,
+        recommendations: aiResponse.recommendations,
+        related_posts: aiResponse.related_posts,
         keyFindings: aiResponse.keyFindings,
         statistics: aiResponse.statistics,
         sources: aiResponse.sources,
-        recommendations: aiResponse.recommendations,
         metadata: {
           processingTime,
           tokensUsed: aiResponse.usage.total_tokens,
@@ -431,24 +438,48 @@ ${historyMessages.length > 0 ? `تاریخچه گفتگو:\n${historyMessages.ma
 داده‌های تحلیل شده:
 ${dataContext}
 
-قوانین پاسخ:
-1. از داده‌های واقعی استفاده کن (نه تخمین)
-2. آمار دقیق ارائه بده
-3. نهادهای هدف را نام ببر
-4. تاکتیک‌ها و تهدیدات را مشخص کن
-5. سطح تهدید را ذکر کن
-6. پیشنهادات عملیاتی بده
+خروجی را دقیقاً به این فرمت JSON بده:
 
-فرمت خروجی JSON:
 {
-  "answer": "خلاصه کامل (2-3 پاراگراف فارسی) + جزئیات کلیدی با bullet points",
-  "keyFindings": ["یافته مهم 1", "یافته مهم 2", "یافته مهم 3"],
-  "statistics": {"metric1": value, "metric2": value},
-  "sources": {"posts": ["id1", "id2"]},
-  "recommendations": ["توصیه عملیاتی 1", "توصیه عملیاتی 2"]
+  "answer": "پاسخ اصلی با **markdown formatting** (bold, bullets, etc.) - 2-3 پاراگراف فارسی",
+  "summary": "خلاصه یک‌خطی (حداکثر 100 کاراکتر)",
+  "key_stats": {
+    "total_psyops": عدد یا null,
+    "critical_threats": عدد یا null,
+    "high_threats": عدد یا null,
+    "active_campaigns": عدد یا null,
+    "urgent_responses_needed": عدد یا null
+  },
+  "top_targets": [
+    {"entity": "نام نهاد", "count": عدد, "threat": "Critical|High|Medium"}
+  ],
+  "top_techniques": [
+    {"technique": "نام تکنیک", "count": عدد}
+  ],
+  "top_sources": [
+    {"source": "نام منبع", "count": عدد, "credibility": "Known Enemy Source|Suspicious Source|..."}
+  ],
+  "actionable_insights": [
+    "بینش عملیاتی قابل اجرا اول",
+    "بینش عملیاتی قابل اجرا دوم"
+  ],
+  "recommendations": [
+    "توصیه فوری اول",
+    "توصیه فوری دوم"
+  ],
+  "keyFindings": ["یافته 1", "یافته 2"],
+  "statistics": {},
+  "sources": {"posts": []},
+  "related_posts": []
 }
 
-مهم: همیشه به فارسی پاسخ بده و از داده‌های واقعی استفاده کن.`;
+قوانین مهم:
+1. از داده‌های واقعی استفاده کن (نه تخمین)
+2. answer باید markdown داشته باشد (**bold**, bullets)
+3. فقط top 5 را در هر لیست نشان بده
+4. actionable_insights باید قابل اجرا باشند
+5. key_stats را از داده‌های واقعی پر کن
+6. همیشه به فارسی پاسخ بده`;
 
   console.log("Calling DeepSeek API...");
   console.log("Question:", question);
@@ -519,10 +550,17 @@ ${dataContext}
 
   return {
     answer: aiAnswer.answer || "پاسخی دریافت نشد",
+    summary: aiAnswer.summary,
+    key_stats: aiAnswer.key_stats,
+    top_targets: aiAnswer.top_targets,
+    top_techniques: aiAnswer.top_techniques,
+    top_sources: aiAnswer.top_sources,
+    actionable_insights: aiAnswer.actionable_insights,
+    recommendations: aiAnswer.recommendations || [],
+    related_posts: aiAnswer.related_posts,
     keyFindings: aiAnswer.keyFindings || [],
     statistics: aiAnswer.statistics || {},
     sources: aiAnswer.sources || { posts: [] },
-    recommendations: aiAnswer.recommendations || [],
     usage: result.usage,
   };
 }

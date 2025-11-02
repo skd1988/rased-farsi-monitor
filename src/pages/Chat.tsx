@@ -13,6 +13,17 @@ interface Message {
   content: string;
   timestamp: Date;
   metadata?: any;
+  structured_data?: {
+    answer: string;
+    summary?: string;
+    key_stats?: any;
+    top_targets?: any[];
+    top_techniques?: any[];
+    top_sources?: any[];
+    actionable_insights?: string[];
+    recommendations?: string[];
+    related_posts?: string[];
+  };
 }
 
 interface Conversation {
@@ -226,6 +237,17 @@ const Chat = () => {
           statistics: response.data.statistics,
           keyFindings: response.data.keyFindings,
           recommendations: response.data.recommendations,
+        },
+        structured_data: {
+          answer: response.data.answer,
+          summary: response.data.summary,
+          key_stats: response.data.key_stats,
+          top_targets: response.data.top_targets,
+          top_techniques: response.data.top_techniques,
+          top_sources: response.data.top_sources,
+          actionable_insights: response.data.actionable_insights,
+          recommendations: response.data.recommendations,
+          related_posts: response.data.related_posts,
         },
       };
 

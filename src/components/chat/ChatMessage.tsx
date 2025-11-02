@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { ChatResponseRich } from './ChatResponseRich';
 
 interface Message {
   id: string;
@@ -13,6 +14,17 @@ interface Message {
     sources?: { posts?: string[] };
     statistics?: Record<string, any>;
     keyFindings?: string[];
+  };
+  structured_data?: {
+    answer: string;
+    summary?: string;
+    key_stats?: any;
+    top_targets?: any[];
+    top_techniques?: any[];
+    top_sources?: any[];
+    actionable_insights?: string[];
+    recommendations?: string[];
+    related_posts?: string[];
   };
 }
 
@@ -48,17 +60,21 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
       <div className={cn('flex-1 space-y-2', isUser && 'flex flex-col items-end')}>
         <div
           className={cn(
-            'inline-block px-4 py-3 rounded-2xl max-w-[80%]',
+            'inline-block rounded-2xl max-w-[85%]',
             isUser
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted'
+              ? 'bg-primary text-primary-foreground px-4 py-3'
+              : 'bg-muted px-4 py-3'
           )}
         >
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          {!isUser && message.structured_data ? (
+            <ChatResponseRich data={message.structured_data} />
+          ) : (
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          )}
         </div>
 
-        {/* Metadata Cards */}
-        {!isUser && message.metadata && (
+        {/* Metadata Cards - Only show if no structured_data */}
+        {!isUser && message.metadata && !message.structured_data && (
           <div className="space-y-2 max-w-[80%]">
             {message.metadata.statistics && (
               <Card className="p-4">
