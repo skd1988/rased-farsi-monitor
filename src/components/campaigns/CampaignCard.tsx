@@ -182,21 +182,18 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
             <Badge className="bg-danger text-white">
               {typeof campaign.main_target === 'string' 
                 ? campaign.main_target 
-                : campaign.main_target?.name_persian || campaign.main_target?.name || 'نامشخص'}
+                : (campaign.main_target?.name_persian || campaign.main_target?.name_arabic || campaign.main_target?.name_english || campaign.main_target?.name || 'نامشخص')}
             </Badge>
             {campaign.target_persons && Array.isArray(campaign.target_persons) && campaign.target_persons.length > 0 && (
               <>
                 {campaign.target_persons.slice(0, 2).map((person: any, idx: number) => {
-                  const personName = typeof person === 'string' 
-                    ? person 
-                    : person?.name_persian || person?.name_arabic || person?.name_english || person?.name;
-                  
-                  if (!personName) return null;
+                  // Only render if person is a valid string
+                  if (typeof person !== 'string' || !person.trim()) return null;
                   
                   return (
                     <Badge key={idx} variant="outline" className="gap-1">
                       <Users className="h-3 w-3" />
-                      {personName}
+                      {person}
                     </Badge>
                   );
                 })}

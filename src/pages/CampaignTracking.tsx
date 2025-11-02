@@ -58,24 +58,40 @@ const CampaignTracking = () => {
 
       console.log('✅ Detected campaigns:', data.campaigns);
 
-      const transformedData = (data.campaigns || []).map((campaign: any) => ({
-        id: campaign.id,
-        campaign_name: campaign.campaign_name,
-        campaign_type: campaign.campaign_type,
-        status: campaign.status,
-        orchestrator: campaign.orchestrator,
-        main_target: campaign.main_target || extractFirstTarget(campaign.posts),
-        target_persons: extractTargetPersons(campaign.posts),
-        impact_assessment: campaign.intensity,
-        start_date: getEarliestDate(campaign.posts),
-        end_date: getLatestDate(campaign.posts),
-        postsCount: campaign.posts.length,
-        duration: calculateDuration(campaign.posts),
-        weeklyGrowth: calculateGrowth(campaign.posts),
-        notes: campaign.notes || `${campaign.detection_method} | منابع: ${campaign.sources?.join(', ') || 'Multiple'}`,
-        posts: campaign.posts,
-        threat_level: campaign.threat_level
-      }));
+      const transformedData = (data.campaigns || []).map((campaign: any) => {
+        console.log('🔍 Processing campaign:', campaign.campaign_name);
+        console.log('  - main_target:', campaign.main_target);
+        console.log('  - target_persons (from API):', campaign.target_persons);
+        console.log('  - sources:', campaign.sources);
+        console.log('  - notes:', campaign.notes);
+        
+        const extractedTarget = campaign.main_target || extractFirstTarget(campaign.posts);
+        const extractedPersons = extractTargetPersons(campaign.posts);
+        
+        console.log('  - extracted main_target:', extractedTarget);
+        console.log('  - extracted target_persons:', extractedPersons);
+        
+        return {
+          id: campaign.id,
+          campaign_name: campaign.campaign_name,
+          campaign_type: campaign.campaign_type,
+          status: campaign.status,
+          orchestrator: campaign.orchestrator,
+          main_target: extractedTarget,
+          target_persons: extractedPersons,
+          impact_assessment: campaign.intensity,
+          start_date: getEarliestDate(campaign.posts),
+          end_date: getLatestDate(campaign.posts),
+          postsCount: campaign.posts.length,
+          duration: calculateDuration(campaign.posts),
+          weeklyGrowth: calculateGrowth(campaign.posts),
+          notes: campaign.notes || `${campaign.detection_method} | منابع: ${campaign.sources?.join(', ') || 'Multiple'}`,
+          posts: campaign.posts,
+          threat_level: campaign.threat_level,
+          counter_campaign_status: campaign.counter_campaign_status || 'Not Started',
+          created_at: campaign.created_at || new Date().toISOString()
+        };
+      });
 
       setCampaigns(transformedData);
       

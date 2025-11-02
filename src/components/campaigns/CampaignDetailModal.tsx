@@ -172,16 +172,13 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
                   <span className="text-sm text-muted-foreground mb-2 block">افراد هدف</span>
                   <div className="flex flex-wrap gap-2">
                     {campaign.target_persons.map((person: any, idx: number) => {
-                      const personName = typeof person === 'string' 
-                        ? person 
-                        : person?.name_persian || person?.name_arabic || person?.name_english || person?.name;
-                      
-                      if (!personName) return null;
+                      // Extract name only if person is a valid string
+                      if (typeof person !== 'string' || !person.trim()) return null;
                       
                       return (
                         <Badge key={idx} variant="secondary" className="gap-2">
                           <Users className="h-3 w-3" />
-                          {personName}
+                          {person}
                         </Badge>
                       );
                     })}
