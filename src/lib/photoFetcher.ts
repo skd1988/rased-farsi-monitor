@@ -73,76 +73,57 @@ export async function fetchPhotosForTargets(
     const target = targets[i];
     
     // Extract name from different possible formats
-    let name: string;
+    let searchName: string;
     let namePersian: string;
     let nameEnglish: string | null = null;
     let nameArabic: string | null = null;
     
     if (typeof target === 'string') {
-      // Simple string format
-      name = target;
+      // Simple string format (e.g., "حماس فلسطین")
+      searchName = target;
       namePersian = target;
     } else if (typeof target === 'object') {
-      // Object format
-      name = target.name_english || target.name_persian || target.name_arabic;
-      namePersian = target.name_persian || name;
+      // Object format with multiple name fields
+      searchName = target.name_english || target.name_persian || target.name_arabic;
+      namePersian = target.name_persian || searchName;
       nameEnglish = target.name_english || null;
       nameArabic = target.name_arabic || null;
     } else {
       continue;
     }
     
-    if (!name) continue;
+    if (!searchName || !namePersian) continue;
     
     if (onProgress) {
       onProgress(i + 1, targets.length);
     }
     
-    // Search using the available name
-    const photoUrl = await fetchPhotoFromWikipedia(name);
+    // Search Wikipedia using the available name
+    const photoUrl = await fetchPhotoFromWikipedia(searchName);
     
     if (photoUrl) {
-      results.set(name, photoUrl);
+      results.set(searchName, photoUrl);
       
-      // Save to database using Persian name as the key
+      // Save to database using upsert with name_persian as unique key
       try {
-        // First try to find existing profile by Persian name
-        const { data: existing } = await supabase
+        await supabase
           .from('target_profiles')
-          .select('id')
-          .eq('name_persian', namePersian)
-          .maybeSingle();
+          .upsert({
+            name_persian: namePersian,
+            name_english: nameEnglish,
+            name_arabic: nameArabic,
+            photo_url: photoUrl,
+            photo_source: 'wikipedia',
+            position: typeof target === 'object' ? (target.position || target.role) : null,
+            organization: typeof target === 'object' ? target.organization : null,
+            category: typeof target === 'object' ? target.category : null
+          }, {
+            onConflict: 'name_persian'
+          });
         
-        if (existing) {
-          // Update existing record
-          await supabase
-            .from('target_profiles')
-            .update({
-              photo_url: photoUrl,
-              photo_source: 'wikipedia',
-              name_english: nameEnglish || existing.id,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', existing.id);
-        } else {
-          // Insert new record - use Persian name as English if not available
-          await supabase
-            .from('target_profiles')
-            .insert({
-              name_english: nameEnglish || namePersian,
-              name_persian: namePersian,
-              name_arabic: nameArabic,
-              photo_url: photoUrl,
-              photo_source: 'wikipedia',
-              position: typeof target === 'object' ? (target.position || target.role) : null,
-              organization: typeof target === 'object' ? target.organization : null,
-              category: typeof target === 'object' ? target.category : null
-            });
-        }
-        
-        console.log(`💾 Saved photo for ${name}`);
+        console.log(`💾 Saved photo for ${searchName}`);
       } catch (error) {
-        console.error(`❌ Failed to save photo for ${name}:`, error);
+        console.error(`❌ Failed to save photo for ${searchName}:`, error);
       }
     }
     
