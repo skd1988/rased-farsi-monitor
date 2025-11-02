@@ -371,8 +371,11 @@ const Settings = () => {
       console.log(`📊 Total CSV lines: ${allLines.length}, Non-empty: ${nonEmptyLines.length}`);
 
       const { count: dbPosts } = await supabase.from("posts").select("*", { count: "exact", head: true });
-      const lastSynced = parseInt(localStorage.getItem("lastSyncedRow") || "0");
-      const pendingRows = sheetRows - Math.max(lastSynced, dbPosts || 0);
+      
+      // Use sheet-specific lastSyncedRow key
+      const sheetSpecificKey = `lastSyncedRow_${settings.google_sheet_id}`;
+      const lastSynced = parseInt(localStorage.getItem(sheetSpecificKey) || "0");
+      const pendingRows = sheetRows - lastSynced;
 
       setSyncStats({
         sheetRows,
@@ -381,7 +384,14 @@ const Settings = () => {
         pendingRows: Math.max(0, pendingRows),
       });
 
-      console.log("📊 Sync Status:", { sheetRows, dbPosts, lastSynced, pendingRows });
+      console.log("📊 Sync Status:", { 
+        sheetId: settings.google_sheet_id,
+        sheetRows, 
+        dbPosts, 
+        lastSynced, 
+        pendingRows,
+        storageKey: sheetSpecificKey
+      });
     } catch (error) {
       console.error("Error checking sync status:", error);
     }
@@ -928,8 +938,15 @@ const Settings = () => {
       console.log(`📊 Total rows: ${allRows.length}, Valid rows: ${dataLines.length}`);
 
       const { count: dbPostCount } = await supabase.from("posts").select("*", { count: "exact", head: true });
-      const lastSyncedRow = dbPostCount || 0;
-      console.log(`📊 Database has ${dbPostCount} posts, syncing from row ${lastSyncedRow + 1}`);
+      
+      // Use sheet-specific lastSyncedRow
+      const sheetSpecificKey = `lastSyncedRow_${settings.google_sheet_id}`;
+      const lastSyncedRow = parseInt(localStorage.getItem(sheetSpecificKey) || "0");
+      
+      console.log(`📊 Sheet ID: ${settings.google_sheet_id}`);
+      console.log(`📊 Database has ${dbPostCount} posts total`);
+      console.log(`📊 This sheet last synced: ${lastSyncedRow} rows`);
+      console.log(`📊 Will sync from row ${lastSyncedRow + 1}`);
 
       const headers = dataLines[0].map((h) => (typeof h === 'string' ? h.replace(/"/g, "").trim() : String(h)));
 
@@ -995,7 +1012,12 @@ const Settings = () => {
         return;
       }
 
-      console.log(`🔄 Syncing ${rowsToSync.length} new rows...`);
+      console.log(`🔄 Sheet ID: ${settings.google_sheet_id}`);
+      console.log(`🔄 Will sync ${rowsToSync.length} NEW rows (from row ${lastSyncedRow + 1} to ${lastSyncedRow + rowsToSync.length})`);
+      toast({
+        title: `🔄 شروع همگام‌سازی`,
+        description: `در حال وارد کردن ${rowsToSync.length} ردیف جدید از Sheet...`,
+      });
 
       let importedCount = 0;
       let errorCount = 0;
@@ -1812,8 +1834,12 @@ const Settings = () => {
       });
 
       const actualRowCount = lastSyncedRow + importedCount;
-      localStorage.setItem("lastSyncedRow", String(actualRowCount));
+      
+      // Save sync progress with sheet-specific key (using sheetSpecificKey from line 943)
+      localStorage.setItem(sheetSpecificKey, String(actualRowCount));
+      localStorage.setItem("lastSyncedRow", String(actualRowCount)); // Keep for backward compatibility
       localStorage.setItem("totalRowsInSheet", String(totalRows));
+      localStorage.setItem("currentSheetId", settings.google_sheet_id);
 
       const now = new Date().toISOString();
       saveSettings({
@@ -1829,6 +1855,7 @@ const Settings = () => {
         errors: errorCount,
         totalRows: actualRowCount,
         validationSkips: validationSkips,
+        sheetId: settings.google_sheet_id,
       });
       localStorage.setItem("syncHistory", JSON.stringify(syncHistory.slice(-10)));
 
@@ -2090,13 +2117,36 @@ const Settings = () => {
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    onClick={() =>
+                    onClick={() => {
+                      const oldSheetId = localStorage.getItem("currentSheetId");
+                      const newSheetId = settings.google_sheet_id;
+                      
+                      // If sheet ID changed, warn user and reset sync
+                      if (oldSheetId && oldSheetId !== newSheetId) {
+                        const confirmed = confirm(
+                          `شناسه Sheet تغییر کرده است. آیا می‌خواهید:\n\n` +
+                          `✅ تأیید: همگام‌سازی این شیت جدید از ابتدا شروع می‌شود\n` +
+                          `❌ لغو: تغییرات ذخیره نخواهد شد`
+                        );
+                        
+                        if (!confirmed) return;
+                        
+                        // Reset sync for new sheet
+                        const newSheetKey = `lastSyncedRow_${newSheetId}`;
+                        localStorage.setItem(newSheetKey, "0");
+                        
+                        toast({
+                          title: "شیت جدید تنظیم شد",
+                          description: "همگام‌سازی از ردیف اول شروع خواهد شد",
+                        });
+                      }
+                      
                       saveSettings({
                         google_sheet_id: settings.google_sheet_id,
                         google_sheet_name: settings.google_sheet_name,
                         google_api_key: settings.google_api_key,
-                      })
-                    }
+                      });
+                    }}
                   >
                     ذخیره
                   </Button>
@@ -2185,8 +2235,11 @@ const Settings = () => {
                   <Button
                     variant="outline"
                     onClick={() => {
+                      const sheetSpecificKey = `lastSyncedRow_${settings.google_sheet_id}`;
+                      localStorage.setItem(sheetSpecificKey, String(syncStats.dbPosts));
                       localStorage.setItem("lastSyncedRow", String(syncStats.dbPosts));
                       localStorage.setItem("totalRowsInSheet", String(syncStats.sheetRows));
+                      localStorage.setItem("currentSheetId", settings.google_sheet_id);
                       checkSyncStatus();
                       toast({
                         title: "تنظیمات اصلاح شد",
@@ -2209,6 +2262,8 @@ const Settings = () => {
                       ) {
                         return;
                       }
+                      const sheetSpecificKey = `lastSyncedRow_${settings.google_sheet_id}`;
+                      localStorage.setItem(sheetSpecificKey, "0");
                       localStorage.setItem("lastSyncedRow", "0");
                       await checkSyncStatus();
                       await handleManualSync();
