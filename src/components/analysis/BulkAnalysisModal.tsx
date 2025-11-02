@@ -129,11 +129,14 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       try {
         console.log(`🔵 Analyzing post ${i + 1}/${total}: ${post.id}`);
         
-        const response = await supabase.functions.invoke('analyze-post', {
+        const response = await supabase.functions.invoke('analyze-post-deepseek', {
           body: {
             postId: post.id,
-            postTitle: post.title,
-            postContent: post.contents
+            title: post.title,
+            contents: post.contents,
+            source: post.source,
+            language: post.language || "نامشخص",
+            published_at: post.published_at,
           }
         });
 
@@ -142,9 +145,9 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           throw response.error;
         }
         
-        if (!response.data || !response.data.analysis) {
+        if (!response.data || !response.data.success) {
           console.error('❌ Invalid response structure:', response.data);
-          throw new Error('Invalid response from edge function');
+          throw new Error(response.data?.error || 'Invalid response from edge function');
         }
         
         const analysis = response.data.analysis;
