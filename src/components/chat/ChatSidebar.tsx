@@ -88,7 +88,7 @@ const ChatSidebar = ({
       <div
         className={cn(
           'fixed lg:relative inset-y-0 left-0 z-50 w-80 bg-card border-r flex flex-col transition-transform duration-300',
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Header */}
@@ -98,7 +98,6 @@ const ChatSidebar = ({
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
               onClick={onToggle}
             >
               <X className="w-4 h-4" />
@@ -188,15 +187,17 @@ const ChatSidebar = ({
         </ScrollArea>
       </div>
 
-      {/* Mobile menu button */}
-      <Button
-        variant="outline"
-        size="icon"
-        className="fixed bottom-4 left-4 z-30 lg:hidden"
-        onClick={onToggle}
-      >
-        <Menu className="w-4 h-4" />
-      </Button>
+      {/* Toggle button - visible when sidebar is closed */}
+      {!isOpen && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="fixed bottom-4 left-4 z-30"
+          onClick={onToggle}
+        >
+          <Menu className="w-4 h-4" />
+        </Button>
+      )}
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
