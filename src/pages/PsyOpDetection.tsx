@@ -21,7 +21,7 @@ import { format, subDays, startOfDay } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PsyOpCard from '@/components/psyop/PsyOpCard';
-import PostDetailModal from '@/components/dashboard/PostDetailModal';
+import PsyOpAnalysisModal from '@/components/psyop/PsyOpAnalysisModal';
 import { toast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 
@@ -110,7 +110,7 @@ const PsyOpDetection = () => {
               .from('ai_analysis')
               .select('*')
               .eq('post_id', newPost.id)
-              .single();
+              .maybeSingle();
 
             const mergedPost = { ...newPost, ...analysis };
             
@@ -127,7 +127,7 @@ const PsyOpDetection = () => {
               .from('ai_analysis')
               .select('*')
               .eq('post_id', payload.new.id)
-              .single();
+              .maybeSingle();
 
             const mergedPost = { ...payload.new, ...analysis };
             setPosts(prev => 
@@ -143,7 +143,7 @@ const PsyOpDetection = () => {
     };
   }, []);
 
-  // Filter posts
+  // Filter posts  
   const filteredPosts = useMemo(() => {
     let filtered = posts;
 
@@ -504,8 +504,8 @@ const PsyOpDetection = () => {
         </div>
       )}
 
-      {/* Detail Modal */}
-      <PostDetailModal
+      {/* Analysis Modal */}
+      <PsyOpAnalysisModal
         post={selectedPost}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
