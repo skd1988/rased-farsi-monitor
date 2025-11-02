@@ -403,20 +403,21 @@ const Dashboard = () => {
     
     posts.forEach(post => {
       const source = post.source?.toLowerCase() || 'نامشخص';
+      const sourceUrl = post.source_url?.toLowerCase() || '';
       
       // Map sources to social media platforms
       let platform = 'سایر';
-      if (source.includes('telegram') || source.includes('تلگرام')) {
+      if (source.includes('telegram') || source.includes('تلگرام') || source.includes('t.me') || sourceUrl.includes('t.me')) {
         platform = 'تلگرام';
-      } else if (source.includes('twitter') || source.includes('x.com') || source.includes('توییتر')) {
+      } else if (source.includes('twitter') || source.includes('x.com') || source.includes('توییتر') || sourceUrl.includes('x.com') || sourceUrl.includes('twitter.com')) {
         platform = 'توییتر (X)';
-      } else if (source.includes('instagram') || source.includes('اینستاگرام')) {
+      } else if (source.includes('instagram') || source.includes('اینستاگرام') || sourceUrl.includes('instagram.com')) {
         platform = 'اینستاگرام';
-      } else if (source.includes('facebook') || source.includes('فیسبوک')) {
+      } else if (source.includes('facebook') || source.includes('فیسبوک') || sourceUrl.includes('facebook.com')) {
         platform = 'فیسبوک';
-      } else if (source.includes('youtube') || source.includes('یوتیوب')) {
+      } else if (source.includes('youtube') || source.includes('یوتیوب') || sourceUrl.includes('youtube.com')) {
         platform = 'یوتیوب';
-      } else if (source.includes('whatsapp') || source.includes('واتساپ')) {
+      } else if (source.includes('whatsapp') || source.includes('واتساپ') || sourceUrl.includes('whatsapp.com')) {
         platform = 'واتساپ';
       }
       
