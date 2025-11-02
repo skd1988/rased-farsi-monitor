@@ -61,6 +61,23 @@ serve(async (req) => {
 زبان: ${language}
 تاریخ: ${published_at}
 
+⚠️ نکات مهم و اجباری:
+1. فیلد narrative_theme اجباری است و باید حتماً یکی از این مقادیر دقیق باشد (نه null):
+   - "Demonization" (شیطان‌سازی)
+   - "Delegitimization" (بی‌اعتبارسازی)
+   - "Victimization" (قربانی‌سازی)
+   - "Fear-Mongering" (ترس‌افکنی)
+   - "Divide & Conquer" (تفرقه‌اندازی)
+   - "False Flag" (پرچم دروغین)
+   - "Whitewashing" (سفیدشویی)
+   - "Heroization" (قهرمان‌سازی)
+
+2. فیلد narrative_type اجباری است و باید یکی از این باشد:
+   - "Attack" (حمله)
+   - "Defense" (دفاع)
+   - "Supportive" (حمایتی)
+   - "Neutral" (خنثی)
+
 فقط JSON خروجی بدهید (بدون markdown):
 
 {
@@ -72,7 +89,10 @@ serve(async (req) => {
   "targeted_persons": ["نام شخص1"] یا [],
   "target_category": "Leadership" | "Military Forces" | "Political Wing" | "Social Base" | "International Support" | null,
   "attack_vectors": ["Human Rights Violations", "Terrorism Labeling", "Sectarian Division", "Foreign Interference", "Corruption Allegations", "Weakness Portrayal", "Legitimacy Questioning", "Historical Revisionism"],
-  "narrative_theme": "Delegitimization" | "Demonization" | "Isolation" | "Normalization of Enemy" | "Internal Conflict" | null,
+  
+  "narrative_theme": "Demonization",  ⬅️ ⚠️ MANDATORY - یکی از 8 مقدار بالا
+  "narrative_type": "Attack",  ⬅️ ⚠️ MANDATORY - یکی از 4 مقدار بالا
+  
   "threat_level": "Critical" | "High" | "Medium" | "Low",
   "virality_potential": عدد 0-10,
   "coordination_indicators": ["Similar Timing", "Same Keywords", "Multiple Sources", "Cross-Platform", "Synchronized Release"],
@@ -94,6 +114,55 @@ serve(async (req) => {
     "similar_content_keywords": ["کلمه1", "کلمه2"]
   }
 }
+
+📚 راهنمای انتخاب narrative_theme:
+
+1. **Demonization** (شیطان‌سازی) - رایج‌ترین:
+   ✅ اتهام تروریسم، افراطی‌گری
+   ✅ توصیف به عنوان تهدید، خطر
+   ✅ استفاده از واژگان منفی شدید (شیطان، وحشی، تروریست)
+   مثال: "گروه تروریستی حزب‌الله"
+
+2. **Delegitimization** (بی‌اعتبارسازی):
+   ✅ زیر سوال بردن مشروعیت
+   ✅ توصیف به عنوان غیرقانونی، نامشروع
+   ✅ اتهام وابستگی به قدرت خارجی
+   مثال: "میلیشیای غیرقانونی وابسته به ایران"
+
+3. **Fear-Mongering** (ترس‌افکنی):
+   ✅ تأکید بر خطرات و تهدیدها
+   ✅ ایجاد حس ناامنی
+   ✅ بزرگ‌نمایی قدرت نظامی
+   مثال: "تهدید فزاینده موشک‌های حزب‌الله"
+
+4. **Divide & Conquer** (تفرقه‌اندازی):
+   ✅ تأکید بر اختلافات فرقه‌ای
+   ✅ ایجاد شکاف بین گروه‌ها
+   ✅ شیعه vs سنی
+   مثال: "جنگ شیعه و سنی توسط ایران"
+
+5. **False Flag** (پرچم دروغین):
+   ✅ ادعاهای بدون مدرک
+   ✅ اتهامات مبتنی بر "منابع امنیتی"
+   ✅ اخبار کذب
+   مثال: "منابع امنیتی: حزب‌الله سلاح شیمیایی دارد"
+
+6. **Victimization** (قربانی‌سازی):
+   ✅ نشان دادن هدف به عنوان قربانی
+   ✅ تأکید بر آسیب‌دیدگان
+   مثال: "قربانیان حملات حزب‌الله"
+
+7. **Heroization** (قهرمان‌سازی):
+   ✅ نمایش مثبت دشمنان محور مقاومت
+   ✅ تحسین مخالفان
+   مثال: "مبارزان آزادی سوریه"
+
+8. **Whitewashing** (سفیدشویی):
+   ✅ توجیه اقدامات دشمن
+   ✅ پوشش دادن به جنایات
+   مثال: "عملیات دموکراتیک علیه تروریسم"
+
+⚠️ حتماً narrative_theme و narrative_type را پر کن، حتی اگر مطلب PsyOp نیست.
 
 معیارهای تشخیص:
 - is_psyop = "Yes": اتهامات بدون مدرک، تحریف واقعیات، برچسب‌زنی منفی، ایجاد شبهه، نمایش ضعف، ایجاد اختلاف
@@ -124,10 +193,99 @@ serve(async (req) => {
       throw new Error("Failed to parse DeepSeek response as JSON");
     }
 
+    // ⚠️ CRITICAL VALIDATION: Ensure narrative_theme is always populated
+    if (analysisResult.is_psyop === "Yes" || analysisResult.is_psyop === true) {
+      // For PsyOps, narrative_theme is mandatory
+      if (!analysisResult.narrative_theme) {
+        console.warn(`⚠️ Missing narrative_theme for PsyOp post ${postId}, inferring from content...`);
+        analysisResult.narrative_theme = inferNarrativeThemeFromAnalysis(analysisResult, title, contents);
+      }
+      
+      if (!analysisResult.narrative_type) {
+        console.warn(`⚠️ Missing narrative_type for PsyOp post ${postId}, defaulting to Attack`);
+        analysisResult.narrative_type = 'Attack';
+      }
+      
+      // Validate narrative_theme is from allowed list
+      const validThemes = [
+        'Demonization', 'Victimization', 'Heroization', 'Delegitimization',
+        'Fear-Mongering', 'Divide & Conquer', 'False Flag', 'Whitewashing'
+      ];
+      
+      if (!validThemes.includes(analysisResult.narrative_theme)) {
+        console.warn(`⚠️ Invalid narrative_theme: "${analysisResult.narrative_theme}", defaulting to Demonization`);
+        analysisResult.narrative_theme = 'Demonization';
+      }
+
+      console.log(`✅ Post ${postId} narrative_theme: ${analysisResult.narrative_theme}, type: ${analysisResult.narrative_type}`);
+    }
+
     const processingTime = Date.now() - startTime;
 
     // Update post in Supabase
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // Helper function to infer narrative theme from analysis
+    function inferNarrativeThemeFromAnalysis(analysis: any, title: string, contents: string): string {
+      console.log(`🔍 Inferring narrative_theme for post...`);
+      
+      // Check attack_vectors for clues
+      const vectors = JSON.stringify(analysis.attack_vectors || []).toLowerCase();
+      
+      if (vectors.includes('terrorism') || vectors.includes('labeling')) {
+        console.log(`  → Found terrorism/labeling vectors → Demonization`);
+        return 'Demonization';
+      }
+      
+      if (vectors.includes('legitimacy') || vectors.includes('questioning')) {
+        console.log(`  → Found legitimacy/questioning vectors → Delegitimization`);
+        return 'Delegitimization';
+      }
+      
+      if (vectors.includes('sectarian') || vectors.includes('division')) {
+        console.log(`  → Found sectarian/division vectors → Divide & Conquer`);
+        return 'Divide & Conquer';
+      }
+      
+      if (vectors.includes('human rights')) {
+        console.log(`  → Found human rights vectors → Victimization`);
+        return 'Victimization';
+      }
+      
+      // Check psyop_type
+      const psyopType = (analysis.psyop_type || '').toLowerCase();
+      if (psyopType.includes('false flag')) {
+        console.log(`  → PsyOp type is false flag → False Flag`);
+        return 'False Flag';
+      }
+      
+      // Check content keywords
+      const fullText = (title + ' ' + contents).toLowerCase();
+      
+      if (fullText.match(/تروریس|terrorist|extremist|افراطی|داعش|isis/)) {
+        console.log(`  → Found terrorism keywords in content → Demonization`);
+        return 'Demonization';
+      }
+      
+      if (fullText.match(/قربانی|victim|ضحیة|مظلوم/)) {
+        console.log(`  → Found victimization keywords → Victimization`);
+        return 'Victimization';
+      }
+      
+      if (fullText.match(/غیرقانون|illegal|نامشروع|illegitimate/)) {
+        console.log(`  → Found illegitimacy keywords → Delegitimization`);
+        return 'Delegitimization';
+      }
+      
+      if (fullText.match(/خطر|threat|تهدید|خطرناک|dangerous/)) {
+        console.log(`  → Found fear keywords → Fear-Mongering`);
+        return 'Fear-Mongering';
+      }
+      
+      // Default to most common for anti-resistance PsyOps
+      console.log(`  → No specific indicators, defaulting to Demonization`);
+      return 'Demonization';
+    }
 
     const { error } = await supabase
       .from("posts")
@@ -144,6 +302,8 @@ serve(async (req) => {
           : analysisResult.primary_target ? [analysisResult.primary_target] : [],
         target_persons: analysisResult.targeted_persons,
         psyop_technique: analysisResult.attack_vectors,
+        narrative_theme: analysisResult.narrative_theme,  // ⚠️ NOW ALWAYS POPULATED
+        psyop_type: analysisResult.psyop_type,
         threat_level: analysisResult.threat_level,
         confidence: analysisResult.psyop_confidence,
         key_points: analysisResult.counter_narrative_points,
@@ -151,7 +311,8 @@ serve(async (req) => {
         analyzed_at: new Date().toISOString(),
         analysis_model: "deepseek-chat",
         processing_time: processingTime / 1000,
-        status: "analyzed"
+        status: "analyzed",
+        analysis_stage: "deep"  // Mark as deep analysis complete
       })
       .eq("id", postId);
 
