@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { limit, batchSize = 10 } = await req.json();
+    const { limit, resumeFromIndex = 0, maxProcessingTime = 120000 } = await req.json();
     
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -31,14 +31,14 @@ serve(async (req) => {
       query = query.limit(limit);
     }
     
-    const { data: posts, error: fetchError } = await query;
+    const { data: allPosts, error: fetchError } = await query;
     
     if (fetchError) {
       console.error('Fetch error:', fetchError);
       throw new Error(`Failed to fetch posts: ${fetchError.message}`);
     }
     
-    if (!posts || posts.length === 0) {
+    if (!allPosts || allPosts.length === 0) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -52,7 +52,9 @@ serve(async (req) => {
             estimated_old_time_ms: 0,
             time_saved_ms: 0,
             cost_saved_usd: 0,
-            detailed_results: []
+            detailed_results: [],
+            needsResume: false,
+            lastProcessedIndex: 0
           }
         }),
         {
@@ -65,48 +67,105 @@ serve(async (req) => {
       );
     }
     
-    console.log(`Starting two-stage analysis for ${posts.length} posts`);
+    // Get subset of posts to process in this invocation
+    const posts = allPosts.slice(resumeFromIndex);
+    
+    console.log(`Starting two-stage analysis for ${posts.length} posts (total unanalyzed: ${allPosts.length}, resuming from index: ${resumeFromIndex})`);
     
     const results = {
       total: posts.length,
+      processed: 0,
       quick_only: 0,
       deep_analyzed: 0,
       failed: 0,
       alerts_created: 0,
       processing_time_ms: 0,
-      estimated_old_time_ms: posts.length * 9000, // Old method: 9 sec/post
+      estimated_old_time_ms: posts.length * 9000,
       time_saved_ms: 0,
       cost_saved_usd: 0,
-      detailed_results: [] as any[]
+      detailed_results: [] as any[],
+      needsResume: false,
+      lastProcessedIndex: resumeFromIndex
     };
     
     const startTime = Date.now();
     
-    // Process in batches
-    for (let i = 0; i < posts.length; i += batchSize) {
-      const batch = posts.slice(i, i + batchSize);
-      console.log(`Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(posts.length / batchSize)}...`);
+    // Process posts sequentially with timeout protection
+    for (let i = 0; i < posts.length; i++) {
+      const post = posts[i];
       
-      for (const post of batch) {
+      // Check if approaching timeout
+      const elapsed = Date.now() - startTime;
+      if (elapsed > maxProcessingTime) {
+        console.warn(`⏱️ Approaching timeout at post ${i}, stopping gracefully`);
+        results.needsResume = true;
+        results.lastProcessedIndex = resumeFromIndex + i;
+        break;
+      }
+      
+      try {
+        // Validate post has required fields
+        if (!post.title || !post.source) {
+          console.warn(`⚠️ Post ${post.id} missing required fields, skipping`);
+          results.failed++;
+          results.processed++;
+          results.lastProcessedIndex = resumeFromIndex + i + 1;
+          continue;
+        }
+        
+        console.log(`[${i + 1}/${posts.length}] Processing: ${post.id}`);
         const postStartTime = Date.now();
         
+        // STAGE 1: Quick Detection with error handling
+        let quickResult;
         try {
-          // STAGE 1: Quick Detection
-          console.log(`Post ${post.id}: Starting quick detection...`);
-          const quickResult = await performQuickDetection(post);
+          console.log(`  📊 Starting quick detection...`);
+          quickResult = await performQuickDetection(post);
           const quickTime = Date.now() - postStartTime;
           
-          console.log(`Post ${post.id}: Quick result - PsyOp: ${quickResult.is_psyop}, Threat: ${quickResult.threat_level}, Time: ${quickTime}ms`);
+          console.log(`  ✅ Quick result - PsyOp: ${quickResult.is_psyop}, Threat: ${quickResult.threat_level}, Time: ${quickTime}ms`);
           
-          if (quickResult.needs_deep_analysis) {
-            // STAGE 2: Deep Analysis
-            console.log(`Post ${post.id}: Needs deep analysis, proceeding...`);
+        } catch (error) {
+          console.error(`  ❌ Quick detection failed for post ${post.id}:`, error);
+          
+          // Save as failed analysis
+          await supabase
+            .from('posts')
+            .update({
+              is_psyop: false,
+              psyop_confidence: 0,
+              threat_level: 'Low',
+              analysis_summary: 'خطا در تحلیل سریع',
+              analyzed_at: new Date().toISOString(),
+              analysis_stage: 'error'
+            })
+            .eq('id', post.id);
+          
+          results.failed++;
+          results.processed++;
+          results.lastProcessedIndex = resumeFromIndex + i + 1;
+          
+          results.detailed_results.push({
+            post_id: post.id,
+            stage: 'error',
+            error: error instanceof Error ? error.message : 'Quick detection error',
+            time_ms: Date.now() - postStartTime,
+            status: 'error'
+          });
+          
+          continue;
+        }
+        
+        // STAGE 2: Deep Analysis (if needed)
+        if (quickResult.needs_deep_analysis) {
+          try {
+            console.log(`  🧠 Needs deep analysis, proceeding...`);
             
             const deepStartTime = Date.now();
             const deepResult = await performDeepAnalysis(post, quickResult);
             const deepTime = Date.now() - deepStartTime;
             
-            console.log(`Post ${post.id}: Deep analysis complete in ${deepTime}ms`);
+            console.log(`  ✅ Deep analysis complete in ${deepTime}ms`);
             
             // Save deep analysis result
             await saveAnalysisResult(supabase, post.id, deepResult, 'deep');
@@ -127,61 +186,84 @@ serve(async (req) => {
               status: 'success'
             });
             
-          } else {
-            // Save quick result only
-            console.log(`Post ${post.id}: Not PsyOp, saving quick result only`);
+          } catch (error) {
+            console.error(`  ❌ Deep analysis failed for post ${post.id}:`, error);
             
+            // Fallback: save quick result only
             await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
-            
             results.quick_only++;
+            
             results.detailed_results.push({
               post_id: post.id,
-              stage: 'quick',
-              is_psyop: quickResult.is_psyop,
-              threat_level: quickResult.threat_level,
+              stage: 'quick_fallback',
+              error: error instanceof Error ? error.message : 'Deep analysis failed',
               time_ms: Date.now() - postStartTime,
-              status: 'success'
+              status: 'partial'
             });
           }
           
-        } catch (error) {
-          console.error(`Failed to analyze post ${post.id}:`, error);
-          results.failed++;
+        } else {
+          // Save quick result only
+          console.log(`  ✅ Not PsyOp, saving quick result only`);
+          
+          await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
+          
+          results.quick_only++;
           results.detailed_results.push({
             post_id: post.id,
-            stage: 'error',
-            error: error instanceof Error ? error.message : 'Unknown error',
+            stage: 'quick',
+            is_psyop: quickResult.is_psyop,
+            threat_level: quickResult.threat_level,
             time_ms: Date.now() - postStartTime,
-            status: 'error'
+            status: 'success'
           });
         }
         
-        // Small delay to avoid rate limits
-        await sleep(100);
+        results.processed++;
+        results.lastProcessedIndex = resumeFromIndex + i + 1;
+        
+        // Delay to avoid rate limiting
+        await sleep(300);
+        
+      } catch (error) {
+        console.error(`  ❌ Failed to process post ${post.id}:`, error);
+        results.failed++;
+        results.processed++;
+        results.lastProcessedIndex = resumeFromIndex + i + 1;
+        
+        results.detailed_results.push({
+          post_id: post.id,
+          stage: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          status: 'error'
+        });
+        
+        // Continue with next post instead of crashing
+        continue;
       }
-      
-      // Delay between batches
-      await sleep(500);
     }
     
     results.processing_time_ms = Date.now() - startTime;
     results.time_saved_ms = results.estimated_old_time_ms - results.processing_time_ms;
-    results.cost_saved_usd = (results.quick_only * 0.0015); // Saved ~$0.0015 per quick-only post
+    results.cost_saved_usd = (results.quick_only * 0.0015);
     
-    console.log('Batch analysis completed:', {
-      total: results.total,
+    console.log('✅ Batch analysis completed:', {
+      processed: results.processed,
       quick_only: results.quick_only,
       deep_analyzed: results.deep_analyzed,
       failed: results.failed,
-      time: `${(results.processing_time_ms / 1000).toFixed(1)}s`,
-      time_saved: `${(results.time_saved_ms / 1000).toFixed(1)}s`,
-      improvement: `${((results.time_saved_ms / results.estimated_old_time_ms) * 100).toFixed(0)}%`
+      needsResume: results.needsResume,
+      lastProcessedIndex: results.lastProcessedIndex,
+      time: `${(results.processing_time_ms / 1000).toFixed(1)}s`
     });
     
     return new Response(
       JSON.stringify({
         success: true,
-        results: results
+        results: results,
+        message: results.needsResume 
+          ? `Processed ${results.processed} posts. Resume needed from index ${results.lastProcessedIndex}`
+          : `Completed all ${results.processed} posts`
       }),
       {
         status: 200,

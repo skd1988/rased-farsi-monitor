@@ -32,6 +32,8 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const [batchResults, setBatchResults] = useState<any>(null);
   const [showManualSelection, setShowManualSelection] = useState(false);
   const [startTime, setStartTime] = useState<number>(0);
+  const [autoResumeEnabled, setAutoResumeEnabled] = useState(true);
+  const [currentResumeIndex, setCurrentResumeIndex] = useState(0);
   const intervalRef = useRef<any>(null);
   const { toast } = useToast();
 
@@ -177,6 +179,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
 
     setStatus('running');
     setStartTime(Date.now());
+    setCurrentResumeIndex(0);
     setProgress({
       current: 0,
       total: postsToAnalyze.length,
@@ -187,27 +190,110 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     });
     setBatchResults(null);
 
-    try {
-      console.log(`🚀 Starting two-stage batch analysis for ${postsToAnalyze.length} posts`);
-      
-      const response = await supabase.functions.invoke('batch-analyze-posts', {
-        body: {
-          limit: postsToAnalyze.length === posts.length ? null : postsToAnalyze.length,
-          batchSize: 10
-        }
-      });
+    let totalProcessed = 0;
+    let totalQuick = 0;
+    let totalDeep = 0;
+    let totalFailed = 0;
+    let totalAlertsCreated = 0;
+    let resumeIndex = 0;
+    const maxIterations = 100; // Safety limit
+    let iteration = 0;
+    const batchStartTime = Date.now();
 
-      if (response.error) {
-        console.error('❌ Batch analysis error:', response.error);
-        throw response.error;
+    try {
+      console.log(`🚀 Starting auto-resume batch analysis for ${postsToAnalyze.length} posts`);
+      
+      // Auto-resume loop
+      while (resumeIndex < postsToAnalyze.length && iteration < maxIterations) {
+        iteration++;
+        
+        console.log(`📦 Batch iteration ${iteration}, starting from index ${resumeIndex}`);
+        
+        try {
+          const response = await supabase.functions.invoke('batch-analyze-posts', {
+            body: {
+              limit: postsToAnalyze.length === posts.length ? null : postsToAnalyze.length,
+              resumeFromIndex: resumeIndex
+            }
+          });
+
+          if (response.error) {
+            console.error('❌ Batch iteration error:', response.error);
+            throw response.error;
+          }
+          
+          if (!response.data || !response.data.success) {
+            console.error('❌ Invalid response structure:', response.data);
+            throw new Error(response.data?.error || 'Batch analysis failed');
+          }
+          
+          const batchData = response.data.results;
+          
+          // Update cumulative totals
+          totalProcessed += batchData.processed;
+          totalQuick += batchData.quick_only;
+          totalDeep += batchData.deep_analyzed;
+          totalFailed += batchData.failed;
+          totalAlertsCreated += batchData.alerts_created || 0;
+          
+          // Update progress
+          setProgress(prev => ({
+            ...prev,
+            current: totalProcessed,
+            quickDetections: totalQuick,
+            deepAnalyses: totalDeep,
+            failed: totalFailed
+          }));
+          
+          console.log(`✅ Batch ${iteration} completed: ${batchData.processed} posts, needsResume: ${batchData.needsResume}`);
+          
+          // Check if need to resume
+          if (batchData.needsResume) {
+            resumeIndex = batchData.lastProcessedIndex;
+            setCurrentResumeIndex(resumeIndex);
+            
+            console.log(`⏭️ Resuming from index ${resumeIndex}`);
+            
+            if (!autoResumeEnabled) {
+              const shouldContinue = confirm(
+                `${toPersianNumber(totalProcessed)} پست پردازش شد. ادامه می‌دهید؟`
+              );
+              
+              if (!shouldContinue) {
+                break;
+              }
+            }
+            
+            // Short delay before next batch
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+          } else {
+            // All done!
+            console.log('🎉 All posts processed successfully');
+            break;
+          }
+          
+        } catch (error) {
+          console.error(`❌ Batch iteration ${iteration} error:`, error);
+          
+          if (!autoResumeEnabled) {
+            const shouldRetry = confirm(
+              `خطا در پردازش. ${toPersianNumber(totalProcessed)} پست تاکنون پردازش شده. تلاش مجدد؟`
+            );
+            
+            if (!shouldRetry) {
+              throw error;
+            }
+          }
+          
+          // Retry with small increment to skip problematic post
+          resumeIndex += 1;
+          setCurrentResumeIndex(resumeIndex);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
       }
       
-      if (!response.data || !response.data.success) {
-        console.error('❌ Invalid response structure:', response.data);
-        throw new Error(response.data?.error || 'Batch analysis failed');
-      }
-      
-      const batchData = response.data.results;
+      const totalTime = Date.now() - batchStartTime;
       
       // Stop polling
       if (intervalRef.current) {
@@ -215,19 +301,32 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       }
       
       // Set final results
-      setBatchResults(batchData);
+      const finalResults = {
+        total: postsToAnalyze.length,
+        processed: totalProcessed,
+        quick_only: totalQuick,
+        deep_analyzed: totalDeep,
+        failed: totalFailed,
+        alerts_created: totalAlertsCreated,
+        processing_time_ms: totalTime,
+        estimated_old_time_ms: postsToAnalyze.length * 9000,
+        time_saved_ms: (postsToAnalyze.length * 9000) - totalTime,
+        cost_saved_usd: totalQuick * 0.0015
+      };
+      
+      setBatchResults(finalResults);
       setStatus('completed');
       
-      console.log('✅ Batch analysis completed:', batchData);
+      console.log('✅ Complete batch analysis finished:', finalResults);
       
-      const improvement = Math.round((batchData.time_saved_ms / batchData.estimated_old_time_ms) * 100);
+      const improvement = Math.round((finalResults.time_saved_ms / finalResults.estimated_old_time_ms) * 100);
       
       toast({
         title: '✅ تحلیل گروهی تکمیل شد',
-        description: `${batchData.total} مطلب در ${toPersianNumber((batchData.processing_time_ms / 1000).toFixed(1))} ثانیه | ${toPersianNumber(improvement)}% سریع‌تر`,
+        description: `${toPersianNumber(finalResults.processed)} مطلب در ${toPersianNumber((finalResults.processing_time_ms / 1000).toFixed(1))} ثانیه | ${toPersianNumber(improvement)}% سریع‌تر`,
       });
       
-      // Call onComplete but DON'T close modal - let user close manually
+      // Call onComplete but DON'T close modal
       onComplete();
 
     } catch (error) {
@@ -493,7 +592,21 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
               بستن
             </Button>
           </div>
-        ) : showManualSelection ? (
+        ) : (
+          <>
+            {/* Auto-resume toggle */}
+            <div className="flex items-center gap-2 mb-4 p-3 bg-muted/50 rounded-lg">
+              <Checkbox
+                checked={autoResumeEnabled}
+                onCheckedChange={(checked) => setAutoResumeEnabled(checked as boolean)}
+                id="auto-resume"
+              />
+              <label htmlFor="auto-resume" className="text-sm font-medium cursor-pointer">
+                ادامه خودکار بعد از هر دسته (توصیه می‌شود برای پردازش تعداد زیاد)
+              </label>
+            </div>
+
+            {showManualSelection ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
@@ -628,6 +741,8 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
               </Button>
             </DialogFooter>
           </div>
+        )}
+          </>
         )}
       </DialogContent>
     </Dialog>
