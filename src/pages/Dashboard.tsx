@@ -435,6 +435,7 @@ const Dashboard = () => {
     };
     
     return Object.entries(platformCounts)
+      .filter(([name]) => name !== 'سایر')
       .map(([name, value]) => ({
         name,
         value,
