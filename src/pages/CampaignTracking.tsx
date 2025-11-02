@@ -97,7 +97,14 @@ const CampaignTracking = () => {
   const extractFirstTarget = (posts: any[]): string => {
     for (const post of posts) {
       if (post.target_entity && Array.isArray(post.target_entity) && post.target_entity.length > 0) {
-        return post.target_entity[0];
+        const entity = post.target_entity[0];
+        // Handle both string and object formats
+        if (typeof entity === 'string') {
+          return entity;
+        } else if (typeof entity === 'object' && entity !== null) {
+          // Extract name from entity object (prioritize Persian name)
+          return entity.name_persian || entity.name_arabic || entity.name_english || entity.name || 'نامشخص';
+        }
       }
     }
     return 'نامشخص';
@@ -107,7 +114,15 @@ const CampaignTracking = () => {
     const persons = new Set<string>();
     posts.forEach(post => {
       if (post.target_persons && Array.isArray(post.target_persons)) {
-        post.target_persons.forEach((p: string) => persons.add(p));
+        post.target_persons.forEach((p: any) => {
+          // Handle both string and object formats
+          if (typeof p === 'string') {
+            persons.add(p);
+          } else if (typeof p === 'object' && p !== null) {
+            const name = p.name_persian || p.name_arabic || p.name_english || p.name || null;
+            if (name) persons.add(name);
+          }
+        });
       }
     });
     return Array.from(persons).slice(0, 5);

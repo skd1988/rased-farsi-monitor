@@ -63,9 +63,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
     ? differenceInDays(new Date(campaign.end_date), new Date(campaign.start_date))
     : differenceInDays(new Date(), new Date(campaign.start_date));
 
-  // Mock data for posts count (would come from junction table)
-  const postsCount = 24;
-  const recentGrowth = 15;
+  // Get real data from campaign
+  const postsCount = campaign.postsCount || campaign.posts?.length || 0;
+  const recentGrowth = campaign.weeklyGrowth || 0;
   const isGrowing = recentGrowth > 0;
 
   return (
@@ -172,7 +172,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       </div>
 
       {/* Targets Section */}
-      {campaign.main_target && (
+      {campaign.main_target && campaign.main_target !== 'نامشخص' && (
         <div className="space-y-2 bg-muted/30 p-3 rounded-lg">
           <div className="flex items-center gap-2 text-sm font-medium">
             <Target className="h-4 w-4 text-danger" />
@@ -180,16 +180,26 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           </div>
           <div className="flex flex-wrap gap-1">
             <Badge className="bg-danger text-white">
-              {campaign.main_target}
+              {typeof campaign.main_target === 'string' 
+                ? campaign.main_target 
+                : campaign.main_target?.name_persian || campaign.main_target?.name || 'نامشخص'}
             </Badge>
             {campaign.target_persons && Array.isArray(campaign.target_persons) && campaign.target_persons.length > 0 && (
               <>
-                {campaign.target_persons.slice(0, 2).map((person: string, idx: number) => (
-                  <Badge key={idx} variant="outline" className="gap-1">
-                    <Users className="h-3 w-3" />
-                    {person}
-                  </Badge>
-                ))}
+                {campaign.target_persons.slice(0, 2).map((person: any, idx: number) => {
+                  const personName = typeof person === 'string' 
+                    ? person 
+                    : person?.name_persian || person?.name_arabic || person?.name_english || person?.name;
+                  
+                  if (!personName) return null;
+                  
+                  return (
+                    <Badge key={idx} variant="outline" className="gap-1">
+                      <Users className="h-3 w-3" />
+                      {personName}
+                    </Badge>
+                  );
+                })}
                 {campaign.target_persons.length > 2 && (
                   <Badge variant="outline">
                     +{campaign.target_persons.length - 2} نفر
@@ -221,8 +231,8 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">روایت مقابل:</span>
         </div>
-        <Badge className={counterStatusColors[campaign.counter_campaign_status as keyof typeof counterStatusColors]}>
-          {campaign.counter_campaign_status}
+        <Badge className={counterStatusColors[(campaign.counter_campaign_status || 'Not Started') as keyof typeof counterStatusColors] || 'bg-muted text-muted-foreground'}>
+          {campaign.counter_campaign_status || 'Not Started'}
         </Badge>
       </div>
 

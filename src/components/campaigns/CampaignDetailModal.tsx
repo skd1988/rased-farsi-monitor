@@ -49,18 +49,26 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
 
   if (!campaign) return null;
 
-  // Mock activity data
-  const activityData = Array.from({ length: 30 }, (_, i) => ({
-    date: format(new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000), 'MM/dd'),
-    posts: Math.floor(Math.random() * 10) + 1,
-  }));
+  // Generate real activity data from campaign posts
+  const activityData = React.useMemo(() => {
+    if (!campaign.posts || campaign.posts.length === 0) return [];
+    
+    // Group posts by date
+    const postsByDate = new Map<string, number>();
+    campaign.posts.forEach((post: any) => {
+      const date = format(new Date(post.published_at), 'MM/dd');
+      postsByDate.set(date, (postsByDate.get(date) || 0) + 1);
+    });
+    
+    // Convert to array and sort by date
+    return Array.from(postsByDate.entries())
+      .map(([date, posts]) => ({ date, posts }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(-30); // Last 30 days
+  }, [campaign.posts]);
 
-  // Mock posts data
-  const mockPosts = [
-    { id: '1', title: 'مطلب نمونه ۱', source: 'توییتر', date: new Date(), threat: 'High' },
-    { id: '2', title: 'مطلب نمونه ۲', source: 'تلگرام', date: new Date(), threat: 'Critical' },
-    { id: '3', title: 'مطلب نمونه ۳', source: 'اینستاگرام', date: new Date(), threat: 'Medium' },
-  ];
+  // Use real posts from campaign
+  const campaignPosts = campaign.posts || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -108,7 +116,7 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
             {/* Key Metrics */}
             <div className="grid grid-cols-4 gap-4">
               <Card className="p-4 text-center">
-                <div className="text-3xl font-bold text-primary">24</div>
+                <div className="text-3xl font-bold text-primary">{campaignPosts.length}</div>
                 <div className="text-sm text-muted-foreground">مجموع مطالب</div>
               </Card>
               <Card className="p-4 text-center">
@@ -123,7 +131,7 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
               </Card>
               <Card className="p-4 text-center">
                 <Badge className="text-lg px-4 py-2">
-                  {campaign.counter_campaign_status}
+                  {campaign.counter_campaign_status || 'Not Started'}
                 </Badge>
                 <div className="text-sm text-muted-foreground mt-2">وضعیت پاسخ</div>
               </Card>
@@ -163,12 +171,20 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
                 <div>
                   <span className="text-sm text-muted-foreground mb-2 block">افراد هدف</span>
                   <div className="flex flex-wrap gap-2">
-                    {campaign.target_persons.map((person: string, idx: number) => (
-                      <Badge key={idx} variant="secondary" className="gap-2">
-                        <Users className="h-3 w-3" />
-                        {person}
-                      </Badge>
-                    ))}
+                    {campaign.target_persons.map((person: any, idx: number) => {
+                      const personName = typeof person === 'string' 
+                        ? person 
+                        : person?.name_persian || person?.name_arabic || person?.name_english || person?.name;
+                      
+                      if (!personName) return null;
+                      
+                      return (
+                        <Badge key={idx} variant="secondary" className="gap-2">
+                          <Users className="h-3 w-3" />
+                          {personName}
+                        </Badge>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -186,36 +202,42 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
           {/* Posts Tab */}
           <TabsContent value="posts" className="space-y-4">
             <Card>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">عنوان</TableHead>
-                    <TableHead className="text-right">منبع</TableHead>
-                    <TableHead className="text-right">تاریخ</TableHead>
-                    <TableHead className="text-right">سطح تهدید</TableHead>
-                    <TableHead className="text-right">عملیات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockPosts.map((post) => (
-                    <TableRow key={post.id}>
-                      <TableCell className="font-medium">{post.title}</TableCell>
-                      <TableCell>{post.source}</TableCell>
-                      <TableCell>{format(post.date, 'PP', { locale: faIR })}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={post.threat === 'Critical' ? 'destructive' : 'secondary'}
-                        >
-                          {post.threat}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm">مشاهده</Button>
-                      </TableCell>
+              {campaignPosts.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">عنوان</TableHead>
+                      <TableHead className="text-right">منبع</TableHead>
+                      <TableHead className="text-right">تاریخ</TableHead>
+                      <TableHead className="text-right">سطح تهدید</TableHead>
+                      <TableHead className="text-right">عملیات</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {campaignPosts.map((post: any) => (
+                      <TableRow key={post.id}>
+                        <TableCell className="font-medium max-w-md truncate">{post.title}</TableCell>
+                        <TableCell>{post.source || 'نامشخص'}</TableCell>
+                        <TableCell>{format(new Date(post.published_at), 'PP', { locale: faIR })}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={post.threat_level === 'Critical' || post.threat_level === 'High' ? 'destructive' : 'secondary'}
+                          >
+                            {post.threat_level || 'Medium'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm">مشاهده</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="p-12 text-center text-muted-foreground">
+                  هیچ مطلبی یافت نشد
+                </div>
+              )}
             </Card>
           </TabsContent>
 
