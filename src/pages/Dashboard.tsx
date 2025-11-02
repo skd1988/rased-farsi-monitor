@@ -226,6 +226,24 @@ const Dashboard = () => {
   // Attack Vector Distribution
   const attackVectorData = useMemo(() => {
     const vectorCounts: Record<string, number> = {};
+    const vectorTranslations: Record<string, string> = {
+      'Corruption Allegations': 'اتهامات فساد',
+      'Weakness Portrayal': 'نمایش ضعف',
+      'Legitimacy Questioning': 'زیر سوال بردن مشروعیت',
+      'Fear Mongering': 'ایجاد ترس',
+      'False Flag': 'عملیات پرچم جعلی',
+      'Disinformation': 'اطلاعات نادرست',
+      'Propaganda': 'تبلیغات',
+      'Character Assassination': 'ترور شخصیت',
+      'Divide and Conquer': 'تفرقه‌اندازی',
+      'Demonization': 'شیطان‌سازی',
+      'Victimhood Narrative': 'روایت قربانی‌سازی',
+      'Discrediting': 'بی‌اعتبارسازی',
+      'Emotional Manipulation': 'دستکاری احساسی',
+      'Amplification': 'تقویت و گسترش',
+      'Astroturfing': 'جعل افکار عمومی',
+      'Bandwagon Effect': 'اثر موج‌سواری'
+    };
     
     posts.forEach(post => {
       if (post.is_psyop && post.psyop_technique && Array.isArray(post.psyop_technique)) {
@@ -236,7 +254,10 @@ const Dashboard = () => {
     });
     
     return Object.entries(vectorCounts)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, value]) => ({ 
+        name: vectorTranslations[name] || name, 
+        value 
+      }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
   }, [posts]);
