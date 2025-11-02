@@ -3,7 +3,7 @@ import { X, ExternalLink, Newspaper, User, Calendar, Globe, Tag, Zap, AlertTrian
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { formatPersianDate, getRelativeTime } from '@/lib/dateUtils';
+import { formatPersianDateTime, getRelativeTime } from '@/lib/dateUtils';
 import { EnrichedPost } from '@/lib/mockData';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -54,7 +54,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
               <span className="text-muted-foreground">تاریخ:</span>
               <div className="text-right">
                 <Calendar className="w-3 h-3 inline ms-1" />
-                <span className="font-medium">{formatPersianDate(post.date)}</span>
+                <span className="font-medium">{formatPersianDateTime(post.date)}</span>
                 <p className="text-xs text-muted-foreground">{getRelativeTime(post.date)}</p>
               </div>
             </div>
@@ -138,7 +138,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({ post, isOpen, onClose
               <div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 text-right">تاریخ تحلیل</div>
                 <div className="text-sm mt-1 text-right">
-                  {new Date((post as any).analyzed_at).toLocaleString('fa-IR')}
+                  {formatPersianDateTime((post as any).analyzed_at)}
                 </div>
               </div>
               

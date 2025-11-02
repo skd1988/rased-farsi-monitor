@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { MoreVertical, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
-import { formatPersianDate, getRelativeTime } from "@/lib/dateUtils";
+import { formatPersianDateTime, getRelativeTime } from "@/lib/dateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";

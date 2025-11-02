@@ -1,6 +1,7 @@
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { format as dateFnsFormat } from 'date-fns';
 import { faIR } from 'date-fns/locale';
+import moment from 'moment-jalaali';
 
 // Iran timezone constant
 export const IRAN_TIMEZONE = 'Asia/Tehran';
@@ -11,10 +12,16 @@ export function toIranTime(date: Date | string): Date {
   return toZonedTime(d, IRAN_TIMEZONE);
 }
 
-// Wrapper for date-fns format that uses Iran timezone
-export function formatIranDate(date: Date | string, formatStr: string = 'PP', options?: any): string {
+// Format date in Jalali (Shamsi) calendar with Iran timezone
+export function formatIranDate(date: Date | string, formatStr: string = 'jYYYY/jMM/jDD', options?: any): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return formatInTimeZone(d, IRAN_TIMEZONE, formatStr, { ...options, locale: faIR });
+  const iranDate = toIranTime(d);
+  
+  // Convert to Jalali calendar
+  const m = moment(iranDate);
+  
+  // Format using Jalali
+  return m.format(formatStr);
 }
 
 // Wrapper for formatDistanceToNow with Iran timezone
@@ -41,35 +48,49 @@ export function formatDistanceToNowIran(date: Date | string, options?: any): str
   return `${diffYears} سال پیش`;
 }
 
-// Date utilities for Persian calendar and relative time (in Iran timezone)
+// Format date in Jalali (Shamsi) calendar
 export function formatPersianDate(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
   const iranDate = toIranTime(d);
   
-  // Format with Iran timezone
-  return formatInTimeZone(d, IRAN_TIMEZONE, 'yyyy/MM/dd HH:mm', { locale: undefined });
+  // Convert to Jalali calendar with time
+  const m = moment(iranDate);
+  return m.format('jYYYY/jMM/jDD HH:mm');
 }
 
-// Format for display with Persian numbers
+// Format for display with Persian numbers and full Jalali date
 export function formatPersianDateTime(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
   const iranDate = toIranTime(d);
   
-  // Get formatted date in Iran timezone
-  const formatted = iranDate.toLocaleDateString('fa-IR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone: IRAN_TIMEZONE
-  });
+  // Convert to Jalali calendar
+  const m = moment(iranDate);
   
-  const time = iranDate.toLocaleTimeString('fa-IR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: IRAN_TIMEZONE
-  });
+  // Format in Persian with Jalali date
+  const formatted = m.format('jYYYY/jMM/jDD');
+  const time = m.format('HH:mm');
   
   return `${formatted} ${time}`;
+}
+
+// Format full date with Persian month names
+export function formatPersianDateLong(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const iranDate = toIranTime(d);
+  
+  const m = moment(iranDate);
+  
+  // Persian month names
+  const persianMonths = [
+    'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+    'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
+  ];
+  
+  const day = m.jDate();
+  const month = persianMonths[m.jMonth()];
+  const year = m.jYear();
+  
+  return `${day} ${month} ${year}`;
 }
 
 export function getRelativeTime(date: Date | string): string {

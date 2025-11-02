@@ -2,7 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { formatPersianDate } from '@/lib/dateUtils';
+import { formatPersianDateTime } from '@/lib/dateUtils';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -41,7 +41,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
           <div className="flex flex-wrap gap-2 items-center text-sm">
             <Badge variant="outline">{post.source}</Badge>
             {post.author && <span>• {post.author}</span>}
-            <span>• {formatPersianDate(post.published_at)}</span>
+            <span>• {formatPersianDateTime(post.published_at)}</span>
             {post.article_url && (
               <Button variant="link" size="sm" asChild>
                 <a href={post.article_url} target="_blank" rel="noopener noreferrer">
@@ -141,7 +141,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
 
             {/* Analysis Metadata */}
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-4 border-t">
-              <span>تحلیل شده: {formatPersianDate(post.analyzed_at)}</span>
+              <span>تحلیل شده: {formatPersianDateTime(post.analyzed_at)}</span>
               <span>•</span>
               <span>مدل: {post.analysis_model || 'DeepSeek'}</span>
               {post.processing_time && (

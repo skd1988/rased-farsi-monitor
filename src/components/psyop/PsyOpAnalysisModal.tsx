@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { translateSentiment } from '@/utils/sentimentTranslations';
-import { formatIranDate } from '@/lib/dateUtils';
+import { formatIranDate, formatPersianDateLong } from '@/lib/dateUtils';
 import {
   Dialog,
   DialogContent,
@@ -208,7 +208,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
               <div className="space-y-2">
                 <span className="text-sm text-muted-foreground">تاریخ انتشار</span>
                 <div className="text-base font-medium">
-                  {formatIranDate(post.published_at, 'PPPp')}
+                  {formatPersianDateLong(post.published_at)}
                 </div>
               </div>
 
@@ -306,7 +306,7 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
                 <div className="text-sm text-muted-foreground mb-2">زمان تشخیص</div>
                 <div className="text-sm mt-4">
                   {post.analyzed_at 
-                    ? formatIranDate(post.analyzed_at, 'PPp')
+                    ? formatIranDate(post.analyzed_at, 'jYYYY/jMM/jDD HH:mm')
                     : 'نامشخص'}
                 </div>
               </Card>
@@ -626,14 +626,14 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
                     <span className="text-muted-foreground">تاریخ تحلیل</span>
                     <div className="font-medium">
                       {post.analyzed_at 
-                        ? formatIranDate(post.analyzed_at, 'PP')
+                        ? formatIranDate(post.analyzed_at, 'jYYYY/jMM/jDD')
                         : 'نامشخص'}
                     </div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">آخرین به‌روزرسانی</span>
                     <div className="font-medium">
-                      {formatIranDate(post.updated_at || post.created_at, 'PP')}
+                      {formatIranDate(post.updated_at || post.created_at, 'jYYYY/jMM/jDD')}
                     </div>
                   </div>
                 </div>

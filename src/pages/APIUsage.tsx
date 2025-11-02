@@ -7,8 +7,7 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatDistanceToNow } from 'date-fns';
-import { ar } from 'date-fns/locale';
+import { formatDistanceToNowIran } from '@/lib/dateUtils';
 
 interface UsageLog {
   id: string;
@@ -364,10 +363,7 @@ const APIUsage = () => {
                 {usageLogs.slice(0, 50).map((log) => (
                   <TableRow key={log.id}>
                     <TableCell className="text-right">
-                      {formatDistanceToNow(new Date(log.created_at), {
-                        addSuffix: true,
-                        locale: ar,
-                      })}
+                      {formatDistanceToNowIran(log.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
                       <code className="text-xs">{log.model_used}</code>

@@ -29,8 +29,7 @@ import {
   Search,
   StickyNote,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { ar } from 'date-fns/locale';
+import { formatDistanceToNowIran, formatPersianDateTime } from '@/lib/dateUtils';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -434,10 +433,10 @@ const Alerts = () => {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="h-4 w-4" />
                     <span>
-                      {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true, locale: ar })}
+                      {formatDistanceToNowIran(alert.created_at)}
                     </span>
                     <span>•</span>
-                    <span>{new Date(alert.created_at).toLocaleString('fa-IR')}</span>
+                    <span>{formatPersianDateTime(alert.created_at)}</span>
                   </div>
 
                   <div className="flex flex-wrap gap-2 pt-2">

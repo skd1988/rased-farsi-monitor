@@ -1,6 +1,7 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatPersianDate } from '@/lib/dateUtils';
+import { formatPersianDateTime } from '@/lib/dateUtils';
+import moment from 'moment-jalaali';
 
 interface PostsLineChartProps {
   data: Array<{ date: string; count: number }>;
@@ -15,7 +16,10 @@ const PostsLineChart: React.FC<PostsLineChartProps> = ({ data }) => {
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
           <XAxis 
             dataKey="date" 
-            tickFormatter={(value) => formatPersianDate(value)}
+            tickFormatter={(value) => {
+              const m = moment(new Date(value));
+              return m.format('jMM/jDD');
+            }}
             className="text-xs"
           />
           <YAxis />
@@ -25,7 +29,7 @@ const PostsLineChart: React.FC<PostsLineChartProps> = ({ data }) => {
                 return (
                   <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
                     <p className="text-sm font-medium">
-                      تاریخ: {formatPersianDate(payload[0].payload.date)}
+                      تاریخ: {formatPersianDateTime(payload[0].payload.date)}
                     </p>
                     <p className="text-sm text-primary font-bold">
                       تعداد: {payload[0].value} مطلب

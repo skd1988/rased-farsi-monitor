@@ -108,9 +108,9 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
       {/* Timeline Visualization */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{formatIranDate(campaign.start_date, 'PP')}</span>
+          <span>{formatIranDate(campaign.start_date, 'jYYYY/jMM/jDD')}</span>
           {campaign.end_date && (
-            <span>{formatIranDate(campaign.end_date, 'PP')}</span>
+            <span>{formatIranDate(campaign.end_date, 'jYYYY/jMM/jDD')}</span>
           )}
         </div>
         <div className="relative h-2 bg-muted rounded-full overflow-hidden">
@@ -271,7 +271,7 @@ const CampaignCard: React.FC<CampaignCardProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
-            <span>تشخیص: {formatIranDate(campaign.created_at, 'PP')}</span>
+            <span>تشخیص: {formatIranDate(campaign.created_at, 'jYYYY/jMM/jDD')}</span>
           </div>
         </div>
       </div>

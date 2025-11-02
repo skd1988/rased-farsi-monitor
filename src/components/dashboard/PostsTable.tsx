@@ -3,7 +3,7 @@ import { Eye, ExternalLink, Zap, Brain, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { formatPersianDate, getRelativeTime } from '@/lib/dateUtils';
+import { formatPersianDateTime, getRelativeTime } from '@/lib/dateUtils';
 import { EnrichedPost } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
 
@@ -89,7 +89,7 @@ const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
                 <td className="px-4 py-3 text-sm text-right">{post.author}</td>
                 <td className="px-4 py-3">
                   <div className="text-right">
-                    <p className="text-sm">{formatPersianDate(post.date)}</p>
+                    <p className="text-sm">{formatPersianDateTime(post.date)}</p>
                     <p className="text-xs text-muted-foreground">{getRelativeTime(post.date)}</p>
                   </div>
                 </td>
