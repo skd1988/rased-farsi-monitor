@@ -73,27 +73,102 @@ serve(async (req) => {
     const deepseekData = await deepseekResponse.json();
     const responseContent = deepseekData.choices[0].message.content;
     
-    console.log("DeepSeek response:", responseContent);
+    console.log("Raw DeepSeek response:", responseContent);
     
-    // Parse JSON response
-    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+    // ROBUST JSON PARSING WITH FALLBACKS
     let result;
+    let parsingStatus = 'success';
     
-    if (jsonMatch) {
-      result = JSON.parse(jsonMatch[0]);
-    } else {
-      throw new Error("Failed to parse JSON from response");
+    try {
+      // Method 1: Strip markdown code blocks
+      let cleanedContent = responseContent
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      
+      console.log('After removing markdown:', cleanedContent);
+      
+      // Method 2: Find JSON object
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+      
+      if (!jsonMatch) {
+        console.error('No JSON object found in response');
+        throw new Error('No JSON found in response');
+      }
+      
+      const jsonString = jsonMatch[0];
+      console.log('Extracted JSON string:', jsonString);
+      
+      // Method 3: Parse with error handling
+      try {
+        result = JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        console.error('Attempted to parse:', jsonString);
+        
+        // Fallback: Try to fix common issues
+        const fixedJson = jsonString
+          .replace(/,\s*}/g, '}')  // Remove trailing commas
+          .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+          .replace(/'/g, '"')      // Replace single quotes with double
+          .replace(/(\w+):/g, '"$1":'); // Quote unquoted keys
+        
+        console.log('Attempting to parse fixed JSON:', fixedJson);
+        result = JSON.parse(fixedJson);
+        parsingStatus = 'fixed';
+      }
+      
+      console.log('Successfully parsed result:', result);
+      
+    } catch (error) {
+      console.error('Complete parsing failure:', error);
+      
+      // ULTIMATE FALLBACK: Return safe defaults
+      console.warn('Using fallback default result');
+      result = {
+        is_psyop: false,
+        confidence: 50,
+        threat_level: "Low",
+        primary_target: null
+      };
+      parsingStatus = 'fallback';
+    }
+    
+    // Validate required fields
+    if (typeof result.is_psyop === 'undefined') {
+      console.warn('Missing is_psyop field, defaulting to false');
+      result.is_psyop = false;
+    }
+    
+    if (typeof result.confidence === 'undefined') {
+      console.warn('Missing confidence field, defaulting to 50');
+      result.confidence = 50;
+    }
+    
+    if (!result.threat_level) {
+      console.warn('Missing threat_level field, defaulting to Low');
+      result.threat_level = 'Low';
+    }
+    
+    // Normalize threat level to standard values
+    const validThreatLevels = ['Low', 'Medium', 'High', 'Critical'];
+    if (!validThreatLevels.includes(result.threat_level)) {
+      console.warn(`Invalid threat_level: ${result.threat_level}, defaulting to Low`);
+      result.threat_level = 'Low';
     }
     
     // Validate and normalize result
     const normalizedResult = {
       is_psyop: result.is_psyop === true || result.is_psyop === "true" || result.is_psyop === "Yes",
-      psyop_confidence: parseInt(result.confidence) || 0,
+      psyop_confidence: parseInt(result.confidence) || parseInt(result.psyop_confidence) || 50,
       threat_level: result.threat_level || "Low",
-      primary_target: result.primary_target || null,
+      primary_target: result.primary_target || result.target || null,
       needs_deep_analysis: shouldDoDeepAnalysis(result),
-      stage: "quick_detection"
+      stage: "quick_detection",
+      parsing_status: parsingStatus
     };
+    
+    console.log('Final normalized result:', normalizedResult);
     
     const responseTime = Date.now() - startTime;
     
@@ -159,22 +234,35 @@ ${entityList}
 3. سطح تهدید چقدره؟
 4. کدوم نهاد هدف اصلی است؟
 
-فقط این JSON را برگردان (هیچ توضیح اضافه‌ای نمی‌خوام):
+⚠️ CRITICAL INSTRUCTIONS FOR JSON OUTPUT:
+1. Return ONLY valid JSON - no explanations before or after
+2. NO markdown code blocks (no \`\`\`json)
+3. NO comments inside JSON
+4. NO extra text or explanations
+5. Just the pure JSON object
 
+Required format (copy exactly):
 {
-  "is_psyop": true/false,
+  "is_psyop": true,
   "confidence": 85,
-  "threat_level": "Low" یا "Medium" یا "High" یا "Critical",
-  "primary_target": "نام انگلیسی نهاد" یا null
+  "threat_level": "High",
+  "primary_target": "Hezbollah Lebanon"
 }
+
+Rules for values:
+- is_psyop: must be boolean true or false (not string)
+- confidence: must be integer number 0-100
+- threat_level: must be exactly one of: "Low", "Medium", "High", "Critical"
+- primary_target: must be English name from entity list above, or null
 
 قوانین:
 - اگر اتهام، تهمت، اتهام تروریسم، یا دروغ علیه محور مقاومت دیدی → is_psyop: true
 - اگر خبر عادی یا خنثی بود → is_psyop: false
 - threat_level را بر اساس شدت حمله تعیین کن
-- فقط JSON برگردان، هیچ متن اضافه‌ای نه
 
-حالا تحلیل کن:`;
+⚠️ فقط JSON برگردان - هیچ کلمه دیگه‌ای نه، حتی برای توضیح
+
+حالا تحلیل کن و فقط JSON بده:`;
 }
 
 function shouldDoDeepAnalysis(result: any): boolean {
