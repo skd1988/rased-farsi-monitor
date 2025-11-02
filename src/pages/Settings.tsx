@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -232,6 +233,7 @@ const parseDate = (dateStr: any): string => {
 };
 
 const Settings = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -2469,7 +2471,7 @@ const Settings = () => {
                   <Button 
                     variant="default" 
                     className="w-full"
-                    onClick={() => window.location.href = '/settings/photo-management'}
+                    onClick={() => navigate('/settings/photo-management')}
                   >
                     <Users className="h-4 w-4 ms-2" />
                     مدیریت تصاویر اهداف
