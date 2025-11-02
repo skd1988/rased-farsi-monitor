@@ -24,6 +24,8 @@ import PsyOpCard from '@/components/psyop/PsyOpCard';
 import PsyOpAnalysisModal from '@/components/psyop/PsyOpAnalysisModal';
 import { toast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
+import { DataPagination } from '@/components/common/DataPagination';
+import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
 
 const PsyOpDetection = () => {
   const [posts, setPosts] = useState<any[]>([]);
@@ -31,6 +33,11 @@ const PsyOpDetection = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const ITEMS_PER_PAGE = 20;
   
   // Filters
   const [isPsyOpFilter, setIsPsyOpFilter] = useState<string>('Yes');
@@ -48,52 +55,61 @@ const PsyOpDetection = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<string>('threat');
 
-  // Fetch posts
+  // Fetch posts with pagination
   useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        setLoading(true);
-        // Fetch posts with their AI analysis
-        const { data: postsData, error: postsError } = await supabase
-          .from('posts')
-          .select('*')
-          .order('published_at', { ascending: false });
-        
-        if (postsError) throw postsError;
-
-        // Fetch all AI analysis
-        const { data: analysisData, error: analysisError } = await supabase
-          .from('ai_analysis')
-          .select('*');
-        
-        if (analysisError) throw analysisError;
-
-        // Merge posts with their analysis
-        const mergedPosts = (postsData || []).map(post => {
-          const analysis = analysisData?.find(a => a.post_id === post.id);
-          return {
-            ...post,
-            ...analysis,
-            // Keep post-level fields if analysis doesn't have them
-            is_psyop: post.is_psyop ?? (analysis?.is_psyop === 'Yes'),
-          };
-        });
-
-        setPosts(mergedPosts);
-      } catch (error) {
-        console.error('Error fetching posts:', error);
-        toast({
-          title: "خطا در دریافت داده‌ها",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchPosts();
+  }, [currentPage, threatLevelFilter, psyopTypeFilter, dateRange]);
 
-    // Real-time updates
+  const fetchPosts = async () => {
+    try {
+      setLoading(true);
+      
+      // Build query with filters
+      let query = supabase
+        .from('posts')
+        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords', { count: 'exact' })
+        .eq('is_psyop', true);
+      
+      // Apply filters
+      if (threatLevelFilter !== 'All') {
+        query = query.eq('threat_level', threatLevelFilter);
+      }
+      
+      if (psyopTypeFilter !== 'All') {
+        query = query.contains('psyop_technique', [psyopTypeFilter]);
+      }
+      
+      if (dateRange?.from) {
+        query = query.gte('published_at', startOfDay(dateRange.from).toISOString());
+      }
+      
+      if (dateRange?.to) {
+        query = query.lte('published_at', startOfDay(dateRange.to).toISOString());
+      }
+      
+      // Apply pagination
+      const { data: postsData, error: postsError, count } = await query
+        .order('published_at', { ascending: false })
+        .range((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE - 1);
+      
+      if (postsError) throw postsError;
+
+      setPosts(postsData || []);
+      setTotalCount(count || 0);
+      
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      toast({
+        title: "خطا در دریافت داده‌ها",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Real-time updates for new PsyOps
+  useEffect(() => {
     const channel = supabase
       .channel('psyop-updates')
       .on(
@@ -104,37 +120,16 @@ const PsyOpDetection = () => {
           table: 'posts'
         },
         async (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newPost = payload.new;
-            
-            // Fetch analysis for new post
-            const { data: analysis } = await supabase
-              .from('ai_analysis')
-              .select('*')
-              .eq('post_id', newPost.id)
-              .maybeSingle();
-
-            const mergedPost = { ...newPost, ...analysis };
-            
-            if (newPost.is_psyop) {
-              setPosts(prev => [mergedPost, ...prev]);
-              toast({
-                title: "🚨 جنگ روانی جدید تشخیص داده شد",
-                description: newPost.title,
-              });
-            }
+          if (payload.eventType === 'INSERT' && payload.new.is_psyop) {
+            // Refresh current page to include new post
+            fetchPosts();
+            toast({
+              title: "🚨 جنگ روانی جدید تشخیص داده شد",
+              description: payload.new.title,
+            });
           } else if (payload.eventType === 'UPDATE') {
-            // Fetch updated analysis
-            const { data: analysis } = await supabase
-              .from('ai_analysis')
-              .select('*')
-              .eq('post_id', payload.new.id)
-              .maybeSingle();
-
-            const mergedPost = { ...payload.new, ...analysis };
-            setPosts(prev => 
-              prev.map(p => p.id === payload.new.id ? mergedPost : p)
-            );
+            // Refresh current page to show updates
+            fetchPosts();
           }
         }
       )
@@ -145,63 +140,22 @@ const PsyOpDetection = () => {
     };
   }, []);
 
-  // Filter posts  
+  // Filter posts (client-side filtering for search only, other filters are server-side)
   const filteredPosts = useMemo(() => {
     let filtered = posts;
 
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(post => 
-        post.title?.toLowerCase().includes(query) ||
-        post.contents?.toLowerCase().includes(query)
+      filtered = filtered.filter(
+        post =>
+          post.title?.toLowerCase().includes(query) ||
+          post.analysis_summary?.toLowerCase().includes(query)
       );
     }
 
-    // Is PsyOp filter
-    if (isPsyOpFilter !== 'All') {
-      filtered = filtered.filter(post => {
-        if (isPsyOpFilter === 'Yes') return post.is_psyop === true;
-        if (isPsyOpFilter === 'No') return post.is_psyop === false;
-        if (isPsyOpFilter === 'Uncertain') return post.is_psyop === null;
-        return true;
-      });
-    }
-
-    // Threat level filter
-    if (threatLevelFilter !== 'All') {
-      filtered = filtered.filter(post => post.threat_level === threatLevelFilter);
-    }
-
-    // Urgency filter
-    if (urgencyFilter !== 'All') {
-      filtered = filtered.filter(post => post.urgency_level === urgencyFilter);
-    }
-
-    // PsyOp type filter
-    if (psyopTypeFilter !== 'All') {
-      filtered = filtered.filter(post => post.psyop_type === psyopTypeFilter);
-    }
-
-    // Status filter
-    if (statusFilter !== 'All' && !showAll) {
-      filtered = filtered.filter(post => {
-        const status = post.alert_status || 'Unresolved';
-        return status === statusFilter;
-      });
-    }
-
-    // Date range filter
-    if (dateRange?.from) {
-      const fromDate = startOfDay(dateRange.from);
-      filtered = filtered.filter(post => {
-        const postDate = new Date(post.published_at);
-        return postDate >= fromDate && (!dateRange.to || postDate <= dateRange.to);
-      });
-    }
-
     return filtered;
-  }, [posts, searchQuery, isPsyOpFilter, statusFilter, showAll, threatLevelFilter, urgencyFilter, psyopTypeFilter, dateRange]);
+  }, [posts, searchQuery]);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
@@ -545,6 +499,21 @@ const PsyOpDetection = () => {
             />
           ))}
         </div>
+      )}
+
+      {/* Pagination */}
+      {!loading && sortedPosts.length > 0 && (
+        <DataPagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(totalCount / ITEMS_PER_PAGE)}
+          totalItems={totalCount}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={(page) => {
+            setCurrentPage(page);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          loading={loading}
+        />
       )}
 
       {/* Analysis Modal */}

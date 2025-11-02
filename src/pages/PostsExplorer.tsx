@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Download, Search, Filter, X, ChevronLeft, ChevronRight, MoreVertical, Eye, Link as LinkIcon, Archive, Trash2 } from 'lucide-react';
+import { Download, Search, Filter, X, MoreVertical, Eye, Link as LinkIcon, Archive, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ import { toast } from '@/hooks/use-toast';
 import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import { formatPersianDate, getRelativeTime } from '@/lib/dateUtils';
 import { cn } from '@/lib/utils';
+import { DataPagination } from '@/components/common/DataPagination';
 
 interface Post {
   id: string;
@@ -92,6 +93,7 @@ const PostsExplorer = () => {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'keywords' | 'alphabetical'>('newest');
 
@@ -112,32 +114,94 @@ const PostsExplorer = () => {
 
   useEffect(() => {
     fetchPosts();
+  }, [currentPage, selectedSources, selectedLanguages, selectedStatuses, selectedKeywords, dateFrom, dateTo, sortBy, hideEmptyPosts]);
+
+  // Fetch unique sources for filters
+  useEffect(() => {
+    fetchFilterOptions();
   }, []);
+
+  const fetchFilterOptions = async () => {
+    try {
+      const { data } = await supabase
+        .from('posts')
+        .select('source, language, keywords');
+      
+      if (data) {
+        // Build unique sources and keywords from limited dataset
+        const sources = new Set(data.map(p => p.source).filter(Boolean));
+        setSelectedSources(new Set());
+      }
+    } catch (error) {
+      console.error('Error fetching filter options:', error);
+    }
+  };
 
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      console.log('Fetching posts from Supabase...');
       
-      const { data, error } = await supabase
+      // Build query with filters
+      let query = supabase
         .from('posts')
-        .select('*')
-        .order('published_at', { ascending: false });
+        .select('id, title, author, article_url, source, language, status, keywords, published_at, contents', { count: 'exact' });
       
-      console.log('Supabase response:', { data, error });
+      // Apply filters
+      if (selectedSources.size > 0) {
+        query = query.in('source', Array.from(selectedSources));
+      }
+      
+      if (selectedLanguages.size > 0) {
+        query = query.in('language', Array.from(selectedLanguages));
+      }
+      
+      if (selectedStatuses.size > 0) {
+        query = query.in('status', Array.from(selectedStatuses));
+      }
+      
+      if (dateFrom) {
+        query = query.gte('published_at', dateFrom);
+      }
+      
+      if (dateTo) {
+        query = query.lte('published_at', dateTo);
+      }
+      
+      if (hideEmptyPosts) {
+        query = query.not('contents', 'is', null);
+      }
+      
+      // Apply sorting
+      switch (sortBy) {
+        case 'oldest':
+          query = query.order('published_at', { ascending: true });
+          break;
+        case 'alphabetical':
+          query = query.order('title', { ascending: true });
+          break;
+        case 'newest':
+        default:
+          query = query.order('published_at', { ascending: false });
+          break;
+      }
+      
+      // Apply pagination
+      const { data, error, count } = await query
+        .range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1);
       
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
       
-      console.log(`Successfully fetched ${data?.length || 0} posts`);
+      console.log(`Successfully fetched ${data?.length || 0} posts (page ${currentPage})`);
       setPosts(data || []);
+      setTotalCount(count || 0);
       
       if (!data || data.length === 0) {
         toast({
           title: 'اطلاع',
-          description: 'هیچ مطلبی در دیتابیس یافت نشد',
+          description: 'هیچ مطلبی با فیلترهای انتخاب شده یافت نشد',
         });
       }
     } catch (error) {
@@ -757,76 +821,19 @@ const PostsExplorer = () => {
           </div>
 
           {/* Pagination */}
-          {!loading && filteredPosts.length > 0 && (
-            <div className="mt-6 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">نمایش</span>
-                <Select
-                  value={itemsPerPage.toString()}
-                  onValueChange={(v) => {
-                    setItemsPerPage(Number(v));
-                    setCurrentPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-muted-foreground">مورد در هر صفحه</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                  صفحه قبل
-                </Button>
-                
-                <div className="flex gap-1">
-                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={currentPage === pageNum ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setCurrentPage(pageNum)}
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  })}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  صفحه بعد
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-              </div>
+          {!loading && posts.length > 0 && (
+            <div className="mt-6">
+              <DataPagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(totalCount / itemsPerPage)}
+                totalItems={totalCount}
+                itemsPerPage={itemsPerPage}
+                onPageChange={(page) => {
+                  setCurrentPage(page);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                loading={loading}
+              />
             </div>
           )}
         </div>
