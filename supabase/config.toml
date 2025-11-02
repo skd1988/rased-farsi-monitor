@@ -3,5 +3,8 @@ project_id = "cjmjkupbkovaajyjzwgk"
 [functions.analyze-post]
 verify_jwt = false
 
+[functions.analyze-post-deepseek]
+verify_jwt = false
+
 [functions.chat-assistant]
 verify_jwt = false

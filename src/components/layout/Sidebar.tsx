@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, FileText, Brain, MessageSquare, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3, Shield, Radar, Target, ShieldCheck } from 'lucide-react';
+import { Home, FileText, Brain, MessageSquare, AlertTriangle, TrendingUp, Settings, Newspaper, Wrench, BarChart3, Shield, Radar, Target, ShieldCheck, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,6 +18,7 @@ const menuItems = [
   { icon: AlertTriangle, label: 'هشدارها', path: '/alerts' },
   { icon: TrendingUp, label: 'هوش و روندها', path: '/intelligence' },
   { icon: Settings, label: 'تنظیمات', path: '/settings' },
+  { icon: Zap, label: 'تحلیل دسته‌ای', path: '/batch-analysis' },
   { icon: Wrench, label: 'Debug', path: '/debug' },
 ];
 

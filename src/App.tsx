@@ -23,6 +23,7 @@ import ComingSoon from "./pages/ComingSoon";
 import Debug from "./pages/Debug";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
+import BatchAnalysis from "./pages/BatchAnalysis";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
                   <Route path="response-management" element={<ResponseManagement />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="intelligence" element={<IntelligenceAndTrends />} />
+                  <Route path="batch-analysis" element={<BatchAnalysis />} />
                   <Route path="debug" element={<Debug />} />
                 </Route>
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
