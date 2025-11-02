@@ -84,14 +84,44 @@ serve(async (req) => {
   "is_psyop": "Yes" یا "No" یا "Uncertain",
   "psyop_confidence": عدد 0-100,
   "psyop_type": "Direct Attack" | "Indirect Accusation" | "Doubt Creation" | "False Flag" | "Demoralization" | "Division Creation" | "Information Warfare" | "Propaganda Campaign" | null,
+  
   "primary_target": "نام دقیق نهاد از لیست محور مقاومت یا null",
   "secondary_targets": ["نهاد1", "نهاد2"] یا [],
-  "targeted_persons": ["نام شخص1"] یا [],
+  
+  "targeted_persons": [
+    {
+      "name_persian": "سید حسن نصرالله",
+      "name_english": "Hassan Nasrallah",
+      "name_arabic": "حسن نصر الله",
+      "entity_type": "Individual",
+      "position": "رهبر سیاسی",
+      "organization": "حزب‌الله لبنان",
+      "category": "رهبر سیاسی",
+      "country": "Lebanon",
+      "attack_nature": "Personal"
+    }
+  ],
+  
   "target_category": "Leadership" | "Military Forces" | "Political Wing" | "Social Base" | "International Support" | null,
   "attack_vectors": ["Human Rights Violations", "Terrorism Labeling", "Sectarian Division", "Foreign Interference", "Corruption Allegations", "Weakness Portrayal", "Legitimacy Questioning", "Historical Revisionism"],
   
   "narrative_theme": "Demonization",  ⬅️ ⚠️ MANDATORY - یکی از 8 مقدار بالا
   "narrative_type": "Attack",  ⬅️ ⚠️ MANDATORY - یکی از 4 مقدار بالا
+  
+  ⚠️ توضیحات مهم برای targeted_persons:
+  - category باید یکی از این دسته‌بندی‌ها باشد:
+    * "رهبر سیاسی" (Political Leader)
+    * "فرمانده نظامی" (Military Commander) 
+    * "مرجع دینی" (Religious Authority)
+    * "سخنگو" (Spokesperson)
+    * "فعال" (Activist)
+  
+  - position باید دقیق باشد: "دبیرکل"، "رهبر سیاسی"، "فرمانده کل"، "سخنگو رسمی"، etc.
+  
+  - اگر هدف سازمان است (نه فرد):
+    * entity_type: "Organization"
+    * position: null
+    * category: "سازمان"
   
   "threat_level": "Critical" | "High" | "Medium" | "Low",
   "virality_potential": عدد 0-10,

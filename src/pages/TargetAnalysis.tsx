@@ -148,34 +148,75 @@ const TargetAnalysis = () => {
     })).sort((a, b) => b.totalAttacks - a.totalAttacks);
   }, [posts, entities]);
 
-  // Process person data
+  // Process person data with enhanced categorization
   const personStats = useMemo(() => {
     const stats = new Map();
 
     posts.forEach(post => {
       if (post.target_persons && Array.isArray(post.target_persons)) {
-        post.target_persons.forEach((personName: string) => {
-          const person = persons.find(p => p.name_persian === personName);
+        post.target_persons.forEach((personData: any) => {
+          // Handle both old format (string) and new format (object)
+          let personKey: string;
+          let personInfo: any;
+
+          if (typeof personData === 'string') {
+            // Legacy format - just a name
+            personKey = personData;
+            const person = persons.find(p => p.name_persian === personData);
+            personInfo = {
+              name_persian: personData,
+              name_english: person?.name_english || personData,
+              name_arabic: person?.name_arabic,
+              entity_type: 'Individual',
+              position: person?.role || 'نامشخص',
+              organization: person?.entity_id || 'نامشخص',
+              category: person?.role || 'نامشخص',
+              country: 'نامشخص',
+              attack_nature: 'Personal'
+            };
+          } else {
+            // New format - full object
+            personKey = personData.name_persian || personData.name_english;
+            personInfo = {
+              name_persian: personData.name_persian,
+              name_english: personData.name_english,
+              name_arabic: personData.name_arabic,
+              entity_type: personData.entity_type || 'Individual',
+              position: personData.position || 'نامشخص',
+              organization: personData.organization || 'نامشخص',
+              category: personData.category || 'نامشخص',
+              country: personData.country || 'نامشخص',
+              attack_nature: personData.attack_nature || 'Personal'
+            };
+          }
           
-          if (!stats.has(personName)) {
-            stats.set(personName, {
-              name_persian: personName,
-              name_english: person?.name_english,
-              role: person?.role || 'Unknown',
-              entity: person?.entity_id || 'Unknown',
+          if (!stats.has(personKey)) {
+            stats.set(personKey, {
+              ...personInfo,
               totalAttacks: 0,
               weekAttacks: 0,
+              threatLevels: { Critical: 0, High: 0, Medium: 0, Low: 0 },
               topAccusations: new Map(),
+              narratives: new Map(),
+              sources: new Set(),
               timeline: Array(14).fill(0),
+              firstAttack: post.published_at,
+              lastAttack: post.published_at,
             });
           }
 
-          const stat = stats.get(personName);
+          const stat = stats.get(personKey);
           stat.totalAttacks++;
 
+          // Week attacks
           const weekAgo = subDays(new Date(), 7);
           if (new Date(post.published_at) >= weekAgo) {
             stat.weekAttacks++;
+          }
+
+          // Threat levels
+          if (post.threat_level) {
+            stat.threatLevels[post.threat_level]++;
           }
 
           // Accusations
@@ -183,6 +224,19 @@ const TargetAnalysis = () => {
             post.psyop_technique.forEach((tech: string) => {
               stat.topAccusations.set(tech, (stat.topAccusations.get(tech) || 0) + 1);
             });
+          }
+
+          // Narratives
+          if (post.narrative_theme) {
+            stat.narratives.set(post.narrative_theme, (stat.narratives.get(post.narrative_theme) || 0) + 1);
+          }
+
+          // Sources
+          stat.sources.add(post.source);
+
+          // Last attack
+          if (new Date(post.published_at) > new Date(stat.lastAttack)) {
+            stat.lastAttack = post.published_at;
           }
 
           // Timeline
@@ -194,16 +248,34 @@ const TargetAnalysis = () => {
       }
     });
 
-    return Array.from(stats.values()).map(stat => ({
-      ...stat,
-      topAccusations: Array.from(stat.topAccusations.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([acc]) => translatePsyopTechnique(acc)),
-      severity: stat.totalAttacks > 20 ? 'Critical' :
-                stat.totalAttacks > 10 ? 'High' :
-                stat.totalAttacks > 5 ? 'Medium' : 'Low',
-    })).sort((a, b) => b.totalAttacks - a.totalAttacks);
+    return Array.from(stats.values()).map(stat => {
+      // Calculate risk score
+      let riskScore = 0;
+      riskScore += stat.totalAttacks * 5;
+      riskScore += stat.threatLevels.Critical * 20;
+      riskScore += stat.threatLevels.High * 10;
+      riskScore += stat.threatLevels.Medium * 5;
+      riskScore += stat.sources.size * 3;
+
+      const daysSinceLastAttack = (Date.now() - new Date(stat.lastAttack).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLastAttack < 7) riskScore += 30;
+      else if (daysSinceLastAttack < 30) riskScore += 15;
+
+      return {
+        ...stat,
+        topAccusations: Array.from(stat.topAccusations.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([acc]) => translatePsyopTechnique(acc)),
+        dominantNarrative: Array.from(stat.narratives.entries())
+          .sort((a, b) => b[1] - a[1])[0]?.[0] || 'نامشخص',
+        sources: Array.from(stat.sources),
+        riskScore: Math.min(riskScore, 100),
+        severity: riskScore >= 80 ? 'Critical' :
+                  riskScore >= 50 ? 'High' :
+                  riskScore >= 30 ? 'Medium' : 'Low',
+      };
+    }).sort((a, b) => b.riskScore - a.riskScore);
   }, [posts, persons]);
 
   // Attack vector data
@@ -370,6 +442,32 @@ const TargetAnalysis = () => {
 
             {/* Tab 2: Persons */}
             <TabsContent value="persons" className="space-y-6">
+              {/* Category Statistics */}
+              <div className="grid grid-cols-6 gap-3">
+                {['همه', 'رهبر سیاسی', 'فرمانده نظامی', 'مرجع دینی', 'سخنگو', 'فعال'].map(category => {
+                  const count = category === 'همه'
+                    ? personStats.length
+                    : personStats.filter(p => p.category === category).length;
+
+                  return (
+                    <button
+                      key={category}
+                      onClick={() => setPersonRole(category === 'همه' ? 'All' : category)}
+                      className={`
+                        p-3 rounded-lg border-2 transition-all hover:shadow-md
+                        ${(personRole === 'All' && category === 'همه') || personRole === category
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/50'
+                        }
+                      `}
+                    >
+                      <div className="text-2xl font-bold">{count}</div>
+                      <div className="text-xs text-muted-foreground">{category}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Filters */}
               <Card className="p-4">
                 <div className="flex flex-wrap gap-3">
@@ -383,20 +481,6 @@ const TargetAnalysis = () => {
                       <SelectItem value="30d">۳۰ روز</SelectItem>
                       <SelectItem value="90d">۹۰ روز</SelectItem>
                       <SelectItem value="all">همه زمان</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={personRole} onValueChange={setPersonRole}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="نقش" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="All">همه</SelectItem>
-                      <SelectItem value="Political Leader">رهبر سیاسی</SelectItem>
-                      <SelectItem value="Military Commander">فرمانده نظامی</SelectItem>
-                      <SelectItem value="Religious Authority">مرجع دینی</SelectItem>
-                      <SelectItem value="Spokesperson">سخنگو</SelectItem>
-                      <SelectItem value="Activist">فعال</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -428,7 +512,7 @@ const TargetAnalysis = () => {
               {/* Person Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {personStats
-                  .filter(p => personRole === 'All' || p.role === personRole)
+                  .filter(p => personRole === 'All' || p.category === personRole)
                   .map((person, idx) => (
                     <PersonCard
                       key={idx}
@@ -442,6 +526,12 @@ const TargetAnalysis = () => {
                     />
                   ))}
               </div>
+
+              {personStats.filter(p => personRole === 'All' || p.category === personRole).length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  هیچ فردی در این دسته‌بندی یافت نشد
+                </div>
+              )}
             </TabsContent>
 
             {/* Tab 3: Attack Patterns */}
