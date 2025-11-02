@@ -27,6 +27,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     quickDetections: 0,
     deepAnalyses: 0,
     failed: 0,
+    currentStage: '',
     recentActivity: [] as any[]
   });
   const [batchResults, setBatchResults] = useState<any>(null);
@@ -34,6 +35,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const [startTime, setStartTime] = useState<number>(0);
   const [autoResumeEnabled, setAutoResumeEnabled] = useState(true);
   const [currentResumeIndex, setCurrentResumeIndex] = useState(0);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const intervalRef = useRef<any>(null);
   const { toast } = useToast();
 
@@ -49,17 +51,19 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         quickDetections: 0,
         deepAnalyses: 0,
         failed: 0,
+        currentStage: '',
         recentActivity: []
       });
       setBatchResults(null);
+      setBatchId(null);
     }
   }, [open]);
 
-  // Real-time progress polling
+  // Real-time progress polling using batch_analysis_progress table
   useEffect(() => {
-    if (status === 'running') {
+    if (status === 'running' && batchId) {
       const pollInterval = setInterval(async () => {
-        await fetchProgress();
+        await fetchBatchProgress();
       }, 2000); // Poll every 2 seconds
       
       intervalRef.current = pollInterval;
@@ -70,7 +74,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         }
       };
     }
-  }, [status, startTime]);
+  }, [status, batchId]);
 
   const fetchUnanalyzedPosts = async () => {
     try {
@@ -128,32 +132,81 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     }
   };
 
-  // Fetch real-time progress from database
-  const fetchProgress = async () => {
-    if (!startTime) return;
+  // Fetch real-time progress from batch_analysis_progress table
+  const fetchBatchProgress = async () => {
+    if (!batchId) return;
     
     try {
-      const startTimeISO = new Date(startTime).toISOString();
-      
-      const { data: analyzed, error } = await supabase
-        .from('posts')
-        .select('id, title, analysis_stage, analyzed_at, is_psyop')
-        .gte('analyzed_at', startTimeISO)
-        .order('analyzed_at', { ascending: false })
-        .limit(20);
+      const { data, error } = await supabase
+        .from('batch_analysis_progress')
+        .select('*')
+        .eq('batch_id', batchId)
+        .maybeSingle();
       
       if (error) throw error;
       
-      if (analyzed && analyzed.length > 0) {
-        const quickCount = analyzed.filter(p => p.analysis_stage === 'quick').length;
-        const deepCount = analyzed.filter(p => p.analysis_stage === 'deep').length;
-        
+      if (data) {
         setProgress(prev => ({
           ...prev,
-          current: analyzed.length,
-          quickDetections: quickCount,
-          deepAnalyses: deepCount,
-          recentActivity: analyzed.slice(0, 5).map(p => ({
+          current: data.processed_posts,
+          total: data.total_posts,
+          quickDetections: data.quick_only,
+          deepAnalyses: data.deep_analyzed,
+          failed: data.failed,
+          currentStage: data.current_stage || ''
+        }));
+        
+        // Check if completed
+        if (data.status === 'completed') {
+          setStatus('completed');
+          
+          const completedAt = new Date(data.completed_at).getTime();
+          const startedAt = new Date(data.started_at).getTime();
+          const processingTime = completedAt - startedAt;
+          
+          setBatchResults({
+            total: data.total_posts,
+            processed: data.processed_posts,
+            quick_only: data.quick_only,
+            deep_analyzed: data.deep_analyzed,
+            failed: data.failed,
+            processing_time_ms: processingTime,
+            estimated_old_time_ms: data.total_posts * 9000,
+            time_saved_ms: (data.total_posts * 9000) - processingTime,
+            cost_saved_usd: data.quick_only * 0.0015
+          });
+          
+          // Stop polling
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+          }
+        } else if (data.status === 'error') {
+          setStatus('error');
+          toast({
+            title: 'خطا در تحلیل گروهی',
+            description: data.error_message || 'خطای ناشناخته',
+            variant: 'destructive',
+          });
+          
+          // Stop polling
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+          }
+        }
+      }
+      
+      // Also fetch recent activity from posts table for display
+      const { data: recentPosts } = await supabase
+        .from('posts')
+        .select('id, title, analysis_stage, analyzed_at, is_psyop')
+        .not('analyzed_at', 'is', null)
+        .order('analyzed_at', { ascending: false })
+        .limit(5);
+      
+      if (recentPosts) {
+        setProgress(prev => ({
+          ...prev,
+          recentActivity: recentPosts.map(p => ({
             title: p.title,
             stage: p.analysis_stage,
             isPsyop: p.is_psyop,
@@ -163,7 +216,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       }
       
     } catch (error) {
-      console.error('Failed to fetch progress:', error);
+      console.error('Failed to fetch batch progress:', error);
     }
   };
 
@@ -177,6 +230,10 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       return;
     }
 
+    // Generate batch ID
+    const newBatchId = `BATCH-${Date.now()}`;
+    setBatchId(newBatchId);
+    
     setStatus('running');
     setStartTime(Date.now());
     setCurrentResumeIndex(0);
@@ -186,22 +243,17 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
       quickDetections: 0,
       deepAnalyses: 0,
       failed: 0,
+      currentStage: '',
       recentActivity: []
     });
     setBatchResults(null);
 
-    let totalProcessed = 0;
-    let totalQuick = 0;
-    let totalDeep = 0;
-    let totalFailed = 0;
-    let totalAlertsCreated = 0;
     let resumeIndex = 0;
-    const maxIterations = 100; // Safety limit
+    const maxIterations = 200; // Increased for large batches
     let iteration = 0;
-    const batchStartTime = Date.now();
 
     try {
-      console.log(`🚀 Starting auto-resume batch analysis for ${postsToAnalyze.length} posts`);
+      console.log(`🚀 Starting auto-resume batch analysis for ${postsToAnalyze.length} posts with batch ID: ${newBatchId}`);
       
       // Auto-resume loop
       while (resumeIndex < postsToAnalyze.length && iteration < maxIterations) {
@@ -213,7 +265,8 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           const response = await supabase.functions.invoke('batch-analyze-posts', {
             body: {
               limit: postsToAnalyze.length === posts.length ? null : postsToAnalyze.length,
-              resumeFromIndex: resumeIndex
+              resumeFromIndex: resumeIndex,
+              batchId: newBatchId
             }
           });
 
@@ -229,22 +282,6 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           
           const batchData = response.data.results;
           
-          // Update cumulative totals
-          totalProcessed += batchData.processed;
-          totalQuick += batchData.quick_only;
-          totalDeep += batchData.deep_analyzed;
-          totalFailed += batchData.failed;
-          totalAlertsCreated += batchData.alerts_created || 0;
-          
-          // Update progress
-          setProgress(prev => ({
-            ...prev,
-            current: totalProcessed,
-            quickDetections: totalQuick,
-            deepAnalyses: totalDeep,
-            failed: totalFailed
-          }));
-          
           console.log(`✅ Batch ${iteration} completed: ${batchData.processed} posts, needsResume: ${batchData.needsResume}`);
           
           // Check if need to resume
@@ -256,7 +293,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
             
             if (!autoResumeEnabled) {
               const shouldContinue = confirm(
-                `${toPersianNumber(totalProcessed)} پست پردازش شد. ادامه می‌دهید؟`
+                `پردازش در حال انجام. ادامه می‌دهید؟`
               );
               
               if (!shouldContinue) {
@@ -278,7 +315,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           
           if (!autoResumeEnabled) {
             const shouldRetry = confirm(
-              `خطا در پردازش. ${toPersianNumber(totalProcessed)} پست تاکنون پردازش شده. تلاش مجدد؟`
+              `خطا در پردازش. تلاش مجدد؟`
             );
             
             if (!shouldRetry) {
@@ -293,37 +330,15 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
         }
       }
       
-      const totalTime = Date.now() - batchStartTime;
+      // Wait a bit for final progress update
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await fetchBatchProgress();
       
-      // Stop polling
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      
-      // Set final results
-      const finalResults = {
-        total: postsToAnalyze.length,
-        processed: totalProcessed,
-        quick_only: totalQuick,
-        deep_analyzed: totalDeep,
-        failed: totalFailed,
-        alerts_created: totalAlertsCreated,
-        processing_time_ms: totalTime,
-        estimated_old_time_ms: postsToAnalyze.length * 9000,
-        time_saved_ms: (postsToAnalyze.length * 9000) - totalTime,
-        cost_saved_usd: totalQuick * 0.0015
-      };
-      
-      setBatchResults(finalResults);
-      setStatus('completed');
-      
-      console.log('✅ Complete batch analysis finished:', finalResults);
-      
-      const improvement = Math.round((finalResults.time_saved_ms / finalResults.estimated_old_time_ms) * 100);
+      console.log('✅ Complete batch analysis finished');
       
       toast({
         title: '✅ تحلیل گروهی تکمیل شد',
-        description: `${toPersianNumber(finalResults.processed)} مطلب در ${toPersianNumber((finalResults.processing_time_ms / 1000).toFixed(1))} ثانیه | ${toPersianNumber(improvement)}% سریع‌تر`,
+        description: `پردازش موفقیت‌آمیز بود`,
       });
       
       // Call onComplete but DON'T close modal
@@ -361,11 +376,14 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   };
 
   const calculateRemainingTime = (): number => {
+    if (progress.total === 0 || progress.current === 0) return 0;
+    
+    const elapsed = Date.now() - startTime;
+    const avgTimePerPost = elapsed / progress.current;
     const remaining = progress.total - progress.current;
-    const avgTime = 2.5; // seconds per post average
-    const totalSeconds = Math.round(remaining * avgTime);
-    const minutes = Math.ceil(totalSeconds / 60); // Convert to minutes
-    return minutes;
+    const remainingMs = avgTimePerPost * remaining;
+    
+    return Math.ceil(remainingMs / 60000); // Convert to minutes
   };
 
   const calculateProgress = (): number => {
@@ -422,6 +440,23 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
                 {toPersianNumber(progress.current)} از {toPersianNumber(progress.total)} ({toPersianNumber(calculateProgress())}%)
               </div>
             </div>
+            
+            {/* Current Stage Badge */}
+            {progress.currentStage && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">مرحله جاری:</span>
+                <span className={`
+                  px-3 py-1 rounded-full font-medium
+                  ${progress.currentStage === 'quick_detection' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30' : ''}
+                  ${progress.currentStage === 'deep_analysis' ? 'bg-red-100 text-red-700 dark:bg-red-900/30' : ''}
+                  ${progress.currentStage === 'starting' ? 'bg-gray-100 text-gray-700 dark:bg-gray-900/30' : ''}
+                `}>
+                  {progress.currentStage === 'quick_detection' && '🔍 غربالگری سریع'}
+                  {progress.currentStage === 'deep_analysis' && '🧠 تحلیل عمیق'}
+                  {progress.currentStage === 'starting' && '⚡ آماده‌سازی'}
+                </span>
+              </div>
+            )}
 
             {/* Progress Bar */}
             <Progress value={calculateProgress()} className="w-full h-3" />

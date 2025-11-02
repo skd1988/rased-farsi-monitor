@@ -13,12 +13,15 @@ serve(async (req) => {
   }
 
   try {
-    const { limit, resumeFromIndex = 0, maxProcessingTime = 120000 } = await req.json();
+    const { limit, resumeFromIndex = 0, maxProcessingTime = 120000, batchId } = await req.json();
     
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    
+    // Generate or use existing batch ID
+    const currentBatchId = batchId || `BATCH-${Date.now()}`;
     
     // Fetch unanalyzed posts directly (no ID array needed)
     let query = supabase
@@ -54,7 +57,8 @@ serve(async (req) => {
             cost_saved_usd: 0,
             detailed_results: [],
             needsResume: false,
-            lastProcessedIndex: 0
+            lastProcessedIndex: 0,
+            batchId: currentBatchId
           }
         }),
         {
@@ -65,6 +69,25 @@ serve(async (req) => {
           }
         }
       );
+    }
+    
+    // Initialize or update progress tracking
+    if (resumeFromIndex === 0) {
+      // New batch - create progress record
+      await supabase
+        .from('batch_analysis_progress')
+        .insert({
+          batch_id: currentBatchId,
+          total_posts: allPosts.length,
+          processed_posts: 0,
+          status: 'running'
+        });
+    } else {
+      // Resume - update status
+      await supabase
+        .from('batch_analysis_progress')
+        .update({ status: 'running' })
+        .eq('batch_id', currentBatchId);
     }
     
     // Get subset of posts to process in this invocation
@@ -85,7 +108,8 @@ serve(async (req) => {
       cost_saved_usd: 0,
       detailed_results: [] as any[],
       needsResume: false,
-      lastProcessedIndex: resumeFromIndex
+      lastProcessedIndex: resumeFromIndex,
+      batchId: currentBatchId
     };
     
     const startTime = Date.now();
@@ -104,12 +128,29 @@ serve(async (req) => {
       }
       
       try {
+        // Update progress BEFORE processing
+        await supabase
+          .from('batch_analysis_progress')
+          .update({
+            processed_posts: resumeFromIndex + i + 1,
+            current_post_id: post.id,
+            current_stage: 'starting'
+          })
+          .eq('batch_id', currentBatchId);
+        
         // Validate post has required fields
         if (!post.title || !post.source) {
           console.warn(`⚠️ Post ${post.id} missing required fields, skipping`);
           results.failed++;
           results.processed++;
           results.lastProcessedIndex = resumeFromIndex + i + 1;
+          
+          // Update failed count
+          await supabase
+            .from('batch_analysis_progress')
+            .update({ failed: results.failed })
+            .eq('batch_id', currentBatchId);
+          
           continue;
         }
         
@@ -119,6 +160,12 @@ serve(async (req) => {
         // STAGE 1: Quick Detection with error handling
         let quickResult;
         try {
+          // Update stage
+          await supabase
+            .from('batch_analysis_progress')
+            .update({ current_stage: 'quick_detection' })
+            .eq('batch_id', currentBatchId);
+          
           console.log(`  📊 Starting quick detection...`);
           quickResult = await performQuickDetection(post);
           const quickTime = Date.now() - postStartTime;
@@ -145,6 +192,15 @@ serve(async (req) => {
           results.processed++;
           results.lastProcessedIndex = resumeFromIndex + i + 1;
           
+          // Update failed count
+          await supabase
+            .from('batch_analysis_progress')
+            .update({ 
+              failed: results.failed,
+              error_message: error instanceof Error ? error.message : 'Quick detection error'
+            })
+            .eq('batch_id', currentBatchId);
+          
           results.detailed_results.push({
             post_id: post.id,
             stage: 'error',
@@ -159,6 +215,12 @@ serve(async (req) => {
         // STAGE 2: Deep Analysis (if needed)
         if (quickResult.needs_deep_analysis) {
           try {
+            // Update stage
+            await supabase
+              .from('batch_analysis_progress')
+              .update({ current_stage: 'deep_analysis' })
+              .eq('batch_id', currentBatchId);
+            
             console.log(`  🧠 Needs deep analysis, proceeding...`);
             
             const deepStartTime = Date.now();
@@ -177,6 +239,13 @@ serve(async (req) => {
             }
             
             results.deep_analyzed++;
+            
+            // Update deep count
+            await supabase
+              .from('batch_analysis_progress')
+              .update({ deep_analyzed: results.deep_analyzed })
+              .eq('batch_id', currentBatchId);
+            
             results.detailed_results.push({
               post_id: post.id,
               stage: 'deep',
@@ -192,6 +261,12 @@ serve(async (req) => {
             // Fallback: save quick result only
             await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
             results.quick_only++;
+            
+            // Update quick count
+            await supabase
+              .from('batch_analysis_progress')
+              .update({ quick_only: results.quick_only })
+              .eq('batch_id', currentBatchId);
             
             results.detailed_results.push({
               post_id: post.id,
@@ -209,6 +284,13 @@ serve(async (req) => {
           await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
           
           results.quick_only++;
+          
+          // Update quick count
+          await supabase
+            .from('batch_analysis_progress')
+            .update({ quick_only: results.quick_only })
+            .eq('batch_id', currentBatchId);
+          
           results.detailed_results.push({
             post_id: post.id,
             stage: 'quick',
@@ -231,6 +313,15 @@ serve(async (req) => {
         results.processed++;
         results.lastProcessedIndex = resumeFromIndex + i + 1;
         
+        // Update failed count
+        await supabase
+          .from('batch_analysis_progress')
+          .update({ 
+            failed: results.failed,
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          })
+          .eq('batch_id', currentBatchId);
+        
         results.detailed_results.push({
           post_id: post.id,
           stage: 'error',
@@ -246,6 +337,26 @@ serve(async (req) => {
     results.processing_time_ms = Date.now() - startTime;
     results.time_saved_ms = results.estimated_old_time_ms - results.processing_time_ms;
     results.cost_saved_usd = (results.quick_only * 0.0015);
+    
+    // Update final status
+    if (results.needsResume) {
+      await supabase
+        .from('batch_analysis_progress')
+        .update({ 
+          status: 'paused',
+          processed_posts: resumeFromIndex + results.processed
+        })
+        .eq('batch_id', currentBatchId);
+    } else {
+      await supabase
+        .from('batch_analysis_progress')
+        .update({ 
+          status: 'completed',
+          processed_posts: resumeFromIndex + results.processed,
+          completed_at: new Date().toISOString()
+        })
+        .eq('batch_id', currentBatchId);
+    }
     
     console.log('✅ Batch analysis completed:', {
       processed: results.processed,
@@ -276,6 +387,28 @@ serve(async (req) => {
     
   } catch (error) {
     console.error("Batch analysis error:", error);
+    
+    // Update error status if we have a batch ID
+    try {
+      const { batchId } = await req.json();
+      if (batchId) {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        
+        await supabase
+          .from('batch_analysis_progress')
+          .update({ 
+            status: 'error',
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          })
+          .eq('batch_id', batchId);
+      }
+    } catch (e) {
+      console.error("Failed to update error status:", e);
+    }
+    
     return new Response(
       JSON.stringify({ 
         success: false,
