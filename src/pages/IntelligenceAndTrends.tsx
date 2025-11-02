@@ -52,11 +52,29 @@ const IntelligenceAndTrends = () => {
   const [fixing, setFixing] = useState(false);
   const [fixProgress, setFixProgress] = useState({ current: 0, total: 0, status: '' });
   const [narrativesLoading, setNarrativesLoading] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchAllData();
   }, [timeRange, psyopOnly, threatFilter]);
+
+  // Keyboard shortcut: Ctrl+Shift+D to toggle debug panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        setShowDebug(prev => !prev);
+        toast({
+          title: showDebug ? '🔒 پنل دیباگ پنهان شد' : '🔓 پنل دیباگ نمایش داده شد',
+          description: 'Ctrl+Shift+D برای تغییر وضعیت',
+        });
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showDebug, toast]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -1085,7 +1103,8 @@ const IntelligenceAndTrends = () => {
 
         {/* SECTION 5: NARRATIVES */}
         <TabsContent value="narratives" className="space-y-6">
-          {/* DEBUG PANEL */}
+          {/* DEBUG PANEL - Hidden by default, press Ctrl+D to show */}
+          {showDebug && (
           <Card className="border-2 border-dashed border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -1211,6 +1230,7 @@ const IntelligenceAndTrends = () => {
               </CardContent>
             )}
           </Card>
+          )}
 
           {/* Narratives Display */}
           {narrativesLoading ? (
