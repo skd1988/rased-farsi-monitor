@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Target as TargetIcon, Users, TrendingUp, AlertTriangle, Activity } from 'lucide-react';
+import { Loader2, Target as TargetIcon, Users, TrendingUp, AlertTriangle, Activity, Wand2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import AttackIntensityMatrix from '@/components/targets/AttackIntensityMatrix';
 import EntityCard from '@/components/targets/EntityCard';
@@ -35,7 +35,8 @@ const TargetAnalysis = () => {
   const [entityType, setEntityType] = useState('All');
   const [location, setLocation] = useState('All');
   const [minAttacks, setMinAttacks] = useState([0]);
-  const [personRole, setPersonRole] = useState('All');
+  const [personRole, setPersonRole] = useState('همه');
+  const [categorizing, setCategorizing] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -83,6 +84,47 @@ const TargetAnalysis = () => {
 
     fetchData();
   }, []);
+
+  // Run automatic categorization
+  const runCategorization = async () => {
+    const confirmed = confirm(
+      'این عملیات تمام اهداف موجود را دسته‌بندی می‌کند. ادامه می‌دهید؟'
+    );
+    
+    if (!confirmed) return;
+    
+    setCategorizing(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('categorize-targets');
+      
+      if (error) throw error;
+      
+      toast({
+        title: "✅ دسته‌بندی تکمیل شد!",
+        description: `${data.updated} پست به‌روز شد. ${data.alreadyCategorized} هدف قبلاً دسته‌بندی شده بود.`,
+      });
+      
+      // Refresh data
+      const { data: postsData } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('is_psyop', true)
+        .order('published_at', { ascending: false });
+      
+      setPosts(postsData || []);
+      
+    } catch (error) {
+      console.error('Categorization failed:', error);
+      toast({
+        title: "خطا در دسته‌بندی",
+        description: error instanceof Error ? error.message : 'خطای نامشخص',
+        variant: "destructive",
+      });
+    } finally {
+      setCategorizing(false);
+    }
+  };
 
   // Process entity data
   const entityStats = useMemo(() => {
@@ -298,6 +340,24 @@ const TargetAnalysis = () => {
   // High priority persons
   const highPriorityPersons = personStats.filter(p => p.weekAttacks > 5);
 
+  // Category statistics for persons
+  const categoryStats = useMemo(() => {
+    return {
+      'همه': personStats.length,
+      'رهبر سیاسی': personStats.filter(p => p.category === 'رهبر سیاسی').length,
+      'فرمانده نظامی': personStats.filter(p => p.category === 'فرمانده نظامی').length,
+      'مرجع دینی': personStats.filter(p => p.category === 'مرجع دینی').length,
+      'سخنگو': personStats.filter(p => p.category === 'سخنگو').length,
+      'فعال': personStats.filter(p => p.category === 'فعال').length,
+    };
+  }, [personStats]);
+
+  // Filter persons by role
+  const filteredPersons = useMemo(() => {
+    if (personRole === 'همه') return personStats;
+    return personStats.filter(p => p.category === personRole);
+  }, [personStats, personRole]);
+
   // Generate insights
   const insights = generateInsights({ entityStats, personStats, posts });
 
@@ -444,33 +504,27 @@ const TargetAnalysis = () => {
             <TabsContent value="persons" className="space-y-6">
               {/* Category Statistics */}
               <div className="grid grid-cols-6 gap-3">
-                {['همه', 'رهبر سیاسی', 'فرمانده نظامی', 'مرجع دینی', 'سخنگو', 'فعال'].map(category => {
-                  const count = category === 'همه'
-                    ? personStats.length
-                    : personStats.filter(p => p.category === category).length;
-
-                  return (
-                    <button
-                      key={category}
-                      onClick={() => setPersonRole(category === 'همه' ? 'All' : category)}
-                      className={`
-                        p-3 rounded-lg border-2 transition-all hover:shadow-md
-                        ${(personRole === 'All' && category === 'همه') || personRole === category
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-primary/50'
-                        }
-                      `}
-                    >
-                      <div className="text-2xl font-bold">{count}</div>
-                      <div className="text-xs text-muted-foreground">{category}</div>
-                    </button>
-                  );
-                })}
+                {Object.entries(categoryStats).map(([category, count]) => (
+                  <button
+                    key={category}
+                    onClick={() => setPersonRole(category)}
+                    className={`
+                      p-4 rounded-lg border-2 transition-all hover:shadow-md
+                      ${personRole === category
+                        ? 'border-primary bg-primary/10 shadow-lg'
+                        : 'border-border hover:border-primary/50'
+                      }
+                    `}
+                  >
+                    <div className="text-3xl font-bold mb-1">{count}</div>
+                    <div className="text-xs font-medium">{category}</div>
+                  </button>
+                ))}
               </div>
 
               {/* Filters */}
               <Card className="p-4">
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-3 items-center">
                   <Select value={timeRange} onValueChange={setTimeRange}>
                     <SelectTrigger className="w-32">
                       <SelectValue />
@@ -483,6 +537,23 @@ const TargetAnalysis = () => {
                       <SelectItem value="all">همه زمان</SelectItem>
                     </SelectContent>
                   </Select>
+
+                  <div className="flex-1" />
+
+                  <Button
+                    onClick={runCategorization}
+                    disabled={categorizing}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    {categorizing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-4 w-4" />
+                    )}
+                    دسته‌بندی خودکار اهداف
+                  </Button>
                 </div>
               </Card>
 
@@ -511,23 +582,21 @@ const TargetAnalysis = () => {
 
               {/* Person Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {personStats
-                  .filter(p => personRole === 'All' || p.category === personRole)
-                  .map((person, idx) => (
-                    <PersonCard
-                      key={idx}
-                      person={person}
-                      onViewDetails={() => {
-                        toast({
-                          title: "جزئیات فرد",
-                          description: person.name_persian,
-                        });
-                      }}
-                    />
-                  ))}
+                {filteredPersons.map((person, idx) => (
+                  <PersonCard
+                    key={idx}
+                    person={person}
+                    onViewDetails={() => {
+                      toast({
+                        title: "جزئیات فرد",
+                        description: person.name_persian,
+                      });
+                    }}
+                  />
+                ))}
               </div>
 
-              {personStats.filter(p => personRole === 'All' || p.category === personRole).length === 0 && (
+              {filteredPersons.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   هیچ فردی در این دسته‌بندی یافت نشد
                 </div>
