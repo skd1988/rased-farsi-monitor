@@ -193,9 +193,9 @@ const Chat = () => {
     // Call Edge Function - NO MOCKS!
     setIsLoading(true);
     try {
-      console.log("Calling chat-with-data Edge Function...");
+      console.log("Calling chat-assistant Edge Function...");
 
-      const response = await supabase.functions.invoke("chat-with-data", {
+      const response = await supabase.functions.invoke("chat-assistant", {
         body: {
           question: content,
           conversationHistory,
