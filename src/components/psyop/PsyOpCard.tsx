@@ -40,6 +40,7 @@ interface PsyOpCardProps {
   onPrepareResponse?: (post: any) => void;
   onMarkFalsePositive?: (post: any) => void;
   onAddToCampaign?: (post: any) => void;
+  onStatusChange?: (postId: string, status: string) => void;
 }
 
 const PsyOpCard: React.FC<PsyOpCardProps> = ({
@@ -48,6 +49,7 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
   onPrepareResponse,
   onMarkFalsePositive,
   onAddToCampaign,
+  onStatusChange,
 }) => {
   const threatColors = {
     Critical: { border: 'border-l-danger', bg: 'bg-danger/10', text: 'text-danger' },
@@ -74,10 +76,24 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
   const viralityPotential = post.virality_potential || 0;
   const isHighVirality = viralityPotential > 7;
 
+  const alertStatus = post.alert_status || 'Unresolved';
+  const isResolved = alertStatus === 'Resolved' || alertStatus === 'False Positive';
+
+  const statusConfig = {
+    'Unresolved': { emoji: '🔴', label: 'حل نشده', variant: 'destructive' as const },
+    'Acknowledged': { emoji: '🟡', label: 'تأیید شده', variant: 'default' as const },
+    'In Progress': { emoji: '🟠', label: 'در حال بررسی', variant: 'secondary' as const },
+    'Resolved': { emoji: '🟢', label: 'حل شده', variant: 'outline' as const },
+    'False Positive': { emoji: '⚪', label: 'مثبت کاذب', variant: 'outline' as const },
+  };
+
+  const currentStatus = statusConfig[alertStatus as keyof typeof statusConfig] || statusConfig['Unresolved'];
+
   return (
     <Card className={cn(
       'relative overflow-hidden transition-all hover:shadow-lg border-l-4',
-      colors.border
+      colors.border,
+      isResolved && 'opacity-60'
     )}>
       {hasCoordination && post.coordination_indicators.length > 2 && (
         <div className="absolute top-2 left-2">
@@ -89,8 +105,32 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
       )}
 
       <div className="p-4 space-y-3">
+        {/* Status Badge */}
+        <div className="absolute top-2 right-2 z-10">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Badge 
+                variant={currentStatus.variant}
+                className="cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                {currentStatus.emoji} {currentStatus.label}
+              </Badge>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-card z-50">
+              {Object.entries(statusConfig).map(([status, config]) => (
+                <DropdownMenuItem
+                  key={status}
+                  onClick={() => onStatusChange?.(post.id, status)}
+                >
+                  {config.emoji} {config.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         {/* Header */}
-        <div className="space-y-2">
+        <div className="space-y-2 pt-8">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-base line-clamp-2 flex-1 text-right">
               {post.title}
@@ -101,7 +141,11 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="bg-card z-50">
+                <DropdownMenuItem onClick={() => onAddToCampaign?.(post)}>
+                  <FolderPlus className="ml-2 h-4 w-4" />
+                  افزودن به کمپین
+                </DropdownMenuItem>
                 <DropdownMenuItem>
                   <RefreshCw className="ml-2 h-4 w-4" />
                   تحلیل مجدد

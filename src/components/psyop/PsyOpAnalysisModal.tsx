@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Collapsible,
   CollapsibleContent,
@@ -37,12 +38,15 @@ import {
   CheckCircle2,
   Zap,
   Eye,
-  Brain
+  Brain,
+  History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 import { toast } from '@/hooks/use-toast';
+import ActivityTimeline from './ActivityTimeline';
+import NotesSection from './NotesSection';
 
 interface PsyOpAnalysisModalProps {
   post: any;
@@ -56,6 +60,42 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
   onClose,
 }) => {
   const [responseOpen, setResponseOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Mock activity events - in production, fetch from database
+  const mockActivityEvents = [
+    {
+      id: '1',
+      type: 'detected' as const,
+      timestamp: post?.published_at || new Date().toISOString(),
+      details: 'جنگ روانی تشخیص داده شد',
+    },
+    {
+      id: '2',
+      type: 'status_change' as const,
+      timestamp: new Date().toISOString(),
+      user: 'سیستم',
+      details: 'وضعیت تغییر کرد',
+      status: 'Unresolved',
+    },
+  ];
+
+  // Mock notes - in production, fetch from database
+  const [notes, setNotes] = useState<any[]>([]);
+
+  const handleAddNote = (content: string) => {
+    const newNote = {
+      id: Date.now().toString(),
+      content,
+      author: 'کاربر فعلی',
+      timestamp: new Date().toISOString(),
+    };
+    setNotes([newNote, ...notes]);
+    toast({
+      title: "یادداشت اضافه شد",
+      description: "یادداشت با موفقیت ذخیره شد",
+    });
+  };
 
   if (!post) return null;
 
@@ -559,34 +599,60 @@ const PsyOpAnalysisModal: React.FC<PsyOpAnalysisModalProps> = ({
           )}
 
           {/* SECTION 9: METADATA */}
-          <Card className="p-4 bg-muted/30">
-            <div className="grid grid-cols-4 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">مدل تحلیل</span>
-                <div className="font-medium">{post.analysis_model || 'DeepSeek'}</div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">زمان پردازش</span>
-                <div className="font-medium">
-                  {post.processing_time ? `${post.processing_time.toFixed(2)}s` : 'نامشخص'}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="overview">تحلیل کامل</TabsTrigger>
+              <TabsTrigger value="activity">تاریخچه فعالیت</TabsTrigger>
+              <TabsTrigger value="notes">یادداشت‌ها</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-6 mt-6">
+              <Card className="p-4 bg-muted/30">
+                <div className="grid grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">مدل تحلیل</span>
+                    <div className="font-medium">{post.analysis_model || 'DeepSeek'}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">زمان پردازش</span>
+                    <div className="font-medium">
+                      {post.processing_time ? `${post.processing_time.toFixed(2)}s` : 'نامشخص'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">تاریخ تحلیل</span>
+                    <div className="font-medium">
+                      {post.analyzed_at 
+                        ? format(new Date(post.analyzed_at), 'PP', { locale: faIR })
+                        : 'نامشخص'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">آخرین به‌روزرسانی</span>
+                    <div className="font-medium">
+                      {format(new Date(post.updated_at || post.created_at), 'PP', { locale: faIR })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">تاریخ تحلیل</span>
-                <div className="font-medium">
-                  {post.analyzed_at 
-                    ? format(new Date(post.analyzed_at), 'PP', { locale: faIR })
-                    : 'نامشخص'}
-                </div>
-              </div>
-              <div>
-                <span className="text-muted-foreground">آخرین به‌روزرسانی</span>
-                <div className="font-medium">
-                  {format(new Date(post.updated_at || post.created_at), 'PP', { locale: faIR })}
-                </div>
-              </div>
-            </div>
-          </Card>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="activity" className="mt-6">
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  تاریخچه فعالیت
+                </h3>
+                <ActivityTimeline events={mockActivityEvents} />
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="notes" className="mt-6">
+              <Card className="p-6">
+                <NotesSection notes={notes} onAddNote={handleAddNote} />
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
 
         {/* FOOTER */}

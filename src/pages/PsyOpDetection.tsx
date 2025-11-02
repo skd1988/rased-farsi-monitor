@@ -34,6 +34,8 @@ const PsyOpDetection = () => {
   
   // Filters
   const [isPsyOpFilter, setIsPsyOpFilter] = useState<string>('Yes');
+  const [statusFilter, setStatusFilter] = useState<string>('Unresolved');
+  const [showAll, setShowAll] = useState(false);
   const [threatLevelFilter, setThreatLevelFilter] = useState<string>('All');
   const [urgencyFilter, setUrgencyFilter] = useState<string>('All');
   const [psyopTypeFilter, setPsyopTypeFilter] = useState<string>('All');
@@ -181,6 +183,14 @@ const PsyOpDetection = () => {
       filtered = filtered.filter(post => post.psyop_type === psyopTypeFilter);
     }
 
+    // Status filter
+    if (statusFilter !== 'All' && !showAll) {
+      filtered = filtered.filter(post => {
+        const status = post.alert_status || 'Unresolved';
+        return status === statusFilter;
+      });
+    }
+
     // Date range filter
     if (dateRange?.from) {
       const fromDate = startOfDay(dateRange.from);
@@ -191,7 +201,7 @@ const PsyOpDetection = () => {
     }
 
     return filtered;
-  }, [posts, searchQuery, isPsyOpFilter, threatLevelFilter, urgencyFilter, psyopTypeFilter, dateRange]);
+  }, [posts, searchQuery, isPsyOpFilter, statusFilter, showAll, threatLevelFilter, urgencyFilter, psyopTypeFilter, dateRange]);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
@@ -358,11 +368,25 @@ const PsyOpDetection = () => {
 
         {/* More Filters */}
         <div className="flex flex-wrap gap-3">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="وضعیت" />
+            </SelectTrigger>
+            <SelectContent className="bg-card z-50">
+              <SelectItem value="All">همه</SelectItem>
+              <SelectItem value="Unresolved">🔴 حل نشده</SelectItem>
+              <SelectItem value="Acknowledged">🟡 تأیید شده</SelectItem>
+              <SelectItem value="In Progress">🟠 در حال بررسی</SelectItem>
+              <SelectItem value="Resolved">🟢 حل شده</SelectItem>
+              <SelectItem value="False Positive">⚪ مثبت کاذب</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={urgencyFilter} onValueChange={setUrgencyFilter}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="فوریت" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-card z-50">
               <SelectItem value="All">همه</SelectItem>
               <SelectItem value="Immediate">فوری</SelectItem>
               <SelectItem value="High">بالا</SelectItem>
@@ -376,7 +400,7 @@ const PsyOpDetection = () => {
             <SelectTrigger className="w-48">
               <SelectValue placeholder="نوع جنگ روانی" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-card z-50">
               <SelectItem value="All">همه انواع</SelectItem>
               <SelectItem value="Direct Attack">حمله مستقیم</SelectItem>
               <SelectItem value="Indirect Accusation">اتهام غیرمستقیم</SelectItem>
@@ -422,10 +446,10 @@ const PsyOpDetection = () => {
 
           <div className="mr-auto flex gap-2">
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40">
                 <SelectValue placeholder="مرتب‌سازی" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-card z-50">
                 <SelectItem value="threat">سطح تهدید</SelectItem>
                 <SelectItem value="date">تاریخ</SelectItem>
                 <SelectItem value="urgency">فوریت</SelectItem>
@@ -449,6 +473,18 @@ const PsyOpDetection = () => {
                 <List className="h-4 w-4" />
               </Button>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => setShowAll(e.target.checked)}
+                className="rounded border-input"
+              />
+              <span className="text-sm text-muted-foreground">نمایش همه (شامل حل شده)</span>
+            </label>
           </div>
         </div>
       </div>
@@ -498,6 +534,32 @@ const PsyOpDetection = () => {
                   title: "افزودن به کمپین",
                   description: "این ویژگی به زودی اضافه خواهد شد",
                 });
+              }}
+              onStatusChange={async (postId, newStatus) => {
+                try {
+                  const { error } = await supabase
+                    .from('posts')
+                    .update({ alert_status: newStatus })
+                    .eq('id', postId);
+                  
+                  if (error) throw error;
+                  
+                  setPosts(prev => prev.map(p => 
+                    p.id === postId ? { ...p, alert_status: newStatus } : p
+                  ));
+                  
+                  toast({
+                    title: "وضعیت به‌روزرسانی شد",
+                    description: `وضعیت به "${newStatus}" تغییر کرد`,
+                  });
+                } catch (error) {
+                  console.error('Error updating status:', error);
+                  toast({
+                    title: "خطا",
+                    description: "مشکلی در به‌روزرسانی وضعیت پیش آمد",
+                    variant: "destructive",
+                  });
+                }
               }}
             />
           ))}
