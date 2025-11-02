@@ -1,8 +1,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { format, parseISO } from 'date-fns';
-import { faIR } from 'date-fns/locale';
+import moment from 'moment-jalaali';
 
 interface CollectionTimelineChartProps {
   data: Array<{ date: string; count: number }>;
@@ -11,6 +10,32 @@ interface CollectionTimelineChartProps {
 
 const CollectionTimelineChart = ({ data, onClick }: CollectionTimelineChartProps) => {
   const totalPosts = data.reduce((sum, d) => sum + d.count, 0);
+
+  // Format date to short Persian (Shamsi) format: "۱۲ فرو"
+  const formatShortPersian = (dateStr: string): string => {
+    try {
+      const m = moment(dateStr);
+      const day = m.jDate();
+      const monthNames = ['فرو', 'ارد', 'خرد', 'تیر', 'مرد', 'شهر', 'مهر', 'آبا', 'آذر', 'دی', 'بهم', 'اسف'];
+      const month = monthNames[m.jMonth()];
+      return `${day} ${month}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Format date to full Persian (Shamsi) format: "۱۲ فروردین"
+  const formatFullPersian = (dateStr: string): string => {
+    try {
+      const m = moment(dateStr);
+      const day = m.jDate();
+      const monthNames = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+      const month = monthNames[m.jMonth()];
+      return `${day} ${month}`;
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <Card className={onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""} onClick={onClick}>
@@ -23,13 +48,7 @@ const CollectionTimelineChart = ({ data, onClick }: CollectionTimelineChartProps
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis
               dataKey="date"
-              tickFormatter={(value) => {
-                try {
-                  return format(parseISO(value), 'dd MMM', { locale: faIR });
-                } catch {
-                  return value;
-                }
-              }}
+              tickFormatter={formatShortPersian}
               stroke="hsl(var(--muted-foreground))"
               style={{ fontSize: '10px' }}
             />
@@ -44,13 +63,7 @@ const CollectionTimelineChart = ({ data, onClick }: CollectionTimelineChartProps
                 borderRadius: '6px',
                 fontSize: '12px'
               }}
-              labelFormatter={(value) => {
-                try {
-                  return format(parseISO(value), 'dd MMMM', { locale: faIR });
-                } catch {
-                  return value;
-                }
-              }}
+              labelFormatter={formatFullPersian}
             />
             <Line
               type="monotone"
