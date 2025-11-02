@@ -72,14 +72,38 @@ const AIAnalysis = () => {
   const fetchAnalyzedPosts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("posts")
-        .select("*")
-        .not("analyzed_at", "is", null)
-        .order("analyzed_at", { ascending: false });
+      
+      // Fetch all analyzed posts without Supabase's default 1000 limit
+      let allPosts: AnalyzedPost[] = [];
+      let from = 0;
+      const batchSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      setPosts(data || []);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from("posts")
+          .select("*")
+          .not("analyzed_at", "is", null)
+          .order("analyzed_at", { ascending: false })
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allPosts = [...allPosts, ...data];
+          from += batchSize;
+          
+          // If we got less than batchSize, we've reached the end
+          if (data.length < batchSize) {
+            hasMore = false;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setPosts(allPosts);
+      console.log(`✅ Loaded ${allPosts.length} analyzed posts`);
     } catch (error) {
       console.error("Error fetching analyzed posts:", error);
       toast({
