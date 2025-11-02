@@ -304,7 +304,7 @@ const Dashboard = () => {
 
   const handleDayClick = (date: string) => {
     // Navigate to Posts Explorer with date filter
-    navigate(`/posts-explorer?date=${date}`);
+    navigate(`/posts?date=${date}`);
   };
 
   // Data Collection Metrics
@@ -489,7 +489,7 @@ const Dashboard = () => {
           gradient="red"
           change={psyOpChangePercentage}
           isAlert
-          onClick={() => navigate('/posts-explorer?filter=psyop')}
+          onClick={() => navigate('/posts?filter=psyop')}
         />
         <KPICard
           title="تهدیدهای بحرانی"
@@ -545,7 +545,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AttackVectorChart 
           data={attackVectorData}
-          onVectorClick={(vector) => navigate(`/posts-explorer?vector=${vector}`)}
+          onVectorClick={(vector) => navigate(`/posts?vector=${vector}`)}
         />
         <CampaignHeatmap 
           data={heatmapData}
