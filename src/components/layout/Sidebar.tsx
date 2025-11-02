@@ -35,6 +35,7 @@ interface MenuItem {
 interface MenuGroup {
   id: string;
   title?: string;
+  color?: 'blue' | 'red' | 'green' | 'purple' | 'gray';
   collapsible?: boolean;
   items: MenuItem[];
 }
@@ -42,6 +43,7 @@ interface MenuGroup {
 const menuStructure: MenuGroup[] = [
   {
     id: 'overview',
+    color: 'blue',
     items: [
       { 
         label: 'داشبورد', 
@@ -54,6 +56,7 @@ const menuStructure: MenuGroup[] = [
   {
     id: 'monitoring',
     title: 'رصد و تحلیل',
+    color: 'red',
     collapsible: false,
     items: [
       { 
@@ -87,6 +90,7 @@ const menuStructure: MenuGroup[] = [
   {
     id: 'response',
     title: 'مدیریت پاسخ',
+    color: 'green',
     collapsible: false,
     items: [
       { 
@@ -107,6 +111,7 @@ const menuStructure: MenuGroup[] = [
   {
     id: 'data',
     title: 'داده‌ها',
+    color: 'purple',
     collapsible: true,
     items: [
       { 
@@ -126,6 +131,7 @@ const menuStructure: MenuGroup[] = [
   {
     id: 'system',
     title: 'سیستم',
+    color: 'gray',
     collapsible: true,
     items: [
       { 
@@ -276,6 +282,48 @@ const Sidebar = () => {
     });
   };
 
+  const getColorClasses = (color?: string, isActive?: boolean) => {
+    const colors = {
+      blue: {
+        icon: 'text-blue-600 dark:text-blue-400',
+        activeBg: 'bg-blue-50 dark:bg-blue-900/20',
+        activeBorder: 'border-blue-600',
+        activeText: 'text-blue-700 dark:text-blue-300',
+        badge: 'bg-blue-500'
+      },
+      red: {
+        icon: 'text-red-600 dark:text-red-400',
+        activeBg: 'bg-red-50 dark:bg-red-900/20',
+        activeBorder: 'border-red-600',
+        activeText: 'text-red-700 dark:text-red-300',
+        badge: 'bg-red-500'
+      },
+      green: {
+        icon: 'text-green-600 dark:text-green-400',
+        activeBg: 'bg-green-50 dark:bg-green-900/20',
+        activeBorder: 'border-green-600',
+        activeText: 'text-green-700 dark:text-green-300',
+        badge: 'bg-green-500'
+      },
+      purple: {
+        icon: 'text-purple-600 dark:text-purple-400',
+        activeBg: 'bg-purple-50 dark:bg-purple-900/20',
+        activeBorder: 'border-purple-600',
+        activeText: 'text-purple-700 dark:text-purple-300',
+        badge: 'bg-purple-500'
+      },
+      gray: {
+        icon: 'text-gray-600 dark:text-gray-400',
+        activeBg: 'bg-gray-50 dark:bg-gray-900/20',
+        activeBorder: 'border-gray-600',
+        activeText: 'text-gray-700 dark:text-gray-300',
+        badge: 'bg-gray-500'
+      }
+    };
+
+    return colors[color as keyof typeof colors] || colors.blue;
+  };
+
   return (
     <aside 
       className={cn(
@@ -334,7 +382,10 @@ const Sidebar = () => {
             {/* Group Header */}
             {group.title && !isCollapsed && (
               <div className="flex items-center justify-between mb-2 px-3 animate-fade-in">
-                <h3 className="text-xs font-bold uppercase text-muted-foreground tracking-wider">
+                <h3 className={cn(
+                  "text-xs font-bold uppercase tracking-wider",
+                  getColorClasses(group.color).activeText
+                )}>
                   {group.title}
                 </h3>
                 {group.collapsible && (
@@ -343,9 +394,9 @@ const Sidebar = () => {
                     className="p-1 hover:bg-accent rounded transition-colors"
                   >
                     {collapsedGroups[group.id] ? (
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      <ChevronDown className={cn("w-4 h-4", getColorClasses(group.color).icon)} />
                     ) : (
-                      <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                      <ChevronUp className={cn("w-4 h-4", getColorClasses(group.color).icon)} />
                     )}
                   </button>
                 )}
@@ -370,6 +421,7 @@ const Sidebar = () => {
                   item.badge?.type === 'label' || 
                   (item.badge?.type === 'count' && typeof badgeValue === 'number' && badgeValue > 0)
                 );
+                const colorClasses = getColorClasses(group.color);
 
                 return (
                   <NavLink
@@ -379,7 +431,7 @@ const Sidebar = () => {
                       cn(
                         'flex items-center rounded-lg transition-smooth relative group',
                         'hover:bg-accent',
-                        isActive && 'bg-primary/10 text-primary font-medium border-r-4 border-primary',
+                        isActive && cn(colorClasses.activeBg, colorClasses.activeText, 'font-medium border-r-4', colorClasses.activeBorder),
                         isCollapsed ? 'justify-center p-3' : 'justify-between px-3 py-2.5 text-right'
                       )
                     }
@@ -388,9 +440,12 @@ const Sidebar = () => {
                     {isCollapsed ? (
                       <>
                         <div className="relative">
-                          <item.icon className="w-5 h-5 flex-shrink-0" />
+                          <item.icon className={cn("w-5 h-5 flex-shrink-0", colorClasses.icon)} />
                           {showBadge && item.badge?.type === 'count' && (
-                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                            <span className={cn(
+                              "absolute -top-1 -right-1 w-4 h-4 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse",
+                              colorClasses.badge
+                            )}>
                               {badgeValue}
                             </span>
                           )}
@@ -403,8 +458,7 @@ const Sidebar = () => {
                           )}
                           {showBadge && (
                             <Badge 
-                              variant={item.badge?.type === 'count' ? 'destructive' : 'secondary'}
-                              className="mt-1"
+                              className={cn("mt-1 text-white", colorClasses.badge)}
                             >
                               {badgeValue}
                             </Badge>
@@ -414,15 +468,15 @@ const Sidebar = () => {
                     ) : (
                       <>
                         <div className="flex items-center gap-3 flex-1 animate-fade-in">
-                          <item.icon className="w-5 h-5 flex-shrink-0" />
+                          <item.icon className={cn("w-5 h-5 flex-shrink-0", colorClasses.icon)} />
                           <span className="text-sm font-medium">{item.label}</span>
                         </div>
                         
                         {showBadge && (
                           <Badge 
-                            variant={item.badge?.type === 'count' ? 'destructive' : 'secondary'}
                             className={cn(
-                              'text-xs px-2 animate-fade-in',
+                              'text-xs px-2 text-white animate-fade-in',
+                              colorClasses.badge,
                               item.badge?.type === 'count' && 'animate-pulse'
                             )}
                           >
