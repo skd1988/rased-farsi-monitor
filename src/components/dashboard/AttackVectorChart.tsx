@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface AttackVectorChartProps {
   data: Array<{
@@ -26,28 +26,18 @@ const AttackVectorChart: React.FC<AttackVectorChartProps> = ({ data, onVectorCli
     <Card className="p-6">
       <h3 className="text-lg font-semibold mb-4 text-right">توزیع بردارهای حمله</h3>
       <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-            outerRadius={80}
-            innerRadius={50}
-            fill="#8884d8"
-            dataKey="value"
-            onClick={(data) => onVectorClick?.(data.name)}
-            className="cursor-pointer"
-          >
-            {data.map((entry, index) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={COLORS[index % COLORS.length]}
-                className="hover:opacity-80 transition-opacity"
-              />
-            ))}
-          </Pie>
+        <BarChart 
+          data={data} 
+          layout="vertical"
+          margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+        >
+          <XAxis type="number" />
+          <YAxis 
+            type="category" 
+            dataKey="name" 
+            width={90}
+            style={{ fontSize: '12px', direction: 'rtl' }}
+          />
           <Tooltip
             contentStyle={{ 
               backgroundColor: 'hsl(var(--card))', 
@@ -57,11 +47,21 @@ const AttackVectorChart: React.FC<AttackVectorChartProps> = ({ data, onVectorCli
             }}
             formatter={(value: number) => [value.toLocaleString('fa-IR'), 'تعداد']}
           />
-          <Legend 
-            wrapperStyle={{ direction: 'rtl' }}
-            formatter={(value) => value}
-          />
-        </PieChart>
+          <Bar 
+            dataKey="value" 
+            radius={[0, 8, 8, 0]}
+            onClick={(data) => onVectorClick?.(data.name)}
+            className="cursor-pointer"
+          >
+            {data.map((entry, index) => (
+              <Cell 
+                key={`cell-${index}`} 
+                fill={COLORS[index % COLORS.length]}
+                className="hover:opacity-90 transition-opacity"
+              />
+            ))}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </Card>
   );
