@@ -298,6 +298,7 @@ export type Database = {
       posts: {
         Row: {
           analysis_model: string | null
+          analysis_stage: string | null
           analysis_summary: string | null
           analyzed_at: string | null
           article_url: string | null
@@ -332,6 +333,7 @@ export type Database = {
         }
         Insert: {
           analysis_model?: string | null
+          analysis_stage?: string | null
           analysis_summary?: string | null
           analyzed_at?: string | null
           article_url?: string | null
@@ -366,6 +368,7 @@ export type Database = {
         }
         Update: {
           analysis_model?: string | null
+          analysis_stage?: string | null
           analysis_summary?: string | null
           analyzed_at?: string | null
           article_url?: string | null

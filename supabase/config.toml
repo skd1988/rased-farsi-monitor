@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.analyze-post-deepseek]
 verify_jwt = false
 
+[functions.batch-analyze-posts]
+verify_jwt = false
+
 [functions.chat-assistant]
 verify_jwt = false
 

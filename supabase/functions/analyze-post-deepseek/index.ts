@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { postId, title, contents, source, language, published_at } = await req.json();
+    const { postId, title, contents, source, language, published_at, quickDetectionResult } = await req.json();
     
     console.log(`Analyzing post ${postId}: ${title}`);
 
@@ -46,7 +46,14 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `مطلب زیر را تحلیل کنید:
+            content: `${quickDetectionResult ? `مرحله اول (غربالگری سریع) این مطلب را به عنوان PsyOp شناسایی کرد:
+- اطمینان: ${quickDetectionResult.psyop_confidence}%
+- سطح تهدید: ${quickDetectionResult.threat_level}
+- هدف اصلی: ${quickDetectionResult.primary_target || 'نامشخص'}
+
+حالا تحلیل کامل و عمیق انجام بده:
+
+` : ''}مطلب زیر را تحلیل کنید:
 
 عنوان: ${title}
 محتوا: ${contents}

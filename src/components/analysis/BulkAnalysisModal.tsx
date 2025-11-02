@@ -26,6 +26,7 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
   const [results, setResults] = useState<Record<string, 'success' | 'error'>>({});
   const [showManualSelection, setShowManualSelection] = useState(false);
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0);
+  const [batchResults, setBatchResults] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -109,127 +110,79 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
     setProgress(0);
     setCurrentPost(0);
     setResults({});
+    setBatchResults(null);
     const total = postsToAnalyze.length;
-    setEstimatedTimeRemaining(total * 3);
     
-    const startTime = Date.now();
-    let successCount = 0;
-    let alertsCreated = 0;
+    // New estimate: ~2 sec/post average (quick: 1s, deep: 4s, 70% quick only)
+    setEstimatedTimeRemaining(Math.ceil(total * 2));
 
-    for (let i = 0; i < postsToAnalyze.length; i++) {
-      const post = postsToAnalyze[i];
-      setCurrentPost(i + 1);
-      setCurrentPostTitle(post.title);
+    try {
+      console.log(`🚀 Starting two-stage batch analysis for ${total} posts`);
       
-      const elapsed = (Date.now() - startTime) / 1000;
-      const avgTimePerPost = elapsed / (i + 1);
-      const remaining = Math.ceil(avgTimePerPost * (total - i - 1));
-      setEstimatedTimeRemaining(remaining);
+      const postIds = postsToAnalyze.map(p => p.id);
+      
+      const response = await supabase.functions.invoke('batch-analyze-posts', {
+        body: {
+          postIds: postIds,
+          batchSize: 10
+        }
+      });
 
-      try {
-        console.log(`🔵 Analyzing post ${i + 1}/${total}: ${post.id}`);
-        
-        const response = await supabase.functions.invoke('analyze-post-deepseek', {
-          body: {
-            postId: post.id,
-            title: post.title,
-            contents: post.contents,
-            source: post.source,
-            language: post.language || "نامشخص",
-            published_at: post.published_at,
+      if (response.error) {
+        console.error('❌ Batch analysis error:', response.error);
+        throw response.error;
+      }
+      
+      if (!response.data || !response.data.success) {
+        console.error('❌ Invalid response structure:', response.data);
+        throw new Error(response.data?.error || 'Batch analysis failed');
+      }
+      
+      const batchData = response.data.results;
+      setBatchResults(batchData);
+      
+      console.log('✅ Batch analysis completed:', batchData);
+      
+      // Simulate progress updates during processing
+      const updateInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 95) {
+            clearInterval(updateInterval);
+            return 95;
           }
+          return prev + 5;
+        });
+      }, (batchData.processing_time_ms / 20));
+      
+      // Wait for completion
+      setTimeout(() => {
+        clearInterval(updateInterval);
+        setProgress(100);
+        setIsAnalyzing(false);
+        
+        const improvement = Math.round((batchData.time_saved_ms / batchData.estimated_old_time_ms) * 100);
+        
+        toast({
+          title: '✅ تحلیل گروهی تکمیل شد',
+          description: `${batchData.total} مطلب در ${(batchData.processing_time_ms / 1000).toFixed(1)} ثانیه | ${improvement}% سریع‌تر`,
         });
 
-        if (response.error) {
-          console.error('❌ Edge function error:', response.error);
-          throw response.error;
-        }
-        
-        if (!response.data || !response.data.success) {
-          console.error('❌ Invalid response structure:', response.data);
-          throw new Error(response.data?.error || 'Invalid response from edge function');
-        }
-        
-        const analysis = response.data.analysis;
-        console.log(`✅ Analysis received for post ${post.id}`);
+        setTimeout(() => {
+          onComplete();
+          onClose();
+        }, 3000);
+      }, 1000);
 
-        // Save to database with correct field names
-        const { error: updateError } = await supabase
-          .from('posts')
-          .update({
-            analysis_summary: analysis.summary,
-            sentiment: analysis.sentiment,
-            sentiment_score: analysis.sentiment_score,
-            main_topic: analysis.main_topic,
-            threat_level: analysis.threat_level,
-            confidence: analysis.confidence,
-            key_points: analysis.key_points,
-            keywords: analysis.keywords,
-            recommended_action: analysis.recommended_action,
-            analyzed_at: analysis.analyzed_at,
-            analysis_model: analysis.analysis_model,
-            processing_time: analysis.processing_time
-          })
-          .eq('id', post.id);
-
-        if (updateError) {
-          console.error('❌ Database update error:', updateError);
-          throw updateError;
-        }
-
-        // Auto-create alert for critical/high threat posts
-        if (analysis.threat_level === 'Critical' || analysis.threat_level === 'High') {
-          const alertType = 
-            analysis.main_topic === 'جنگ روانی' ? 'Psychological Warfare' :
-            analysis.main_topic === 'کمپین' ? 'Coordinated Campaign' :
-            analysis.main_topic === 'اتهام' ? 'Direct Attack' :
-            analysis.main_topic === 'شبهه' ? 'Fake News' :
-            analysis.main_topic?.includes('محور') ? 'Propaganda' :
-            'Viral Content';
-
-          const triggeredReason = `تهدید سطح ${analysis.threat_level} - احساسات: ${analysis.sentiment} - موضوع اصلی: ${analysis.main_topic} - اطمینان: ${analysis.confidence}%`;
-
-          const { error: alertError } = await supabase.from('alerts').insert({
-            post_id: post.id,
-            alert_type: alertType,
-            severity: analysis.threat_level,
-            status: 'New',
-            triggered_reason: triggeredReason,
-            assigned_to: null,
-            notes: null
-          });
-          
-          if (!alertError) {
-            alertsCreated++;
-            console.log(`🚨 Alert created for post ${post.id} - ${analysis.threat_level}`);
-          }
-        }
-
-        setResults(prev => ({ ...prev, [post.id]: 'success' }));
-        successCount++;
-
-      } catch (error) {
-        console.error(`❌ Error analyzing post ${post.id}:`, error);
-        setResults(prev => ({ ...prev, [post.id]: 'error' }));
-      }
-
-      setProgress(((i + 1) / total) * 100);
-      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error('❌ Error in batch analysis:', error);
+      setIsAnalyzing(false);
+      
+      toast({
+        title: 'خطا در تحلیل گروهی',
+        description: error instanceof Error ? error.message : 'خطای ناشناخته',
+        variant: 'destructive',
+      });
     }
-
-    setIsAnalyzing(false);
-    
-    toast({
-      title: 'تحلیل گروهی تکمیل شد',
-      description: alertsCreated > 0 
-        ? `${successCount} مطلب تحلیل شد و ${alertsCreated} هشدار ایجاد شد`
-        : `${successCount} از ${total} مطلب با موفقیت تحلیل شد`,
-    });
-
-    setTimeout(() => {
-      onComplete();
-      onClose();
-    }, 2000);
   };
 
   const handleAnalyzeAll = () => {
@@ -274,42 +227,92 @@ const BulkAnalysisModal = ({ open, onClose, onComplete }: BulkAnalysisModalProps
           <div className="space-y-6 py-6">
             <div className="space-y-2">
               <div className="flex justify-between text-sm text-muted-foreground mb-2">
-                <span>پیشرفت: {currentPost} از {posts.length}</span>
+                <span>در حال پردازش...</span>
                 <span>زمان تخمینی: {Math.ceil(estimatedTimeRemaining / 60)} دقیقه</span>
               </div>
               <Progress value={progress} className="w-full h-3" />
             </div>
             
-            <div className="bg-muted p-4 rounded-lg">
-              <div className="flex items-center gap-3 mb-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="font-medium">در حال تحلیل:</span>
-              </div>
-              <p className="text-sm break-words">{currentPostTitle}</p>
-            </div>
+            {batchResults && (
+              <div className="grid grid-cols-3 gap-4 mt-6">
+                <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                      {batchResults.quick_only}
+                    </div>
+                    <div className="text-sm font-medium mt-1">تحلیل سریع</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      پست‌های عادی
+                    </div>
+                  </CardContent>
+                </Card>
 
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              <h4 className="font-semibold mb-2">نتایج ({Object.keys(results).length}):</h4>
-              {Object.entries(results).map(([postId, status]) => {
-                const post = posts.find(p => p.id === postId);
-                return (
-                  <div key={postId} className="flex items-start justify-between gap-3 p-3 border rounded-lg bg-card">
-                    <span className="text-sm flex-1 line-clamp-2 break-words leading-relaxed">{post?.title}</span>
-                    {status === 'success' && (
-                      <div className="flex items-center gap-2 text-green-600 shrink-0">
-                        <CheckCircle className="h-4 w-4" />
-                        <span className="text-xs whitespace-nowrap">موفق</span>
-                      </div>
-                    )}
-                    {status === 'error' && (
-                      <div className="flex items-center gap-2 text-red-600 shrink-0">
-                        <XCircle className="h-4 w-4" />
-                        <span className="text-xs whitespace-nowrap">خطا</span>
-                      </div>
-                    )}
+                <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+                      {batchResults.deep_analyzed}
+                    </div>
+                    <div className="text-sm font-medium mt-1">تحلیل عمیق</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      PsyOp تأیید شده
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                      {batchResults.alerts_created}
+                    </div>
+                    <div className="text-sm font-medium mt-1">هشدار ایجاد شده</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      تهدید بالا/بحرانی
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {batchResults && (
+              <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+                <CardContent className="p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <span className="text-2xl">⚡</span>
+                    مقایسه عملکرد
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">روش قبلی (تک‌مرحله‌ای):</span>
+                      <span className="font-medium">{(batchResults.estimated_old_time_ms / 1000).toFixed(1)} ثانیه</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">روش جدید (دومرحله‌ای):</span>
+                      <span className="font-medium">{(batchResults.processing_time_ms / 1000).toFixed(1)} ثانیه</span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t">
+                      <span className="font-semibold text-green-600 dark:text-green-400">بهبود سرعت:</span>
+                      <span className="font-bold text-green-600 dark:text-green-400 text-lg">
+                        {Math.round((batchResults.time_saved_ms / batchResults.estimated_old_time_ms) * 100)}% سریع‌تر 🚀
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">صرفه‌جویی زمان:</span>
+                      <span className="font-medium">{(batchResults.time_saved_ms / 1000).toFixed(1)} ثانیه</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">صرفه‌جویی هزینه:</span>
+                      <span className="font-medium">${batchResults.cost_saved_usd.toFixed(4)}</span>
+                    </div>
                   </div>
-                );
-              })}
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span className="font-medium">در حال اتمام...</span>
+              </div>
             </div>
           </div>
         ) : showManualSelection ? (
