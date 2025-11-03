@@ -1956,7 +1956,15 @@ const Settings = () => {
         )}
 
         <Tabs defaultValue="data-sources" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8">
+          <TabsList className="grid w-full grid-cols-7 mb-8">
+            <TabsTrigger 
+              value="users" 
+              className="gap-2"
+              onClick={() => window.location.href = '/settings/users'}
+            >
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">مدیریت کاربران</span>
+            </TabsTrigger>
             <TabsTrigger value="data-sources" className="gap-2">
               <Database className="h-4 w-4" />
               <span className="hidden sm:inline">منابع داده</span>
