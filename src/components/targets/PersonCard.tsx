@@ -236,7 +236,7 @@ const PersonCard: React.FC<PersonCardProps> = ({ person, onViewDetails }) => {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 mt-auto">
         <Button variant="outline" className="flex-1" onClick={onViewDetails}>
           مشاهده جزئیات
         </Button>

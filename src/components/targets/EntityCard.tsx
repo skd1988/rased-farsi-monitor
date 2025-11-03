@@ -34,7 +34,7 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onExpand }) => {
   ].filter(d => d.value > 0);
 
   return (
-    <Card className="p-6 space-y-4 hover:shadow-lg transition-all">
+    <Card className="p-6 space-y-4 hover:shadow-lg transition-all h-full flex flex-col">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3 flex-1">
           {/* Avatar with photo support */}
@@ -126,7 +126,7 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onExpand }) => {
 
       <Button
         variant="outline"
-        className="w-full gap-2"
+        className="w-full gap-2 mt-auto"
         onClick={() => {
           setExpanded(!expanded);
           if (!expanded) onExpand();

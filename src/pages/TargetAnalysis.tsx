@@ -105,14 +105,26 @@ const TargetAnalysis = () => {
         description: `${data.updated} پست به‌روز شد. ${data.alreadyCategorized} هدف قبلاً دسته‌بندی شده بود.`,
       });
       
-      // Refresh data
-      const { data: postsData } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('is_psyop', true)
-        .order('published_at', { ascending: false });
+      // Refresh all data (posts, persons, entities)
+      const [postsResult, personsResult, entitiesResult] = await Promise.all([
+        supabase
+          .from('posts')
+          .select('*')
+          .eq('is_psyop', true)
+          .order('published_at', { ascending: false }),
+        supabase
+          .from('resistance_persons')
+          .select('*')
+          .eq('active', true),
+        supabase
+          .from('resistance_entities')
+          .select('*')
+          .eq('active', true)
+      ]);
       
-      setPosts(postsData || []);
+      setPosts(postsResult.data || []);
+      setPersons(personsResult.data || []);
+      setEntities(entitiesResult.data || []);
       
     } catch (error) {
       console.error('Categorization failed:', error);
@@ -513,9 +525,9 @@ const TargetAnalysis = () => {
                   .filter(e => e.totalAttacks >= minAttacks[0])
                   .filter(e => entityType === 'All' || e.entity_type === entityType)
                   .filter(e => location === 'All' || e.location === location)
-                  .map((entity, idx) => (
+                  .map((entity) => (
                     <EntityCard
-                      key={idx}
+                      key={`${entity.name_persian}-${entity.name_english || ''}`}
                       entity={entity}
                       onExpand={() => {
                         toast({
@@ -610,9 +622,9 @@ const TargetAnalysis = () => {
 
               {/* Person Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredPersons.map((person, idx) => (
+                {filteredPersons.map((person) => (
                   <PersonCard
-                    key={idx}
+                    key={`${person.name_persian}-${person.name_english || ''}`}
                     person={person}
                     onViewDetails={() => {
                       toast({
