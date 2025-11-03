@@ -77,8 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
+    console.log('[NewAuthContext] fetchUserData START for:', authUser.email);
     try {
-      console.log('[NewAuthContext] Fetching user data for:', authUser.email);
+      console.log('[NewAuthContext] About to fetch users table...');
       
       // Fetch user profile
       const { data: userData, error: userError } = await supabase
@@ -87,9 +88,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', authUser.id)
         .single();
 
-      console.log('[NewAuthContext] Users query:', { userData, userError });
-      if (userError) throw userError;
+      console.log('[NewAuthContext] Users query result:', { 
+        hasData: !!userData, 
+        error: userError?.message,
+        userId: authUser.id 
+      });
+      
+      if (userError) {
+        console.error('[NewAuthContext] Users query error:', userError);
+        throw userError;
+      }
 
+      console.log('[NewAuthContext] About to fetch roles table...');
+      
       // Fetch user role
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
@@ -97,9 +108,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('user_id', authUser.id)
         .single();
 
-      console.log('[NewAuthContext] Role query:', { roleData, roleError });
-      if (roleError) throw roleError;
+      console.log('[NewAuthContext] Role query result:', { 
+        hasData: !!roleData, 
+        role: roleData?.role,
+        error: roleError?.message 
+      });
+      
+      if (roleError) {
+        console.error('[NewAuthContext] Role query error:', roleError);
+        throw roleError;
+      }
 
+      console.log('[NewAuthContext] About to fetch daily limits...');
+      
       // Fetch daily limits
       const { data: limitsData, error: limitsError } = await supabase
         .from('user_daily_limits')
@@ -107,9 +128,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('user_id', authUser.id)
         .single();
 
-      console.log('[NewAuthContext] Limits query:', { limitsData, limitsError });
-      if (limitsError) throw limitsError;
+      console.log('[NewAuthContext] Limits query result:', { 
+        hasData: !!limitsData,
+        error: limitsError?.message 
+      });
+      
+      if (limitsError) {
+        console.error('[NewAuthContext] Limits query error:', limitsError);
+        throw limitsError;
+      }
 
+      console.log('[NewAuthContext] About to fetch daily usage...');
+      
       // Fetch today's usage
       const today = new Date().toISOString().split('T')[0];
       const { data: usageData, error: usageError } = await supabase
@@ -119,11 +149,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('usage_date', today)
         .maybeSingle();
 
-      if (usageError && usageError.code !== 'PGRST116') throw usageError;
+      console.log('[NewAuthContext] Usage query result:', { 
+        hasData: !!usageData,
+        error: usageError?.message,
+        today 
+      });
+
+      if (usageError && usageError.code !== 'PGRST116') {
+        console.error('[NewAuthContext] Usage query error:', usageError);
+        throw usageError;
+      }
 
       // If no usage record for today, create one
       if (!usageData) {
-        await supabase
+        console.log('[NewAuthContext] Creating new usage record for today...');
+        const { error: insertError } = await supabase
           .from('user_daily_usage')
           .insert({
             user_id: authUser.id,
@@ -132,9 +172,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             chat_messages: 0,
             exports: 0
           });
+        
+        if (insertError) {
+          console.error('[NewAuthContext] Insert usage error:', insertError);
+        }
       }
 
-      return {
+      console.log('[NewAuthContext] Building user object...');
+      const userObject = {
         id: userData.id,
         email: userData.email,
         fullName: userData.full_name,
@@ -154,9 +199,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastLogin: userData.last_login,
         createdAt: userData.created_at
       };
-    } catch (error) {
-      console.error('[NewAuthContext] Error fetching user data:', error);
-      toast.error('خطا در بارگذاری اطلاعات کاربر');
+      
+      console.log('[NewAuthContext] User object built successfully:', {
+        email: userObject.email,
+        role: userObject.role,
+        status: userObject.status
+      });
+      
+      return userObject;
+    } catch (error: any) {
+      console.error('[NewAuthContext] FATAL ERROR in fetchUserData:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        stack: error?.stack
+      });
+      toast.error('خطا در بارگذاری اطلاعات کاربر: ' + (error?.message || 'خطای نامشخص'));
       return null;
     }
   }, []);
