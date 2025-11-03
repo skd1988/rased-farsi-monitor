@@ -221,6 +221,36 @@ const TargetAnalysis = () => {
   // Process person data - SIMPLIFIED: now expects plain string array
   const personStats = useMemo(() => {
     const stats = new Map();
+    
+    // List of organization/entity keywords to filter out (not persons)
+    const organizationKeywords = [
+      'جمهوری اسلامی',
+      'حماس',
+      'حزب‌الله',
+      'حزب الله',
+      'انصارالله',
+      'حشد',
+      'حشدالشعبی',
+      'سپاه',
+      'ارتش',
+      'جهاد اسلامی',
+      'فلسطین',
+      'لبنان',
+      'ایران',
+      'یمن',
+      'عراق',
+      'سوریه',
+      'syria',
+      'iran',
+      'iraq',
+      'lebanon',
+      'palestine',
+      'yemen',
+      'hamas',
+      'hezbollah',
+      'pmu',
+      'pmf'
+    ];
 
     posts.forEach(post => {
       if (post.target_persons && Array.isArray(post.target_persons)) {
@@ -231,6 +261,16 @@ const TargetAnalysis = () => {
           // Skip invalid names
           if (!namePersian || namePersian === 'نامشخص' || namePersian === 'Unknown' || namePersian.includes('{')) {
             return;
+          }
+          
+          // Filter out organization/entity names (not persons)
+          const lowerName = namePersian.toLowerCase();
+          const isOrganization = organizationKeywords.some(keyword => 
+            lowerName.includes(keyword.toLowerCase())
+          );
+          
+          if (isOrganization) {
+            return; // Skip organizations
           }
 
           // Find person in resistance_persons table

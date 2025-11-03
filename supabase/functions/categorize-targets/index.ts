@@ -37,15 +37,25 @@ serve(async (req) => {
       let cleanedPersons: string[] = [];
       let cleanedEntities: string[] = [];
       
-      // Clean up target_persons - extract only Persian names
+      // Clean up target_persons - extract only Persian names (filter out organizations)
       if (Array.isArray(post.target_persons) && post.target_persons.length > 0) {
         for (const target of post.target_persons) {
           const name = extractPersonName(target);
           if (name && name !== 'نامشخص' && name !== 'Unknown') {
-            cleanedPersons.push(name);
-            
-            // Also ensure person exists in resistance_persons
-            await ensurePersonExists(supabase, name);
+            // Check if this is actually an organization/entity (not a person)
+            if (isOrganizationName(name)) {
+              // Move to entities instead
+              const entityName = extractEntityName(target);
+              if (entityName && !cleanedEntities.includes(entityName)) {
+                cleanedEntities.push(entityName);
+              }
+            } else {
+              // It's a real person
+              cleanedPersons.push(name);
+              
+              // Also ensure person exists in resistance_persons
+              await ensurePersonExists(supabase, name);
+            }
           }
         }
         
@@ -227,6 +237,45 @@ async function ensurePersonExists(supabase: any, namePersian: string) {
     
     console.log(`📝 Created resistance_persons entry for: ${namePersian}`);
   }
+}
+
+// Check if a name is an organization/entity (not a person)
+function isOrganizationName(name: string): boolean {
+  const lowerName = name.toLowerCase();
+  
+  const organizationKeywords = [
+    'جمهوری اسلامی',
+    'حماس',
+    'حزب‌الله',
+    'حزب الله',
+    'انصارالله',
+    'حشد',
+    'حشدالشعبی',
+    'سپاه',
+    'ارتش',
+    'جهاد اسلامی',
+    'فلسطین',
+    'لبنان',
+    'ایران',
+    'یمن',
+    'عراق',
+    'سوریه',
+    'syria',
+    'iran',
+    'iraq',
+    'lebanon',
+    'palestine',
+    'yemen',
+    'hamas',
+    'hezbollah',
+    'ansarallah',
+    'pmu',
+    'pmf',
+    'irgc',
+    'islamic republic'
+  ];
+  
+  return organizationKeywords.some(keyword => lowerName.includes(keyword));
 }
 
 // Categorize person by name patterns
