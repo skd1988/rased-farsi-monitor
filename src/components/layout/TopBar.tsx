@@ -1,7 +1,7 @@
 import React from 'react';
 import { Moon, Sun, Bell, LogOut, User } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { useNewAuth } from '@/contexts/NewAuthContext';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useNavigate } from 'react-router-dom';
@@ -12,11 +12,11 @@ const TopBar = () => {
   } = useTheme();
   const {
     user,
-    logout
-  } = useAuth();
+    signOut
+  } = useNewAuth();
   const navigate = useNavigate();
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut();
     navigate('/login');
   };
   return <header className="h-16 bg-card border-b border-border flex items-center justify-between px-6">
@@ -47,7 +47,7 @@ const TopBar = () => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="text-right">
-              {user?.username}
+              {user?.fullName || user?.email}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-right cursor-pointer">
