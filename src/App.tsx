@@ -28,6 +28,7 @@ import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
 import SystemTest from "./pages/SystemTest";
+import Debug from "./pages/Debug";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/unauthorized" element={<Unauthorized />} />
+                  <Route path="/debug" element={<Debug />} />
                   
                   <Route path="/" element={
                     <ProtectedRoute requiredPermission="VIEW_POSTS">
