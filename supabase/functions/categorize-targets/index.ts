@@ -79,12 +79,17 @@ serve(async (req) => {
       if (needsUpdate || cleanedPersons.length > 0 || cleanedEntities.length > 0) {
         const updateData: any = {};
         
-        if (cleanedPersons.length > 0) {
-          updateData.target_persons = cleanedPersons;
+        // Always update target_persons if we processed it (even if empty now)
+        if (Array.isArray(post.target_persons) && post.target_persons.length > 0) {
+          updateData.target_persons = cleanedPersons; // Can be empty if all were organizations
         }
         
-        if (cleanedEntities.length > 0) {
-          updateData.target_entity = cleanedEntities;
+        // Always update target_entity if we have cleaned entities
+        if (cleanedEntities.length > 0 || (Array.isArray(post.target_entity) && post.target_entity.length > 0)) {
+          // Merge with existing entities, remove duplicates
+          const existingEntities = Array.isArray(post.target_entity) ? post.target_entity : [];
+          const allEntities = [...existingEntities, ...cleanedEntities];
+          updateData.target_entity = [...new Set(allEntities)]; // Remove duplicates
         }
         
         if (Object.keys(updateData).length > 0) {
@@ -241,25 +246,32 @@ async function ensurePersonExists(supabase: any, namePersian: string) {
 
 // Check if a name is an organization/entity (not a person)
 function isOrganizationName(name: string): boolean {
-  const lowerName = name.toLowerCase();
+  const lowerName = name.toLowerCase().replace(/\s+/g, ''); // Remove all spaces for comparison
   
   const organizationKeywords = [
-    'جمهوری اسلامی',
+    'جمهوریاسلامی',
+    'جمهوریاسلامیایران',
     'حماس',
+    'حماسفلسطین',
+    'حزبالله',
     'حزب‌الله',
-    'حزب الله',
+    'حزباللهلبنان',
+    'حزب‌اللهلبنان',
     'انصارالله',
     'حشد',
     'حشدالشعبی',
+    'حشدالشعبیعراق',
     'سپاه',
+    'سپاهپاسداران',
     'ارتش',
-    'جهاد اسلامی',
+    'جهاداسلامی',
     'فلسطین',
     'لبنان',
     'ایران',
     'یمن',
     'عراق',
     'سوریه',
+    'دولت',
     'syria',
     'iran',
     'iraq',
@@ -272,7 +284,9 @@ function isOrganizationName(name: string): boolean {
     'pmu',
     'pmf',
     'irgc',
-    'islamic republic'
+    'islamicrepublic',
+    'government',
+    'state'
   ];
   
   return organizationKeywords.some(keyword => lowerName.includes(keyword));
