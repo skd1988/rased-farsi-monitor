@@ -3,8 +3,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider as OldAuthProvider } from "./contexts/AuthContext";
 import { AuthProvider } from "./contexts/NewAuthContext";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import Login from "./pages/Login";
@@ -35,9 +35,9 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <OldAuthProvider>
-        <AuthProvider>
-          <TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <ErrorBoundary>
             <div dir="rtl" className="min-h-screen">
               <Toaster />
               <Sonner position="top-center" />
@@ -109,9 +109,9 @@ const App = () => (
                 </Routes>
               </BrowserRouter>
             </div>
-          </TooltipProvider>
-        </AuthProvider>
-      </OldAuthProvider>
+          </ErrorBoundary>
+        </TooltipProvider>
+      </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

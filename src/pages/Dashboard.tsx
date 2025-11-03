@@ -25,6 +25,7 @@ import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-f
 import { Separator } from '@/components/ui/separator';
 
 const Dashboard = () => {
+  console.log('[Dashboard] Component mounting...');
   const navigate = useNavigate();
   const [selectedPost, setSelectedPost] = useState<EnrichedPost | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);

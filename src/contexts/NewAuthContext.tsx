@@ -370,12 +370,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('[NewAuthContext] Auth state changed:', event, session?.user?.email);
         setSession(session);
         
         if (session?.user) {
           const userData = await fetchUserData(session.user);
+          console.log('[NewAuthContext] User data fetched:', userData);
           setUser(userData);
         } else {
+          console.log('[NewAuthContext] No session, clearing user');
           setUser(null);
         }
         

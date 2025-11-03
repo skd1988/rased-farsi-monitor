@@ -21,6 +21,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, loading, hasPermission } = useNewAuth();
   const location = useLocation();
 
+  console.log('[ProtectedRoute]', {
+    loading,
+    user: user?.email,
+    role: user?.role,
+    status: user?.status,
+    requiredPermission,
+    pathname: location.pathname
+  });
+
   // Show loading spinner while checking auth
   if (loading) {
     return (

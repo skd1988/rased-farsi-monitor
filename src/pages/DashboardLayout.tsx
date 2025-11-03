@@ -1,22 +1,10 @@
-import React, { useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import React from 'react';
+import { Outlet } from 'react-router-dom';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
 
 const DashboardLayout = () => {
-  const { isAuthenticated } = useAuth();
-  const navigate = useNavigate();
-  
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-    }
-  }, [isAuthenticated, navigate]);
-  
-  if (!isAuthenticated) {
-    return null;
-  }
+  console.log('[DashboardLayout] Rendering...');
   
   return (
     <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
