@@ -26,19 +26,24 @@ serve(async (req) => {
 
     const startTime = Date.now();
 
-    // DeepSeek API call
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${DEEPSEEK_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "system",
-            content: `شما یک تحلیلگر ارشد جنگ روانی و عملیات روانی هستید که تخصص در شناسایی و تحلیل حملات اطلاعاتی علیه جبهه مقاومت دارید.
+    // DeepSeek API call with retry logic
+    let response;
+    const maxRetries = 3;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${DEEPSEEK_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: [
+              {
+                role: "system",
+                content: `شما یک تحلیلگر ارشد جنگ روانی و عملیات روانی هستید که تخصص در شناسایی و تحلیل حملات اطلاعاتی علیه جبهه مقاومت دارید.
 
 محور مقاومت شامل: جمهوری اسلامی ایران، حزب‌الله لبنان، حشد الشعبی عراق، انصارالله یمن، حماس فلسطین، جهاد اسلامی فلسطین، سایر گروه‌های مقاومت.
 
@@ -267,12 +272,36 @@ serve(async (req) => {
         max_tokens: 2000
       }),
     });
-
+    
     if (!response.ok) {
+      // If rate limited, retry with exponential backoff
+      if ((response.status === 429 || response.status === 503 || response.status === 504) && attempt < maxRetries - 1) {
+        const backoffDelay = Math.pow(2, attempt) * 3000;
+        console.log(`⏳ Rate limited, retrying after ${backoffDelay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        continue;
+      }
+      
       const errorText = await response.text();
       console.error("DeepSeek API error:", response.status, errorText);
       throw new Error(`DeepSeek API error: ${response.status}`);
     }
+    
+    // Success, break out of retry loop
+    break;
+    
+  } catch (error) {
+    if (attempt === maxRetries - 1) throw error;
+    
+    const backoffDelay = Math.pow(2, attempt) * 3000;
+    console.log(`⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`);
+    await new Promise(resolve => setTimeout(resolve, backoffDelay));
+  }
+}
+
+if (!response) {
+  throw new Error('Failed to get response from DeepSeek API after retries');
+}
 
     const data = await response.json();
     let analysisResult;

@@ -44,34 +44,58 @@ serve(async (req) => {
     // Build quick screening prompt
     const prompt = buildQuickPrompt(title, source, language, entityList);
     
-    // Call DeepSeek API
-    const deepseekResponse = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${deepseekApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "user",
-            content: prompt,
+    // Call DeepSeek API with retry logic
+    let deepseekData;
+    let responseContent;
+    const maxRetries = 3;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const deepseekResponse = await fetch("https://api.deepseek.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${deepseekApiKey}`,
           },
-        ],
-        temperature: 0.2, // Low for consistent screening
-        max_tokens: 200,  // Very small for speed
-      }),
-    });
-    
-    if (!deepseekResponse.ok) {
-      const errorText = await deepseekResponse.text();
-      console.error("DeepSeek API error:", deepseekResponse.status, errorText);
-      throw new Error(`DeepSeek API error: ${deepseekResponse.status}`);
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            temperature: 0.2,
+            max_tokens: 200,
+          }),
+        });
+        
+        if (!deepseekResponse.ok) {
+          // If rate limited, retry with exponential backoff
+          if ((deepseekResponse.status === 429 || deepseekResponse.status === 503) && attempt < maxRetries - 1) {
+            const backoffDelay = Math.pow(2, attempt) * 2000;
+            console.log(`⏳ Rate limited, retrying after ${backoffDelay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
+          }
+          
+          const errorText = await deepseekResponse.text();
+          console.error("DeepSeek API error:", deepseekResponse.status, errorText);
+          throw new Error(`DeepSeek API error: ${deepseekResponse.status}`);
+        }
+        
+        deepseekData = await deepseekResponse.json();
+        responseContent = deepseekData.choices[0].message.content;
+        break; // Success, exit retry loop
+        
+      } catch (error) {
+        if (attempt === maxRetries - 1) throw error;
+        
+        const backoffDelay = Math.pow(2, attempt) * 2000;
+        console.log(`⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+      }
     }
-    
-    const deepseekData = await deepseekResponse.json();
-    const responseContent = deepseekData.choices[0].message.content;
     
     console.log("Raw DeepSeek response:", responseContent);
     

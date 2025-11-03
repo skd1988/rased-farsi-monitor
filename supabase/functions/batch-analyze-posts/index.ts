@@ -304,8 +304,8 @@ serve(async (req) => {
         results.processed++;
         results.lastProcessedIndex = resumeFromIndex + i + 1;
         
-        // Delay to avoid rate limiting
-        await sleep(300);
+        // Delay to avoid rate limiting (1 second per request = max 60 requests/min)
+        await sleep(1000);
         
       } catch (error) {
         console.error(`  ❌ Failed to process post ${post.id}:`, error);
@@ -425,67 +425,109 @@ serve(async (req) => {
   }
 });
 
-// STAGE 1: Quick Detection
-async function performQuickDetection(post: any) {
-  const response = await fetch(
-    `${Deno.env.get("SUPABASE_URL")}/functions/v1/quick-psyop-detection`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
-      },
-      body: JSON.stringify({
-        postId: post.id,
-        title: post.title,
-        source: post.source,
-        language: post.language || "نامشخص"
-      })
+// STAGE 1: Quick Detection with retry logic
+async function performQuickDetection(post: any, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/quick-psyop-detection`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
+          },
+          body: JSON.stringify({
+            postId: post.id,
+            title: post.title,
+            source: post.source,
+            language: post.language || "نامشخص"
+          })
+        }
+      );
+      
+      if (!response.ok) {
+        // If rate limited or server error, retry with backoff
+        if ((response.status === 429 || response.status === 503 || response.status === 504) && attempt < retries - 1) {
+          const backoffDelay = Math.pow(2, attempt) * 2000; // 2s, 4s, 8s
+          console.log(`⏳ Retrying quick detection after ${backoffDelay}ms (attempt ${attempt + 1}/${retries})...`);
+          await sleep(backoffDelay);
+          continue;
+        }
+        
+        const errorText = await response.text();
+        throw new Error(`Quick detection failed: ${response.status} - ${errorText}`);
+      }
+      
+      return await response.json();
+      
+    } catch (error) {
+      if (attempt === retries - 1) throw error;
+      
+      const backoffDelay = Math.pow(2, attempt) * 2000;
+      console.log(`⏳ Retrying quick detection after error (attempt ${attempt + 1}/${retries})...`);
+      await sleep(backoffDelay);
     }
-  );
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Quick detection failed: ${response.status} - ${errorText}`);
   }
   
-  return await response.json();
+  throw new Error('Quick detection failed after all retries');
 }
 
-// STAGE 2: Deep Analysis
-async function performDeepAnalysis(post: any, quickResult: any) {
-  const response = await fetch(
-    `${Deno.env.get("SUPABASE_URL")}/functions/v1/analyze-post-deepseek`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
-      },
-      body: JSON.stringify({
-        postId: post.id,
-        title: post.title,
-        contents: post.contents,
-        source: post.source,
-        language: post.language || "نامشخص",
-        published_at: post.published_at,
-        quickDetectionResult: quickResult // Pass quick result as context
-      })
+// STAGE 2: Deep Analysis with retry logic
+async function performDeepAnalysis(post: any, quickResult: any, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/analyze-post-deepseek`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
+          },
+          body: JSON.stringify({
+            postId: post.id,
+            title: post.title,
+            contents: post.contents,
+            source: post.source,
+            language: post.language || "نامشخص",
+            published_at: post.published_at,
+            quickDetectionResult: quickResult
+          })
+        }
+      );
+      
+      if (!response.ok) {
+        // If rate limited or server error, retry with backoff
+        if ((response.status === 429 || response.status === 503 || response.status === 504) && attempt < retries - 1) {
+          const backoffDelay = Math.pow(2, attempt) * 3000; // 3s, 6s, 12s
+          console.log(`⏳ Retrying deep analysis after ${backoffDelay}ms (attempt ${attempt + 1}/${retries})...`);
+          await sleep(backoffDelay);
+          continue;
+        }
+        
+        const errorText = await response.text();
+        throw new Error(`Deep analysis failed: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Deep analysis failed');
+      }
+      
+      return data.analysis;
+      
+    } catch (error) {
+      if (attempt === retries - 1) throw error;
+      
+      const backoffDelay = Math.pow(2, attempt) * 3000;
+      console.log(`⏳ Retrying deep analysis after error (attempt ${attempt + 1}/${retries})...`);
+      await sleep(backoffDelay);
     }
-  );
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Deep analysis failed: ${response.status} - ${errorText}`);
   }
   
-  const data = await response.json();
-  
-  if (!data.success) {
-    throw new Error(data.error || 'Deep analysis failed');
-  }
-  
-  return data.analysis;
+  throw new Error('Deep analysis failed after all retries');
 }
 
 // Save analysis result
