@@ -78,6 +78,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
     try {
+      console.log('[NewAuthContext] Fetching user data for:', authUser.email);
+      
       // Fetch user profile
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -85,6 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', authUser.id)
         .single();
 
+      console.log('[NewAuthContext] Users query:', { userData, userError });
       if (userError) throw userError;
 
       // Fetch user role
@@ -94,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('user_id', authUser.id)
         .single();
 
+      console.log('[NewAuthContext] Role query:', { roleData, roleError });
       if (roleError) throw roleError;
 
       // Fetch daily limits
@@ -103,6 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('user_id', authUser.id)
         .single();
 
+      console.log('[NewAuthContext] Limits query:', { limitsData, limitsError });
       if (limitsError) throw limitsError;
 
       // Fetch today's usage
@@ -150,7 +155,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userData.created_at
       };
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('[NewAuthContext] Error fetching user data:', error);
+      toast.error('خطا در بارگذاری اطلاعات کاربر');
       return null;
     }
   }, []);
