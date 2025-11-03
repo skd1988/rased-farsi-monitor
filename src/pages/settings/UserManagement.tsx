@@ -72,36 +72,56 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      console.log('[UserManagement] Starting to fetch users...');
+      
+      // Fetch users
+      const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select(`
-          *,
-          user_roles!inner(role)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (usersError) {
+        console.error('[UserManagement] Error fetching users:', usersError);
+        throw usersError;
+      }
+
+      console.log('[UserManagement] Users data:', usersData);
+
+      // Fetch roles separately
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
+
+      if (rolesError) {
+        console.error('[UserManagement] Error fetching roles:', rolesError);
+        throw rolesError;
+      }
+
+      console.log('[UserManagement] Roles data:', rolesData);
+
+      // Create a map of user_id to role
+      const roleMap = new Map<string, string>();
+      rolesData?.forEach(r => roleMap.set(r.user_id, r.role));
 
       // Transform data to match User interface
-      const transformedUsers = data?.map(u => {
-        const userRole = Array.isArray(u.user_roles) ? u.user_roles[0] : u.user_roles;
-        return {
-          id: u.id,
-          email: u.email,
-          full_name: u.full_name,
-          role: userRole?.role || 'viewer',
-          status: u.status,
-          preferences: u.preferences,
-          last_login: u.last_login,
-          created_at: u.created_at,
-          updated_at: u.updated_at
-        };
-      }) || [];
+      const transformedUsers = usersData?.map(u => ({
+        id: u.id,
+        email: u.email,
+        full_name: u.full_name,
+        role: (roleMap.get(u.id) || 'viewer') as 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest',
+        status: u.status,
+        preferences: u.preferences,
+        last_login: u.last_login,
+        created_at: u.created_at,
+        updated_at: u.updated_at
+      })) || [];
 
+      console.log('[UserManagement] Transformed users:', transformedUsers);
       setUsers(transformedUsers);
+      toast.success(`${transformedUsers.length} کاربر بارگذاری شد`);
     } catch (error: any) {
-      console.error('Error fetching users:', error);
-      toast.error('خطا در بارگذاری کاربران');
+      console.error('[UserManagement] Error:', error);
+      toast.error(`خطا در بارگذاری کاربران: ${error.message}`);
     } finally {
       setLoading(false);
     }
