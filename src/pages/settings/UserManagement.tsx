@@ -302,10 +302,9 @@ const UserManagement = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background p-6" dir="rtl">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6" dir="rtl">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">مدیریت کاربران</h1>
             <p className="text-muted-foreground mt-1">مشاهده و مدیریت دسترسی کاربران</p>
@@ -482,7 +481,6 @@ const UserManagement = () => {
           }}
         />
       </div>
-    </div>
   );
 };
 

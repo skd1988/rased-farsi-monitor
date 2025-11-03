@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Papa from "papaparse";
+import UserManagement from "@/pages/settings/UserManagement";
 
 // Helper function for proper CSV parsing that handles commas inside quotes
 const parseCSVLine = (line: string): string[] => {
@@ -1960,7 +1961,6 @@ const Settings = () => {
             <TabsTrigger 
               value="users" 
               className="gap-2"
-              onClick={() => window.location.href = '/settings/users'}
             >
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">مدیریت کاربران</span>
@@ -1994,6 +1994,10 @@ const Settings = () => {
               <span className="hidden sm:inline">مصرف API</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="users" className="space-y-6">
+            <UserManagement />
+          </TabsContent>
 
           <TabsContent value="data-sources" className="space-y-6">
             <Card>
