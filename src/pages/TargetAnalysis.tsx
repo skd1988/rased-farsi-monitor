@@ -138,67 +138,31 @@ const TargetAnalysis = () => {
     }
   };
 
-  // Process entity data
+  // Process entity data - SIMPLIFIED: now expects plain string array
   const entityStats = useMemo(() => {
     const stats = new Map();
 
     posts.forEach(post => {
       if (post.target_entity && Array.isArray(post.target_entity)) {
-        post.target_entity.forEach((entityData: any) => {
-          let entityKey: string;
-          let entityInfo: any;
-
-          // Handle both string and object formats
-          if (typeof entityData === 'string') {
-            // String format - try to parse or use as-is
-            try {
-              const parsed = JSON.parse(entityData);
-              if (parsed && typeof parsed === 'object' && parsed.name_persian) {
-                // Successfully parsed JSON string
-                entityKey = String(parsed.name_persian || '').trim();
-                entityInfo = {
-                  name_persian: String(parsed.name_persian || '').trim(),
-                  name_english: String(parsed.name_english || '').trim(),
-                  entity_type: String(parsed.entity_type || 'Organization'),
-                  location: String(parsed.location || 'نامشخص')
-                };
-              } else {
-                // Plain name string
-                entityKey = entityData.trim();
-                const entity = entities.find(e => e.name_persian === entityData);
-                entityInfo = {
-                  name_persian: entityData.trim(),
-                  name_english: entity?.name_english || '',
-                  entity_type: entity?.entity_type || 'Organization',
-                  location: entity?.location || 'نامشخص'
-                };
-              }
-            } catch {
-              // Not valid JSON, treat as plain name
-              entityKey = entityData.trim();
-              const entity = entities.find(e => e.name_persian === entityData);
-              entityInfo = {
-                name_persian: entityData.trim(),
-                name_english: entity?.name_english || '',
-                entity_type: entity?.entity_type || 'Organization',
-                location: entity?.location || 'نامشخص'
-              };
-            }
-          } else if (typeof entityData === 'object' && entityData !== null) {
-            // Object format - ensure all values are proper strings
-            entityKey = String(entityData.name_persian || '').trim();
-            entityInfo = {
-              name_persian: String(entityData.name_persian || '').trim(),
-              name_english: String(entityData.name_english || '').trim(),
-              entity_type: String(entityData.entity_type || 'Organization'),
-              location: String(entityData.location || 'نامشخص')
-            };
-          }
-
-          // Skip if we couldn't extract valid data
-          if (!entityKey || !entityInfo || entityKey === '' || entityKey === 'undefined') {
+        post.target_entity.forEach((entityName: any) => {
+          // Extract name - should be plain string now after cleanup
+          const namePersian = typeof entityName === 'string' ? entityName.trim() : '';
+          
+          // Skip invalid names
+          if (!namePersian || namePersian === 'نامشخص' || namePersian === 'Unknown' || namePersian.includes('{')) {
             return;
           }
+
+          // Find entity in resistance_entities table
+          const entity = entities.find(e => e.name_persian === namePersian);
+          
+          const entityKey = namePersian;
+          const entityInfo = {
+            name_persian: namePersian,
+            name_english: entity?.name_english || '',
+            entity_type: entity?.entity_type || 'Organization',
+            location: entity?.location || 'نامشخص'
+          };
 
           if (!stats.has(entityKey)) {
             stats.set(entityKey, {
@@ -254,87 +218,36 @@ const TargetAnalysis = () => {
     })).sort((a, b) => b.totalAttacks - a.totalAttacks);
   }, [posts, entities]);
 
-  // Process person data with enhanced categorization
+  // Process person data - SIMPLIFIED: now expects plain string array
   const personStats = useMemo(() => {
     const stats = new Map();
 
     posts.forEach(post => {
       if (post.target_persons && Array.isArray(post.target_persons)) {
-        post.target_persons.forEach((personData: any) => {
-          let personKey: string;
-          let personInfo: any;
-
-          // Handle both string and object formats
-          if (typeof personData === 'string') {
-            // String format - try to parse or use as-is
-            try {
-              const parsed = JSON.parse(personData);
-              if (parsed && typeof parsed === 'object' && parsed.name_persian) {
-                // Successfully parsed JSON string
-                personKey = String(parsed.name_persian || parsed.name_english || '').trim();
-                personInfo = {
-                  name_persian: String(parsed.name_persian || '').trim(),
-                  name_english: String(parsed.name_english || '').trim(),
-                  name_arabic: String(parsed.name_arabic || '').trim(),
-                  entity_type: String(parsed.entity_type || 'Individual'),
-                  position: String(parsed.position || 'نامشخص'),
-                  organization: String(parsed.organization || 'نامشخص'),
-                  category: String(parsed.category || 'همه'),
-                  country: String(parsed.country || 'نامشخص'),
-                  attack_nature: String(parsed.attack_nature || 'Personal')
-                };
-              } else {
-                // Plain name string
-                personKey = personData.trim();
-                const person = persons.find(p => p.name_persian === personData);
-                personInfo = {
-                  name_persian: personData.trim(),
-                  name_english: person?.name_english || '',
-                  name_arabic: person?.name_arabic || '',
-                  entity_type: 'Individual',
-                  position: person?.role || 'نامشخص',
-                  organization: person?.entity_id || 'نامشخص',
-                  category: person?.role || 'همه',
-                  country: 'نامشخص',
-                  attack_nature: 'Personal'
-                };
-              }
-            } catch {
-              // Not valid JSON, treat as plain name
-              personKey = personData.trim();
-              const person = persons.find(p => p.name_persian === personData);
-              personInfo = {
-                name_persian: personData.trim(),
-                name_english: person?.name_english || '',
-                name_arabic: person?.name_arabic || '',
-                entity_type: 'Individual',
-                position: person?.role || 'نامشخص',
-                organization: person?.entity_id || 'نامشخص',
-                category: person?.role || 'همه',
-                country: 'نامشخص',
-                attack_nature: 'Personal'
-              };
-            }
-          } else if (typeof personData === 'object' && personData !== null) {
-            // Object format - ensure all values are proper strings
-            personKey = String(personData.name_persian || personData.name_english || '').trim();
-            personInfo = {
-              name_persian: String(personData.name_persian || '').trim(),
-              name_english: String(personData.name_english || '').trim(),
-              name_arabic: String(personData.name_arabic || '').trim(),
-              entity_type: String(personData.entity_type || 'Individual'),
-              position: String(personData.position || 'نامشخص'),
-              organization: String(personData.organization || 'نامشخص'),
-              category: String(personData.category || 'همه'),
-              country: String(personData.country || 'نامشخص'),
-              attack_nature: String(personData.attack_nature || 'Personal')
-            };
-          }
-
-          // Skip if we couldn't extract valid data
-          if (!personKey || !personInfo || personKey === '' || personKey === 'undefined') {
+        post.target_persons.forEach((personName: any) => {
+          // Extract name - should be plain string now after cleanup
+          const namePersian = typeof personName === 'string' ? personName.trim() : '';
+          
+          // Skip invalid names
+          if (!namePersian || namePersian === 'نامشخص' || namePersian === 'Unknown' || namePersian.includes('{')) {
             return;
           }
+
+          // Find person in resistance_persons table
+          const person = persons.find(p => p.name_persian === namePersian);
+          
+          const personKey = namePersian;
+          const personInfo = {
+            name_persian: namePersian,
+            name_english: person?.name_english || '',
+            name_arabic: person?.name_arabic || '',
+            entity_type: 'Individual',
+            position: person?.role || 'نامشخص',
+            organization: person?.entity_id || 'نامشخص',
+            category: person?.role || 'همه',
+            country: 'نامشخص',
+            attack_nature: 'Personal'
+          };
           
           if (!stats.has(personKey)) {
             stats.set(personKey, {

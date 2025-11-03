@@ -17,72 +17,91 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
     
-    console.log('Starting automatic target categorization...');
+    console.log('Starting automatic target categorization & cleanup...');
     
     // Get all posts with targets
     const { data: posts, error } = await supabase
       .from('posts')
       .select('id, target_persons, target_entity')
-      .eq('is_psyop', true)
-      .not('target_persons', 'is', null);
+      .eq('is_psyop', true);
     
     if (error) throw error;
     
-    console.log(`Found ${posts?.length || 0} posts to categorize`);
+    console.log(`Found ${posts?.length || 0} posts to process`);
     
     let updated = 0;
-    let alreadyCategorized = 0;
+    let cleaned = 0;
     
     for (const post of posts || []) {
       let needsUpdate = false;
-      let updatedTargets = post.target_persons;
+      let cleanedPersons: string[] = [];
+      let cleanedEntities: string[] = [];
       
-      // Check if target_persons is array
-      if (Array.isArray(updatedTargets)) {
-        updatedTargets = updatedTargets.map((target: any) => {
-          // If it's a string, convert to object and categorize
-          if (typeof target === 'string') {
-            needsUpdate = true;
-            return categorizeTarget({ name_persian: target });
-          } 
-          // If it's an object but missing category or has default category
-          else if (!target.category || target.category === 'همه' || target.category === 'نامشخص') {
-            needsUpdate = true;
-            return categorizeTarget(target);
+      // Clean up target_persons - extract only Persian names
+      if (Array.isArray(post.target_persons) && post.target_persons.length > 0) {
+        for (const target of post.target_persons) {
+          const name = extractPersonName(target);
+          if (name && name !== 'نامشخص' && name !== 'Unknown') {
+            cleanedPersons.push(name);
+            
+            // Also ensure person exists in resistance_persons
+            await ensurePersonExists(supabase, name);
           }
-          // Already properly categorized
-          else {
-            alreadyCategorized++;
-            return target;
-          }
-        });
+        }
         
-        // Update post if needed
-        if (needsUpdate) {
+        if (cleanedPersons.length !== post.target_persons.length) {
+          needsUpdate = true;
+          cleaned++;
+        }
+      }
+      
+      // Clean up target_entity - extract only Persian names
+      if (Array.isArray(post.target_entity) && post.target_entity.length > 0) {
+        for (const entity of post.target_entity) {
+          const name = extractEntityName(entity);
+          if (name && name !== 'نامشخص' && name !== 'Unknown') {
+            cleanedEntities.push(name);
+          }
+        }
+      }
+      
+      // Update post if needed
+      if (needsUpdate || cleanedPersons.length > 0 || cleanedEntities.length > 0) {
+        const updateData: any = {};
+        
+        if (cleanedPersons.length > 0) {
+          updateData.target_persons = cleanedPersons;
+        }
+        
+        if (cleanedEntities.length > 0) {
+          updateData.target_entity = cleanedEntities;
+        }
+        
+        if (Object.keys(updateData).length > 0) {
           const { error: updateError } = await supabase
             .from('posts')
-            .update({ target_persons: updatedTargets })
+            .update(updateData)
             .eq('id', post.id);
           
           if (updateError) {
             console.error(`Failed to update post ${post.id}:`, updateError);
           } else {
             updated++;
-            console.log(`✅ Categorized targets in post ${post.id}`);
+            console.log(`✅ Cleaned targets in post ${post.id}`);
           }
         }
       }
     }
     
-    console.log(`Categorization complete: ${updated} updated, ${alreadyCategorized} already categorized`);
+    console.log(`Cleanup complete: ${updated} updated, ${cleaned} cleaned from nested JSON`);
     
     return new Response(
       JSON.stringify({ 
         success: true, 
         updated,
-        alreadyCategorized,
+        cleaned,
         total: posts?.length || 0,
-        message: `Successfully categorized ${updated} posts. ${alreadyCategorized} targets were already categorized.` 
+        message: `Successfully cleaned ${updated} posts. ${cleaned} had nested JSON data.` 
       }),
       { 
         status: 200, 
@@ -105,145 +124,152 @@ serve(async (req) => {
   }
 });
 
-function categorizeTarget(target: any): any {
-  const name = (target.name_english || target.name_persian || '').toLowerCase();
-  const position = (target.position || '').toLowerCase();
-  const org = (target.organization || '').toLowerCase();
-  
-  // Resistance Leaders Database (کلیدی‌ترین افراد محور مقاومت)
-  const resistanceLeaders: Record<string, any> = {
-    // Hezbollah Lebanon
-    'hassan nasrallah': { category: 'رهبر سیاسی', position: 'دبیرکل', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'نصرالله': { category: 'رهبر سیاسی', position: 'دبیرکل', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'naim qassem': { category: 'رهبر سیاسی', position: 'معاون دبیرکل', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'نعیم قاسم': { category: 'رهبر سیاسی', position: 'معاون دبیرکل', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'muhammad afif': { category: 'سخنگو', position: 'مسئول روابط رسانه‌ای', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'محمد عفیف': { category: 'سخنگو', position: 'مسئول روابط رسانه‌ای', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'hashem safieddine': { category: 'رهبر سیاسی', position: 'رئیس شورای اجرایی', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    'هاشم صفی‌الدین': { category: 'رهبر سیاسی', position: 'رئیس شورای اجرایی', org: 'حزب‌الله لبنان', country: 'Lebanon' },
-    
-    // Hamas Palestine
-    'ismail haniyeh': { category: 'رهبر سیاسی', position: 'رئیس دفتر سیاسی', org: 'حماس', country: 'Palestine' },
-    'اسماعیل هنیه': { category: 'رهبر سیاسی', position: 'رئیس دفتر سیاسی', org: 'حماس', country: 'Palestine' },
-    'yahya sinwar': { category: 'رهبر سیاسی', position: 'رهبر حماس در غزه', org: 'حماس', country: 'Palestine' },
-    'یحیی سنوار': { category: 'رهبر سیاسی', position: 'رهبر حماس در غزه', org: 'حماس', country: 'Palestine' },
-    'mohammed deif': { category: 'فرمانده نظامی', position: 'فرمانده بال نظامی', org: 'حماس', country: 'Palestine' },
-    'محمد ضیف': { category: 'فرمانده نظامی', position: 'فرمانده بال نظامی', org: 'حماس', country: 'Palestine' },
-    
-    // Ansarallah Yemen  
-    'abdul-malik al-houthi': { category: 'رهبر سیاسی', position: 'رهبر', org: 'انصارالله', country: 'Yemen' },
-    'عبدالملک الحوثی': { category: 'رهبر سیاسی', position: 'رهبر', org: 'انصارالله', country: 'Yemen' },
-    'mohammed ali al-houthi': { category: 'رهبر سیاسی', position: 'رئیس کمیته انقلابی', org: 'انصارالله', country: 'Yemen' },
-    'محمد علی الحوثی': { category: 'رهبر سیاسی', position: 'رئیس کمیته انقلابی', org: 'انصارالله', country: 'Yemen' },
-    
-    // PMF Iraq
-    'abu mahdi al-muhandis': { category: 'فرمانده نظامی', position: 'معاون فرمانده', org: 'حشدالشعبی عراق', country: 'Iraq' },
-    'ابومهدی المهندس': { category: 'فرمانده نظامی', position: 'معاون فرمانده', org: 'حشدالشعبی عراق', country: 'Iraq' },
-    'qais al-khazali': { category: 'رهبر سیاسی', position: 'رهبر عصائب اهل الحق', org: 'حشدالشعبی عراق', country: 'Iraq' },
-    'قیس الخزعلی': { category: 'رهبر سیاسی', position: 'رهبر عصائب اهل الحق', org: 'حشدالشعبی عراق', country: 'Iraq' },
-    
-    // Iran
-    'qasem soleimani': { category: 'فرمانده نظامی', position: 'فرمانده نیروی قدس سپاه', org: 'سپاه پاسداران', country: 'Iran' },
-    'قاسم سلیمانی': { category: 'فرمانده نظامی', position: 'فرمانده نیروی قدس سپاه', org: 'سپاه پاسداران', country: 'Iran' },
-    'ali khamenei': { category: 'مرجع دینی', position: 'رهبر معظم انقلاب', org: 'جمهوری اسلامی ایران', country: 'Iran' },
-    'علی خامنه‌ای': { category: 'مرجع دینی', position: 'رهبر معظم انقلاب', org: 'جمهوری اسلامی ایران', country: 'Iran' },
-    'esmail ghaani': { category: 'فرمانده نظامی', position: 'فرمانده نیروی قدس سپاه', org: 'سپاه پاسداران', country: 'Iran' },
-    'اسماعیل قاآنی': { category: 'فرمانده نظامی', position: 'فرمانده نیروی قدس سپاه', org: 'سپاه پاسداران', country: 'Iran' }
-  };
-  
-  // Check known leaders first
-  for (const [knownName, info] of Object.entries(resistanceLeaders)) {
-    if (name.includes(knownName) || knownName.includes(name)) {
-      return {
-        ...target,
-        position: info.position,
-        organization: info.org,
-        country: info.country,
-        category: info.category,
-        side: 'Resistance',
-        entity_type: 'Individual'
-      };
+// Extract person name from any format (string, object, or nested JSON)
+function extractPersonName(data: any): string {
+  // If it's already a plain string, return it
+  if (typeof data === 'string') {
+    // Try to parse if it's JSON
+    try {
+      const parsed = JSON.parse(data);
+      return extractPersonName(parsed); // Recursively extract
+    } catch {
+      // Not JSON, return as-is if it looks like a name
+      if (data.length > 0 && data.length < 200 && !data.includes('{')) {
+        return data.trim();
+      }
+      return '';
     }
   }
   
-  // Pattern-based categorization
-  
-  // Political Leaders
-  if (position.match(/leader|secretary|chief|president|chairman|head|رهبر|دبیرکل|رئیس/i) ||
-      name.match(/sayyed|sayyid|سید/)) {
-    return {
-      ...target,
-      category: 'رهبر سیاسی',
-      side: target.side || 'Resistance',
-      entity_type: 'Individual'
-    };
+  // If it's an object, extract name_persian
+  if (typeof data === 'object' && data !== null) {
+    if (typeof data.name_persian === 'string') {
+      // Check if name_persian itself is stringified JSON
+      if (data.name_persian.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(data.name_persian);
+          return extractPersonName(parsed);
+        } catch {
+          return data.name_persian.trim();
+        }
+      }
+      return data.name_persian.trim();
+    }
+    
+    // Fallback to name_english or name_arabic
+    if (typeof data.name_english === 'string' && data.name_english.length > 0) {
+      return data.name_english.trim();
+    }
+    
+    if (typeof data.name_arabic === 'string' && data.name_arabic.length > 0) {
+      return data.name_arabic.trim();
+    }
   }
   
-  // Military Commanders
-  if (position.match(/commander|general|colonel|military|قائد|فرمانده|سردار/i) ||
-      name.match(/commander|general|سردار/i)) {
-    return {
-      ...target,
-      category: 'فرمانده نظامی',
-      side: target.side || 'Resistance',
-      entity_type: 'Individual'
-    };
+  return '';
+}
+
+// Extract entity name from any format
+function extractEntityName(data: any): string {
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return extractEntityName(parsed);
+    } catch {
+      if (data.length > 0 && data.length < 200 && !data.includes('{')) {
+        return data.trim();
+      }
+      return '';
+    }
   }
   
-  // Religious Authorities
-  if (position.match(/ayatollah|sheikh|cleric|scholar|مرجع|آیت‌الله|شیخ/i) ||
-      name.match(/ayatollah|sheikh|آیت‌الله/i)) {
-    return {
-      ...target,
-      category: 'مرجع دینی',
-      side: target.side || 'Resistance',
-      entity_type: 'Individual'
-    };
+  if (typeof data === 'object' && data !== null) {
+    if (typeof data.name_persian === 'string') {
+      if (data.name_persian.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(data.name_persian);
+          return extractEntityName(parsed);
+        } catch {
+          return data.name_persian.trim();
+        }
+      }
+      return data.name_persian.trim();
+    }
+    
+    if (typeof data.name_english === 'string' && data.name_english.length > 0) {
+      return data.name_english.trim();
+    }
   }
   
-  // Spokespersons
-  if (position.match(/spokesperson|spokesman|media|press|سخنگو|معاون اطلاع/i)) {
-    return {
-      ...target,
-      category: 'سخنگو',
-      side: target.side || 'Resistance',
-      entity_type: 'Individual'
-    };
+  return '';
+}
+
+// Ensure person exists in resistance_persons table
+async function ensurePersonExists(supabase: any, namePersian: string) {
+  // Check if person already exists
+  const { data: existing } = await supabase
+    .from('resistance_persons')
+    .select('id')
+    .eq('name_persian', namePersian)
+    .maybeSingle();
+  
+  // If doesn't exist, create it
+  if (!existing) {
+    const category = categorizePersonByName(namePersian);
+    
+    await supabase
+      .from('resistance_persons')
+      .insert({
+        name_persian: namePersian,
+        role: category,
+        active: true
+      });
+    
+    console.log(`📝 Created resistance_persons entry for: ${namePersian}`);
   }
+}
+
+// Categorize person by name patterns
+function categorizePersonByName(name: string): string {
+  const lowerName = name.toLowerCase();
   
-  // Activists
-  if (position.match(/journalist|writer|blogger|activist|فعال|روزنامه‌نگار|نویسنده/i)) {
-    return {
-      ...target,
-      category: 'فعال',
-      side: target.side || 'Resistance',
-      entity_type: 'Individual'
-    };
-  }
-  
-  // Organizations
-  const organizations = [
-    'hezbollah', 'حزب الله', 'حزب‌الله',
-    'hamas', 'حماس',
-    'ansarallah', 'انصارالله', 'انصار الله',
-    'pmf', 'حشد', 'حشدالشعبی',
-    'islamic jihad', 'جهاد اسلامی'
-  ];
-  
-  if (organizations.some(orgName => name.includes(orgName) || org.includes(orgName))) {
-    return {
-      ...target,
-      category: 'سازمان',
-      side: target.side || 'Resistance',
-      entity_type: 'Organization'
-    };
-  }
-  
-  // Default fallback - keep as is but ensure required fields
-  return {
-    ...target,
-    category: target.category || 'همه',
-    side: target.side || 'Resistance',
-    entity_type: target.entity_type || 'Individual'
+  // Known leaders
+  const knownLeaders: Record<string, string> = {
+    'نصرالله': 'رهبر سیاسی',
+    'نعیم قاسم': 'رهبر سیاسی',
+    'سید حسن نصرالله': 'رهبر سیاسی',
+    'عبدالملک الحوثی': 'رهبر سیاسی',
+    'یحیی سنوار': 'رهبر سیاسی',
+    'اسماعیل هنیه': 'رهبر سیاسی',
+    'قاسم سلیمانی': 'فرمانده نظامی',
+    'اسماعیل قاآنی': 'فرمانده نظامی',
+    'محمد ضیف': 'فرمانده نظامی',
+    'ابومهدی المهندس': 'فرمانده نظامی',
+    'علی خامنه‌ای': 'مرجع دینی'
   };
+  
+  for (const [knownName, category] of Object.entries(knownLeaders)) {
+    if (lowerName.includes(knownName.toLowerCase())) {
+      return category;
+    }
+  }
+  
+  // Pattern-based
+  if (lowerName.includes('فرمانده') || lowerName.includes('سردار') || lowerName.includes('قائد')) {
+    return 'فرمانده نظامی';
+  }
+  
+  if (lowerName.includes('سید') || lowerName.includes('آیت‌الله') || lowerName.includes('شیخ')) {
+    return 'مرجع دینی';
+  }
+  
+  if (lowerName.includes('سخنگو') || lowerName.includes('معاون اطلاع')) {
+    return 'سخنگو';
+  }
+  
+  if (lowerName.includes('دبیرکل') || lowerName.includes('رهبر') || lowerName.includes('رئیس')) {
+    return 'رهبر سیاسی';
+  }
+  
+  return 'همه';
 }
