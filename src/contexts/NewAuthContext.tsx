@@ -77,29 +77,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
-    console.log('[NewAuthContext] fetchUserData START for:', authUser.email);
+    console.log('[NewAuthContext] fetchUserData START for:', authUser.email, 'ID:', authUser.id);
+    
+    // Wait longer to ensure auth session is fully propagated
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     try {
-      console.log('[NewAuthContext] About to fetch all user data in parallel...');
+      // First verify we can get current session
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      console.log('[NewAuthContext] Current session check:', {
+        hasSession: !!sessionData?.session,
+        userId: sessionData?.session?.user?.id,
+        authUserId: authUser.id,
+        match: sessionData?.session?.user?.id === authUser.id
+      });
       
+      if (sessionError || !sessionData?.session) {
+        console.error('[NewAuthContext] No valid session found');
+        throw new Error('نشست کاربری معتبر یافت نشد');
+      }
+      
+      console.log('[NewAuthContext] Starting parallel queries...');
       const today = new Date().toISOString().split('T')[0];
       
-      // Fetch all data in parallel with timeout for each
+      // Fetch all data in parallel with longer timeout
       const [userResult, roleResult, limitsResult, usageResult] = await Promise.all([
         Promise.race([
           supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Users query timeout')), 5000))
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Users query timeout')), 10000))
         ]),
         Promise.race([
           supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Role query timeout')), 5000))
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Role query timeout')), 10000))
         ]),
         Promise.race([
           supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Limits query timeout')), 5000))
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Limits query timeout')), 10000))
         ]),
         Promise.race([
           supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Usage query timeout')), 5000))
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Usage query timeout')), 10000))
         ])
       ]);
 
