@@ -438,13 +438,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[NewAuthContext] Initial session check:', session?.user?.email);
       setSession(session);
       if (session?.user) {
-        fetchUserData(session.user).then(userData => {
-          setUser(userData);
+        // Add timeout to prevent infinite loading
+        const timeoutId = setTimeout(() => {
+          console.error('[NewAuthContext] fetchUserData timeout!');
           setLoading(false);
-        });
+          toast.error('خطا در بارگذاری اطلاعات کاربر - لطفا مجددا تلاش کنید');
+        }, 10000); // 10 second timeout
+
+        fetchUserData(session.user)
+          .then(userData => {
+            clearTimeout(timeoutId);
+            setUser(userData);
+            setLoading(false);
+          })
+          .catch(error => {
+            clearTimeout(timeoutId);
+            console.error('[NewAuthContext] fetchUserData failed:', error);
+            setLoading(false);
+          });
       } else {
         setLoading(false);
       }
+    }).catch(error => {
+      console.error('[NewAuthContext] getSession failed:', error);
+      setLoading(false);
     });
 
     // Then set up listener for future auth state changes
