@@ -79,14 +79,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
     console.log('[NewAuthContext] fetchUserData START for:', authUser.email);
     try {
+      // Add small delay to ensure session is fully initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       console.log('[NewAuthContext] About to fetch users table...');
       
-      // Fetch user profile
-      const { data: userData, error: userError } = await supabase
+      // Fetch user profile with timeout
+      const userPromise = supabase
         .from('users')
         .select('*')
         .eq('id', authUser.id)
         .single();
+      
+      const { data: userData, error: userError } = await Promise.race([
+        userPromise,
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error('Users query timeout')), 5000)
+        )
+      ]);
 
       console.log('[NewAuthContext] Users query result:', { 
         hasData: !!userData, 
@@ -101,12 +111,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[NewAuthContext] About to fetch roles table...');
       
-      // Fetch user role
-      const { data: roleData, error: roleError } = await supabase
+      // Fetch user role with timeout
+      const rolePromise = supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', authUser.id)
         .single();
+        
+      const { data: roleData, error: roleError } = await Promise.race([
+        rolePromise,
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error('Role query timeout')), 5000)
+        )
+      ]);
 
       console.log('[NewAuthContext] Role query result:', { 
         hasData: !!roleData, 
@@ -121,12 +138,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[NewAuthContext] About to fetch daily limits...');
       
-      // Fetch daily limits
-      const { data: limitsData, error: limitsError } = await supabase
+      // Fetch daily limits with timeout
+      const limitsPromise = supabase
         .from('user_daily_limits')
         .select('*')
         .eq('user_id', authUser.id)
         .single();
+        
+      const { data: limitsData, error: limitsError } = await Promise.race([
+        limitsPromise,
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error('Limits query timeout')), 5000)
+        )
+      ]);
 
       console.log('[NewAuthContext] Limits query result:', { 
         hasData: !!limitsData,
@@ -140,14 +164,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('[NewAuthContext] About to fetch daily usage...');
       
-      // Fetch today's usage
+      // Fetch today's usage with timeout
       const today = new Date().toISOString().split('T')[0];
-      const { data: usageData, error: usageError } = await supabase
+      const usagePromise = supabase
         .from('user_daily_usage')
         .select('*')
         .eq('user_id', authUser.id)
         .eq('usage_date', today)
         .maybeSingle();
+        
+      const { data: usageData, error: usageError } = await Promise.race([
+        usagePromise,
+        new Promise<any>((_, reject) => 
+          setTimeout(() => reject(new Error('Usage query timeout')), 5000)
+        )
+      ]);
 
       console.log('[NewAuthContext] Usage query result:', { 
         hasData: !!usageData,
