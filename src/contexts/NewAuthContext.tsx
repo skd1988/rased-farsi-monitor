@@ -433,26 +433,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Set up auth state listener
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[NewAuthContext] Auth state changed:', event, session?.user?.email);
-        setSession(session);
-        
-        if (session?.user) {
-          const userData = await fetchUserData(session.user);
-          console.log('[NewAuthContext] User data fetched:', userData);
-          setUser(userData);
-        } else {
-          console.log('[NewAuthContext] No session, clearing user');
-          setUser(null);
-        }
-        
-        setLoading(false);
-      }
-    );
-
-    // Check for existing session
+    // Check for existing session FIRST before setting up listener
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[NewAuthContext] Initial session check:', session?.user?.email);
       setSession(session);
       if (session?.user) {
         fetchUserData(session.user).then(userData => {
@@ -463,6 +446,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
       }
     });
+
+    // Then set up listener for future auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('[NewAuthContext] Auth state changed:', event, session?.user?.email);
+        
+        // Skip INITIAL_SESSION event as we already handled it above
+        if (event === 'INITIAL_SESSION') return;
+        
+        setSession(session);
+        
+        if (session?.user) {
+          const userData = await fetchUserData(session.user);
+          console.log('[NewAuthContext] User data fetched:', userData);
+          setUser(userData);
+        } else {
+          console.log('[NewAuthContext] No session, clearing user');
+          setUser(null);
+        }
+      }
+    );
 
     return () => subscription.unsubscribe();
   }, [fetchUserData]);
