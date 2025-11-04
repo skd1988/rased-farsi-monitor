@@ -79,116 +79,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
     console.log('[NewAuthContext] fetchUserData START for:', authUser.email);
     try {
-      // Add small delay to ensure session is fully initialized
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('[NewAuthContext] About to fetch all user data in parallel...');
       
-      console.log('[NewAuthContext] About to fetch users table...');
+      const today = new Date().toISOString().split('T')[0];
       
-      // Fetch user profile with timeout
-      const userPromise = supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-      
-      const { data: userData, error: userError } = await Promise.race([
-        userPromise,
-        new Promise<any>((_, reject) => 
-          setTimeout(() => reject(new Error('Users query timeout')), 5000)
-        )
+      // Fetch all data in parallel with timeout for each
+      const [userResult, roleResult, limitsResult, usageResult] = await Promise.all([
+        Promise.race([
+          supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Users query timeout')), 5000))
+        ]),
+        Promise.race([
+          supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle(),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Role query timeout')), 5000))
+        ]),
+        Promise.race([
+          supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle(),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Limits query timeout')), 5000))
+        ]),
+        Promise.race([
+          supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle(),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Usage query timeout')), 5000))
+        ])
       ]);
 
-      console.log('[NewAuthContext] Users query result:', { 
-        hasData: !!userData, 
-        error: userError?.message,
-        userId: authUser.id 
+      console.log('[NewAuthContext] All queries completed:', {
+        hasUser: !!userResult.data,
+        hasRole: !!roleResult.data,
+        hasLimits: !!limitsResult.data,
+        hasUsage: !!usageResult.data,
+        userError: userResult.error?.message,
+        roleError: roleResult.error?.message,
+        limitsError: limitsResult.error?.message,
+        usageError: usageResult.error?.message
       });
+
+      const { data: userData, error: userError } = userResult;
+      const { data: roleData, error: roleError } = roleResult;
+      const { data: limitsData, error: limitsError } = limitsResult;
+      const { data: usageData, error: usageError } = usageResult;
       
       if (userError) {
         console.error('[NewAuthContext] Users query error:', userError);
-        throw userError;
+        throw new Error('خطا در بارگذاری پروفایل: ' + userError.message);
       }
-
-      console.log('[NewAuthContext] About to fetch roles table...');
       
-      // Fetch user role with timeout
-      const rolePromise = supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', authUser.id)
-        .single();
-        
-      const { data: roleData, error: roleError } = await Promise.race([
-        rolePromise,
-        new Promise<any>((_, reject) => 
-          setTimeout(() => reject(new Error('Role query timeout')), 5000)
-        )
-      ]);
-
-      console.log('[NewAuthContext] Role query result:', { 
-        hasData: !!roleData, 
-        role: roleData?.role,
-        error: roleError?.message 
-      });
+      if (!userData) {
+        console.error('[NewAuthContext] No user data found');
+        throw new Error('پروفایل کاربر یافت نشد');
+      }
       
       if (roleError) {
         console.error('[NewAuthContext] Role query error:', roleError);
-        throw roleError;
+        throw new Error('خطا در بارگذاری نقش کاربر: ' + roleError.message);
       }
-
-      console.log('[NewAuthContext] About to fetch daily limits...');
       
-      // Fetch daily limits with timeout
-      const limitsPromise = supabase
-        .from('user_daily_limits')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .single();
-        
-      const { data: limitsData, error: limitsError } = await Promise.race([
-        limitsPromise,
-        new Promise<any>((_, reject) => 
-          setTimeout(() => reject(new Error('Limits query timeout')), 5000)
-        )
-      ]);
-
-      console.log('[NewAuthContext] Limits query result:', { 
-        hasData: !!limitsData,
-        error: limitsError?.message 
-      });
+      if (!roleData) {
+        console.error('[NewAuthContext] No role data found');
+        throw new Error('نقش کاربر یافت نشد');
+      }
       
       if (limitsError) {
         console.error('[NewAuthContext] Limits query error:', limitsError);
-        throw limitsError;
+        throw new Error('خطا در بارگذاری محدودیت‌ها: ' + limitsError.message);
       }
-
-      console.log('[NewAuthContext] About to fetch daily usage...');
       
-      // Fetch today's usage with timeout
-      const today = new Date().toISOString().split('T')[0];
-      const usagePromise = supabase
-        .from('user_daily_usage')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('usage_date', today)
-        .maybeSingle();
-        
-      const { data: usageData, error: usageError } = await Promise.race([
-        usagePromise,
-        new Promise<any>((_, reject) => 
-          setTimeout(() => reject(new Error('Usage query timeout')), 5000)
-        )
-      ]);
-
-      console.log('[NewAuthContext] Usage query result:', { 
-        hasData: !!usageData,
-        error: usageError?.message,
-        today 
-      });
+      if (!limitsData) {
+        console.error('[NewAuthContext] No limits data found');
+        throw new Error('محدودیت‌های کاربر یافت نشد');
+      }
 
       if (usageError && usageError.code !== 'PGRST116') {
         console.error('[NewAuthContext] Usage query error:', usageError);
-        throw usageError;
+        throw new Error('خطا در بارگذاری مصرف روزانه: ' + usageError.message);
       }
 
       // If no usage record for today, create one
@@ -246,7 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hint: error?.hint,
         stack: error?.stack
       });
-      toast.error('خطا در بارگذاری اطلاعات کاربر: ' + (error?.message || 'خطای نامشخص'));
+      toast.error(error?.message || 'خطا در بارگذاری اطلاعات کاربر');
       return null;
     }
   }, []);
