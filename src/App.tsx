@@ -43,65 +43,65 @@ const App = () => (
               <Sonner position="top-center" />
               <BrowserRouter>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/login" replace />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/unauthorized" element={<Unauthorized />} />
                   <Route path="/debug" element={<Debug />} />
                   
-                  <Route path="/" element={
+                  <Route element={
                     <ProtectedRoute requiredPermission="VIEW_POSTS">
                       <DashboardLayout />
                     </ProtectedRoute>
                   }>
-                    <Route path="dashboard" element={<Dashboard />} />
-                    <Route path="psyop-detection" element={<PsyOpDetection />} />
-                    <Route path="campaign-tracking" element={<CampaignTracking />} />
-                    <Route path="target-analysis" element={<TargetAnalysis />} />
-                    <Route path="posts" element={<PostsExplorer />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/psyop-detection" element={<PsyOpDetection />} />
+                    <Route path="/campaign-tracking" element={<CampaignTracking />} />
+                    <Route path="/target-analysis" element={<TargetAnalysis />} />
+                    <Route path="/posts" element={<PostsExplorer />} />
                     
-                    <Route path="ai-analysis" element={
+                    <Route path="/ai-analysis" element={
                       <ProtectedRoute requiredPermission="REQUEST_AI_ANALYSIS" showUnauthorized>
                         <AIAnalysis />
                       </ProtectedRoute>
                     } />
                     
-                    <Route path="chat" element={
+                    <Route path="/chat" element={
                       <ProtectedRoute requiredPermission="USE_CHAT" showUnauthorized>
                         <Chat />
                       </ProtectedRoute>
                     } />
                     
-                    <Route path="api-usage" element={
+                    <Route path="/api-usage" element={
                       <ProtectedRoute requiredPermission="VIEW_API_USAGE" showUnauthorized>
                         <APIUsage />
                       </ProtectedRoute>
                     } />
                     
-                    <Route path="settings/api-usage" element={
+                    <Route path="/settings/api-usage" element={
                       <ProtectedRoute requiredPermission="VIEW_API_USAGE" showUnauthorized>
                         <SettingsAPIUsage />
                       </ProtectedRoute>
                     } />
                     
-                    <Route path="settings/photo-management" element={<PhotoManagement />} />
+                    <Route path="/settings/photo-management" element={<PhotoManagement />} />
                     
-                    <Route path="settings/users" element={
+                    <Route path="/settings/users" element={
                       <ProtectedRoute requiredPermission="MANAGE_USERS" showUnauthorized>
                         <UserManagement />
                       </ProtectedRoute>
                     } />
                     
-                    <Route path="response-management" element={<ResponseManagement />} />
+                    <Route path="/response-management" element={<ResponseManagement />} />
                     
-                    <Route path="settings" element={
+                    <Route path="/settings" element={
                       <ProtectedRoute requiredPermission="MANAGE_SETTINGS" showUnauthorized>
                         <Settings />
                       </ProtectedRoute>
                     } />
                     
-                    <Route path="intelligence" element={<IntelligenceAndTrends />} />
-                    <Route path="system-test" element={<SystemTest />} />
+                    <Route path="/intelligence" element={<IntelligenceAndTrends />} />
+                    <Route path="/system-test" element={<SystemTest />} />
                   </Route>
                   
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
