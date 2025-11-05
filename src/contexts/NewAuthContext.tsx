@@ -77,18 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
-    console.log('=== FETCHUSERDATA START ===');
-    console.log('[1/8] Starting fetchUserData for:', authUser.email, 'ID:', authUser.id);
-
-    // Helper function to run query with timeout
+    // Helper function to run query with timeout (reduced to 5s for better performance)
     const queryWithTimeout = async <T,>(
       queryName: string,
       queryFn: () => Promise<T>,
-      timeoutMs = 10000
+      timeoutMs = 5000
     ): Promise<T> => {
-      console.log(`[Query] ${queryName} - Starting...`);
-      const startTime = Date.now();
-
       try {
         const result = await Promise.race([
           queryFn(),
@@ -96,13 +90,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setTimeout(() => reject(new Error(`${queryName} timeout after ${timeoutMs}ms`)), timeoutMs)
           )
         ]);
-
-        const duration = Date.now() - startTime;
-        console.log(`[Query] ${queryName} - SUCCESS (${duration}ms)`);
         return result;
       } catch (error: any) {
-        const duration = Date.now() - startTime;
-        console.error(`[Query] ${queryName} - FAILED (${duration}ms):`, {
+        console.error(`[${queryName}] Query failed:`, {
           message: error?.message,
           code: error?.code,
           details: error?.details,
@@ -112,33 +102,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Wait to ensure auth session is propagated
-    console.log('[2/8] Waiting 500ms for session propagation...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    console.log('[2/8] Wait complete');
+    // Wait for session propagation (reduced to 100ms - sufficient for most cases)
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Verify session
-    console.log('[3/8] Verifying session...');
     try {
       const { data: sessionData, error: sessionError } = await queryWithTimeout(
         'Session Check',
         () => supabase.auth.getSession()
       );
 
-      console.log('[3/8] Session verification result:', {
-        hasSession: !!sessionData?.session,
-        userId: sessionData?.session?.user?.id,
-        authUserId: authUser.id,
-        match: sessionData?.session?.user?.id === authUser.id
-      });
-
       if (sessionError || !sessionData?.session) {
-        console.error('[3/8] CRITICAL: No valid session found');
+        console.error('[fetchUserData] No valid session found');
         throw new Error('نشست کاربری معتبر یافت نشد');
       }
-      console.log('[3/8] Session verified successfully');
     } catch (error: any) {
-      console.error('[3/8] Session verification FAILED:', error?.message);
+      console.error('[fetchUserData] Session verification failed:', error?.message);
       toast.error('خطا در تایید نشست کاربری');
       return null;
     }
@@ -151,8 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let limitsData: any = null;
     let usageData: any = null;
 
-    // QUERY 1: Users table
-    console.log('[4/8] Querying USERS table...');
+    // QUERY 1: Users table (CRITICAL - must succeed)
     try {
       const result = await queryWithTimeout(
         'Users Table',
@@ -160,92 +138,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       if (result.error) {
-        console.error('[4/8] Users query returned error:', result.error);
+        console.error('[fetchUserData] Users query error:', result.error);
         throw new Error('خطا در بارگذاری پروفایل: ' + result.error.message);
       }
 
       if (!result.data) {
-        console.error('[4/8] CRITICAL: No user data found for ID:', authUser.id);
+        console.error('[fetchUserData] No user data found for ID:', authUser.id);
         throw new Error('پروفایل کاربر یافت نشد');
       }
 
       userData = result.data;
-      console.log('[4/8] Users query SUCCESS. Found user:', userData.email);
     } catch (error: any) {
-      console.error('[4/8] Users query FAILED - Cannot continue:', error?.message);
+      console.error('[fetchUserData] Users query failed:', error?.message);
       toast.error(error?.message || 'خطا در بارگذاری پروفایل کاربر');
       return null;
     }
 
-    // QUERY 2: User roles table
-    console.log('[5/8] Querying USER_ROLES table...');
-    try {
-      const result = await queryWithTimeout(
+    // QUERIES 2-4: Fetch remaining data IN PARALLEL for better performance
+    // These queries have fallbacks and can fail gracefully
+    const [roleResult, limitsResult, usageResult] = await Promise.allSettled([
+      // Query 2: User roles
+      queryWithTimeout(
         'User Roles Table',
         () => supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle()
-      );
+      ),
+      // Query 3: User daily limits
+      queryWithTimeout(
+        'User Daily Limits Table',
+        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle()
+      ),
+      // Query 4: User daily usage
+      queryWithTimeout(
+        'User Daily Usage Table',
+        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
+      )
+    ]);
 
+    // Process role result
+    if (roleResult.status === 'fulfilled') {
+      const result = roleResult.value;
       if (result.error) {
-        console.error('[5/8] User_roles query returned error:', result.error);
-        throw new Error('خطا در بارگذاری نقش: ' + result.error.message);
-      }
-
-      if (!result.data) {
-        console.error('[5/8] WARNING: No role data found for user:', authUser.id);
-        console.log('[5/8] Continuing with default guest role...');
+        console.error('[fetchUserData] User_roles query error:', result.error);
+        roleData = { role: 'guest' };
+      } else if (!result.data) {
+        console.error('[fetchUserData] No role data found, using guest role');
         roleData = { role: 'guest' };
       } else {
         roleData = result.data;
-        console.log('[5/8] User_roles query SUCCESS. Role:', roleData.role);
       }
-    } catch (error: any) {
-      console.error('[5/8] User_roles query FAILED:', error?.message);
-      console.log('[5/8] Using fallback guest role');
+    } else {
+      console.error('[fetchUserData] User_roles query failed:', roleResult.reason?.message);
       roleData = { role: 'guest' };
     }
 
-    // QUERY 3: User daily limits table
-    console.log('[6/8] Querying USER_DAILY_LIMITS table...');
-    try {
-      const result = await queryWithTimeout(
-        'User Daily Limits Table',
-        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle()
-      );
-
+    // Process limits result
+    if (limitsResult.status === 'fulfilled') {
+      const result = limitsResult.value;
       if (result.error) {
-        console.error('[6/8] User_daily_limits query returned error:', result.error);
-        throw new Error('خطا در بارگذاری محدودیت‌ها: ' + result.error.message);
-      }
-
-      if (!result.data) {
-        console.error('[6/8] WARNING: No limits data found for user:', authUser.id);
-        console.log('[6/8] Using default limits (unlimited)...');
+        console.error('[fetchUserData] User_daily_limits query error:', result.error);
+        limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
+      } else if (!result.data) {
+        console.error('[fetchUserData] No limits data found, using unlimited');
         limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
       } else {
         limitsData = result.data;
-        console.log('[6/8] User_daily_limits query SUCCESS. Limits:', limitsData);
       }
-    } catch (error: any) {
-      console.error('[6/8] User_daily_limits query FAILED:', error?.message);
-      console.log('[6/8] Using fallback unlimited limits');
+    } else {
+      console.error('[fetchUserData] User_daily_limits query failed:', limitsResult.reason?.message);
       limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
     }
 
-    // QUERY 4: User daily usage table
-    console.log('[7/8] Querying USER_DAILY_USAGE table for date:', today);
-    try {
-      const result = await queryWithTimeout(
-        'User Daily Usage Table',
-        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
-      );
-
+    // Process usage result
+    if (usageResult.status === 'fulfilled') {
+      const result = usageResult.value;
       if (result.error && result.error.code !== 'PGRST116') {
-        console.error('[7/8] User_daily_usage query returned error:', result.error);
-        console.log('[7/8] Continuing with zero usage...');
+        console.error('[fetchUserData] User_daily_usage query error:', result.error);
       }
 
       if (!result.data) {
-        console.log('[7/8] No usage record found for today, creating one...');
+        // Try to create usage record for today
         try {
           const { error: insertError } = await queryWithTimeout(
             'Insert Daily Usage',
@@ -259,27 +230,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
 
           if (insertError) {
-            console.error('[7/8] Failed to create usage record:', insertError);
-          } else {
-            console.log('[7/8] Usage record created successfully');
+            console.error('[fetchUserData] Failed to create usage record:', insertError);
           }
         } catch (insertErr: any) {
-          console.error('[7/8] Insert usage record FAILED:', insertErr?.message);
+          console.error('[fetchUserData] Insert usage record failed:', insertErr?.message);
         }
 
         usageData = { ai_analysis: 0, chat_messages: 0, exports: 0 };
       } else {
         usageData = result.data;
-        console.log('[7/8] User_daily_usage query SUCCESS. Usage:', usageData);
       }
-    } catch (error: any) {
-      console.error('[7/8] User_daily_usage query FAILED:', error?.message);
-      console.log('[7/8] Using fallback zero usage');
+    } else {
+      console.error('[fetchUserData] User_daily_usage query failed:', usageResult.reason?.message);
       usageData = { ai_analysis: 0, chat_messages: 0, exports: 0 };
     }
 
     // Build user object
-    console.log('[8/8] Building final user object...');
     try {
       const userObject = {
         id: userData.id,
@@ -302,18 +268,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: userData.created_at
       };
 
-      console.log('[8/8] User object built successfully:', {
-        email: userObject.email,
-        role: userObject.role,
-        status: userObject.status,
-        dailyLimits: userObject.dailyLimits,
-        usageToday: userObject.usageToday
-      });
-      console.log('=== FETCHUSERDATA SUCCESS ===');
-
       return userObject;
     } catch (error: any) {
-      console.error('[8/8] CRITICAL: Failed to build user object:', error?.message);
+      console.error('[fetchUserData] Failed to build user object:', error?.message);
       toast.error('خطا در ساخت اطلاعات کاربر');
       return null;
     }

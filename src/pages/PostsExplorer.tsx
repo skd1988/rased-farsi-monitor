@@ -94,7 +94,7 @@ const PostsExplorer = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'keywords' | 'alphabetical'>('newest');
 
   // Get unique sources from posts
