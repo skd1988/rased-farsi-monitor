@@ -77,11 +77,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
-    // Helper function to run query with timeout
+    // Helper function to run query with timeout (reduced to 5s for better performance)
     const queryWithTimeout = async <T,>(
       queryName: string,
       queryFn: () => Promise<T>,
-      timeoutMs = 10000
+      timeoutMs = 5000
     ): Promise<T> => {
       try {
         const result = await Promise.race([
@@ -102,8 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Wait to ensure auth session is propagated
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait for session propagation (reduced to 100ms - sufficient for most cases)
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Verify session
     try {
@@ -130,7 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let limitsData: any = null;
     let usageData: any = null;
 
-    // QUERY 1: Users table
+    // QUERY 1: Users table (CRITICAL - must succeed)
     try {
       const result = await queryWithTimeout(
         'Users Table',
@@ -154,64 +154,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
 
-    // QUERY 2: User roles table
-    try {
-      const result = await queryWithTimeout(
+    // QUERIES 2-4: Fetch remaining data IN PARALLEL for better performance
+    // These queries have fallbacks and can fail gracefully
+    const [roleResult, limitsResult, usageResult] = await Promise.allSettled([
+      // Query 2: User roles
+      queryWithTimeout(
         'User Roles Table',
         () => supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle()
-      );
+      ),
+      // Query 3: User daily limits
+      queryWithTimeout(
+        'User Daily Limits Table',
+        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle()
+      ),
+      // Query 4: User daily usage
+      queryWithTimeout(
+        'User Daily Usage Table',
+        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
+      )
+    ]);
 
+    // Process role result
+    if (roleResult.status === 'fulfilled') {
+      const result = roleResult.value;
       if (result.error) {
         console.error('[fetchUserData] User_roles query error:', result.error);
-        throw new Error('خطا در بارگذاری نقش: ' + result.error.message);
-      }
-
-      if (!result.data) {
+        roleData = { role: 'guest' };
+      } else if (!result.data) {
         console.error('[fetchUserData] No role data found, using guest role');
         roleData = { role: 'guest' };
       } else {
         roleData = result.data;
       }
-    } catch (error: any) {
-      console.error('[fetchUserData] User_roles query failed:', error?.message);
+    } else {
+      console.error('[fetchUserData] User_roles query failed:', roleResult.reason?.message);
       roleData = { role: 'guest' };
     }
 
-    // QUERY 3: User daily limits table
-    try {
-      const result = await queryWithTimeout(
-        'User Daily Limits Table',
-        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle()
-      );
-
+    // Process limits result
+    if (limitsResult.status === 'fulfilled') {
+      const result = limitsResult.value;
       if (result.error) {
         console.error('[fetchUserData] User_daily_limits query error:', result.error);
-        throw new Error('خطا در بارگذاری محدودیت‌ها: ' + result.error.message);
-      }
-
-      if (!result.data) {
+        limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
+      } else if (!result.data) {
         console.error('[fetchUserData] No limits data found, using unlimited');
         limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
       } else {
         limitsData = result.data;
       }
-    } catch (error: any) {
-      console.error('[fetchUserData] User_daily_limits query failed:', error?.message);
+    } else {
+      console.error('[fetchUserData] User_daily_limits query failed:', limitsResult.reason?.message);
       limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
     }
 
-    // QUERY 4: User daily usage table
-    try {
-      const result = await queryWithTimeout(
-        'User Daily Usage Table',
-        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
-      );
-
+    // Process usage result
+    if (usageResult.status === 'fulfilled') {
+      const result = usageResult.value;
       if (result.error && result.error.code !== 'PGRST116') {
         console.error('[fetchUserData] User_daily_usage query error:', result.error);
       }
 
       if (!result.data) {
+        // Try to create usage record for today
         try {
           const { error: insertError } = await queryWithTimeout(
             'Insert Daily Usage',
@@ -235,8 +240,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         usageData = result.data;
       }
-    } catch (error: any) {
-      console.error('[fetchUserData] User_daily_usage query failed:', error?.message);
+    } else {
+      console.error('[fetchUserData] User_daily_usage query failed:', usageResult.reason?.message);
       usageData = { ai_analysis: 0, chat_messages: 0, exports: 0 };
     }
 
