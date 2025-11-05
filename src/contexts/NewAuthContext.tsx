@@ -79,6 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
     try {
       console.log('[fetchUserData] Fetching user data for:', authUser.email);
+      console.log('[fetchUserData] auth.uid() available:', !!authUser.id);
+      console.log('[fetchUserData] User ID:', authUser.id);
 
       const today = new Date().toISOString().split('T')[0];
 
@@ -87,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('users')
         .select('*')
         .eq('id', authUser.id)
-        .single();
+        .maybeSingle();
 
       if (usersError || !userData) {
         console.error('[fetchUserData] Users query failed:', usersError);
@@ -172,13 +174,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const fetchUserDataWithRetry = useCallback(async (authUser: SupabaseUser, retryCount = 0): Promise<User | null> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000; // 1 second
+    
+    try {
+      // Add initial delay on first attempt to ensure auth.uid() is ready
+      if (retryCount === 0) {
+        console.log('[fetchUserDataWithRetry] Adding initial 500ms delay for auth.uid() to be ready');
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        // Add increasing delay for retries
+        const delay = RETRY_DELAY * retryCount;
+        console.log(`[fetchUserDataWithRetry] Retry ${retryCount}/${MAX_RETRIES}, waiting ${delay}ms`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+      const result = await fetchUserData(authUser);
+      
+      if (!result && retryCount < MAX_RETRIES) {
+        console.log(`[fetchUserDataWithRetry] No data returned, retrying (${retryCount + 1}/${MAX_RETRIES})`);
+        return fetchUserDataWithRetry(authUser, retryCount + 1);
+      }
+      
+      if (result) {
+        console.log('[fetchUserDataWithRetry] Successfully fetched user data');
+      } else {
+        console.error('[fetchUserDataWithRetry] Failed to fetch user data after all retries');
+      }
+      
+      return result;
+    } catch (error) {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[fetchUserDataWithRetry] Error occurred, retrying (${retryCount + 1}/${MAX_RETRIES})`, error);
+        return fetchUserDataWithRetry(authUser, retryCount + 1);
+      }
+      console.error('[fetchUserDataWithRetry] Failed after all retries:', error);
+      throw error;
+    }
+  }, [fetchUserData]);
+
   const refreshUser = useCallback(async () => {
     if (!session?.user) return;
-    const userData = await fetchUserData(session.user);
+    const userData = await fetchUserDataWithRetry(session.user);
     if (userData) {
       setUser(userData);
     }
-  }, [session, fetchUserData]);
+  }, [session, fetchUserDataWithRetry]);
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -197,7 +239,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('id', data.user.id);
 
         setSession(data.session);
-        const userData = await fetchUserData(data.user);
+        const userData = await fetchUserDataWithRetry(data.user);
         if (userData) {
           setUser(userData);
           setLastActivity(Date.now());
@@ -388,19 +430,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check for existing session FIRST before setting up listener
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log('[NewAuthContext] Initial session check:', session?.user?.email);
+      console.log('[NewAuthContext] auth.uid():', session?.user?.id);
+      
       setSession(session);
+      
       if (session?.user) {
-        // Add timeout to prevent infinite loading
+        // Add timeout to prevent infinite loading (increased to 20 seconds)
         const timeoutId = setTimeout(() => {
-          console.error('[NewAuthContext] fetchUserData timeout!');
+          console.error('[NewAuthContext] fetchUserData timeout after 20 seconds!');
           setLoading(false);
-          toast.error('خطا در بارگذاری اطلاعات کاربر - لطفا مجددا تلاش کنید');
-        }, 10000); // 10 second timeout
+          toast.error('خطا در بارگذاری اطلاعات کاربر', {
+            description: 'لطفا صفحه را رفرش کنید یا مجددا وارد شوید',
+            duration: 10000,
+            action: {
+              label: 'تلاش مجدد',
+              onClick: () => {
+                window.location.reload();
+              }
+            }
+          });
+        }, 20000); // 20 second timeout
 
-        fetchUserData(session.user)
+        fetchUserDataWithRetry(session.user)
           .then(userData => {
             clearTimeout(timeoutId);
-            setUser(userData);
+            if (userData) {
+              setUser(userData);
+              console.log('[NewAuthContext] User loaded successfully:', userData.email);
+            } else {
+              console.error('[NewAuthContext] Failed to load user data after retries');
+              toast.error('خطا در بارگذاری پروفایل کاربر', {
+                description: 'لطفا مجددا وارد شوید',
+                action: {
+                  label: 'ورود مجدد',
+                  onClick: () => {
+                    supabase.auth.signOut();
+                    window.location.href = '/login';
+                  }
+                }
+              });
+            }
             setLoading(false);
           })
           .catch(error => {
@@ -427,7 +496,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         
         if (session?.user) {
-          const userData = await fetchUserData(session.user);
+          const userData = await fetchUserDataWithRetry(session.user);
           console.log('[NewAuthContext] User data fetched:', userData);
           setUser(userData);
         } else {
@@ -438,7 +507,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => subscription.unsubscribe();
-  }, [fetchUserData]);
+  }, [fetchUserDataWithRetry]);
 
   const value: AuthContextValue = {
     user,
