@@ -65,17 +65,22 @@ export function TargetAvatar({
         .getPublicUrl(fileName);
       
       // Update target profile
-      await supabase
+      const { error: upsertError } = await supabase
         .from('target_profiles')
         .upsert({
-          name_english: target.name_english,
-          name_persian: target.name_persian,
-          name_arabic: target.name_arabic,
+          name_persian: target.name_persian || target.name_english || target.name_arabic || 'نامشخص',
+          name_english: target.name_english || null,
+          name_arabic: target.name_arabic || null,
           photo_url: publicUrl,
           photo_source: 'manual'
         }, {
-          onConflict: 'name_english'
+          onConflict: 'name_persian'
         });
+      
+      if (upsertError) {
+        console.error('Upsert error:', upsertError);
+        throw upsertError;
+      }
       
       // Reset error state and call callback
       setImageError(false);
