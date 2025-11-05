@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
-    // Helper function to run query with timeout (reduced to 5s for better performance)
+    // Helper function to run query with timeout (default 5s for most queries)
     const queryWithTimeout = async <T,>(
       queryName: string,
       queryFn: () => Promise<T>,
@@ -102,24 +102,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Wait for session propagation (reduced to 100ms - sufficient for most cases)
+    // Wait for session propagation (100ms is sufficient for most cases)
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Verify session
-    try {
-      const { data: sessionData, error: sessionError } = await queryWithTimeout(
-        'Session Check',
-        () => supabase.auth.getSession()
-      );
+    // Verify session with LONGER timeout (10s) and retry logic
+    // Session checks need more time due to network latency and auth service calls
+    let sessionVerified = false;
+    let sessionAttempts = 0;
+    const maxSessionAttempts = 2;
 
-      if (sessionError || !sessionData?.session) {
-        console.error('[fetchUserData] No valid session found');
-        throw new Error('نشست کاربری معتبر یافت نشد');
+    while (!sessionVerified && sessionAttempts < maxSessionAttempts) {
+      sessionAttempts++;
+      try {
+        console.log(`[fetchUserData] Session Check attempt ${sessionAttempts}/${maxSessionAttempts}...`);
+
+        const { data: sessionData, error: sessionError } = await queryWithTimeout(
+          'Session Check',
+          () => supabase.auth.getSession(),
+          10000 // 10 seconds timeout for session check (longer than other queries)
+        );
+
+        if (sessionError) {
+          console.error('[fetchUserData] Session error:', sessionError);
+          throw sessionError;
+        }
+
+        if (!sessionData?.session) {
+          console.error('[fetchUserData] No session data returned');
+          throw new Error('No session data');
+        }
+
+        // Session verified successfully
+        sessionVerified = true;
+        console.log('[fetchUserData] Session verified successfully');
+      } catch (error: any) {
+        console.error(`[fetchUserData] Session check attempt ${sessionAttempts} failed:`, error?.message);
+
+        if (sessionAttempts >= maxSessionAttempts) {
+          // All attempts failed
+          console.error('[fetchUserData] All session check attempts failed');
+          toast.error('خطا در تایید نشست کاربری - لطفا دوباره وارد شوید');
+          return null;
+        } else {
+          // Wait a bit before retrying
+          console.log('[fetchUserData] Waiting 500ms before retry...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
-    } catch (error: any) {
-      console.error('[fetchUserData] Session verification failed:', error?.message);
-      toast.error('خطا در تایید نشست کاربری');
-      return null;
     }
 
     const today = new Date().toISOString().split('T')[0];
@@ -134,7 +163,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await queryWithTimeout(
         'Users Table',
-        () => supabase.from('users').select('*').eq('id', authUser.id).maybeSingle()
+        () => supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
+        5000 // 5 seconds is fine for database queries
       );
 
       if (result.error) {
@@ -157,20 +187,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // QUERIES 2-4: Fetch remaining data IN PARALLEL for better performance
     // These queries have fallbacks and can fail gracefully
     const [roleResult, limitsResult, usageResult] = await Promise.allSettled([
-      // Query 2: User roles
+      // Query 2: User roles (5s timeout)
       queryWithTimeout(
         'User Roles Table',
-        () => supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle()
+        () => supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle(),
+        5000
       ),
-      // Query 3: User daily limits
+      // Query 3: User daily limits (5s timeout)
       queryWithTimeout(
         'User Daily Limits Table',
-        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle()
+        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle(),
+        5000
       ),
-      // Query 4: User daily usage
+      // Query 4: User daily usage (5s timeout)
       queryWithTimeout(
         'User Daily Usage Table',
-        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
+        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle(),
+        5000
       )
     ]);
 
