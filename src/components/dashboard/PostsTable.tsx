@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, ExternalLink, Zap, Brain, Info } from 'lucide-react';
+import { Eye, ExternalLink, Zap, Brain, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils';
 interface PostsTableProps {
   posts: EnrichedPost[];
   onViewPost: (post: EnrichedPost) => void;
+  currentPage?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
 }
 
 const getSourceColor = (source: string): string => {
@@ -32,11 +35,24 @@ const getLanguageFlag = (language: string): string => {
   return flags[language] || '🌐';
 };
 
-const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
+const PostsTable: React.FC<PostsTableProps> = ({
+  posts,
+  onViewPost,
+  currentPage = 1,
+  totalPages = 1,
+  onPageChange
+}) => {
   return (
     <div className="bg-card rounded-lg shadow-card overflow-hidden">
       <div className="p-6 border-b border-border">
-        <h3 className="text-lg font-bold text-right">آخرین مطالب منتشر شده</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-right">آخرین مطالب منتشر شده</h3>
+          {totalPages > 1 && (
+            <span className="text-sm text-muted-foreground">
+              صفحه {currentPage} از {totalPages}
+            </span>
+          )}
+        </div>
       </div>
       
       <div className="overflow-x-auto">
@@ -187,6 +203,37 @@ const PostsTable: React.FC<PostsTableProps> = ({ posts, onViewPost }) => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && onPageChange && (
+        <div className="p-4 border-t border-border">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              صفحه {currentPage} از {totalPages}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronRight className="h-4 w-4" />
+                <span className="mr-1">قبلی</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                <span className="ml-1">بعدی</span>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

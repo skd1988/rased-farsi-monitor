@@ -34,6 +34,8 @@ const Dashboard = () => {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [postsTablePage, setPostsTablePage] = useState(1);
+  const postsPerPage = 50;
   
   // Fetch real data from Supabase
   useEffect(() => {
@@ -385,7 +387,7 @@ const Dashboard = () => {
   }, [posts]);
 
   // PsyOp Posts for table (only posts with is_psyop = true)
-  const psyopPosts = useMemo(() => {
+  const allPsyopPosts = useMemo(() => {
     return posts
       .filter(post => post.is_psyop === true)
       .map(post => ({
@@ -409,14 +411,22 @@ const Dashboard = () => {
         const postB = posts.find(p => p.id === b.id);
         const threatA = threatOrder[postA?.threat_level as keyof typeof threatOrder] ?? 999;
         const threatB = threatOrder[postB?.threat_level as keyof typeof threatOrder] ?? 999;
-        
+
         if (threatA !== threatB) return threatA - threatB;
-        
+
         // Then by date
         return new Date(b.date).getTime() - new Date(a.date).getTime();
-      })
-      .slice(0, 15);
+      });
   }, [posts]);
+
+  // Paginated psyop posts
+  const psyopPosts = useMemo(() => {
+    const startIndex = (postsTablePage - 1) * postsPerPage;
+    const endIndex = startIndex + postsPerPage;
+    return allPsyopPosts.slice(startIndex, endIndex);
+  }, [allPsyopPosts, postsTablePage]);
+
+  const totalPostsPages = Math.ceil(allPsyopPosts.length / postsPerPage);
   
   const handleViewPost = (post: EnrichedPost) => {
     setSelectedPost(post);
@@ -745,7 +755,13 @@ const Dashboard = () => {
             مشاهده همه
           </button>
         </div>
-        <PostsTable posts={psyopPosts} onViewPost={handleViewPost} />
+        <PostsTable
+          posts={psyopPosts}
+          onViewPost={handleViewPost}
+          currentPage={postsTablePage}
+          totalPages={totalPostsPages}
+          onPageChange={setPostsTablePage}
+        />
       </div>
       
       {/* Detail Modal */}
