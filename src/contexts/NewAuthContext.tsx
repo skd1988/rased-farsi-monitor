@@ -77,100 +77,138 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
-    try {
-      console.log('[fetchUserData] Fetching user data for:', authUser.email);
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second between retries
 
-      const today = new Date().toISOString().split('T')[0];
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[fetchUserData] Attempt ${attempt}/${maxRetries} for user:`, authUser.email);
 
-      // Query 1: Users table (CRITICAL - must succeed)
-      const { data: userData, error: usersError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
+        // Wait before retry (except first attempt)
+        if (attempt > 1) {
+          console.log(`[fetchUserData] Waiting ${retryDelay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
 
-      if (usersError || !userData) {
-        console.error('[fetchUserData] Users query failed:', usersError);
-        toast.error('خطا در بارگذاری پروفایل کاربر');
+        const today = new Date().toISOString().split('T')[0];
+
+        // Query 1: Users table (CRITICAL - must succeed)
+        // Using .maybeSingle() instead of .single() to avoid throwing on 0 rows
+        const { data: userData, error: usersError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUser.id)
+          .maybeSingle();
+
+        // Check if query failed with an error
+        if (usersError) {
+          console.error(`[fetchUserData] Attempt ${attempt} - Users query error:`, usersError);
+          if (attempt < maxRetries) {
+            console.log('[fetchUserData] Will retry due to query error...');
+            continue; // Retry
+          }
+          toast.error('خطا در بارگذاری پروفایل کاربر');
+          return null;
+        }
+
+        // Check if no data returned (auth.uid() not ready yet in RLS)
+        if (!userData) {
+          console.warn(`[fetchUserData] Attempt ${attempt} - No user data returned (auth.uid() not ready in RLS?)`);
+          if (attempt < maxRetries) {
+            console.log('[fetchUserData] Will retry - auth.uid() may not be propagated to RLS yet...');
+            continue; // Retry
+          }
+          console.error('[fetchUserData] All attempts exhausted - user data not found');
+          toast.error('خطا در بارگذاری پروفایل کاربر - لطفا دوباره وارد شوید');
+          return null;
+        }
+
+        // SUCCESS! User data found
+        console.log(`[fetchUserData] Attempt ${attempt} - User data loaded successfully:`, userData.email);
+
+        // Query 2: User roles (optional - use guest as fallback)
+        const { data: rolesData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        const role = rolesData?.role || 'guest';
+        console.log('[fetchUserData] User role:', role);
+
+        // Query 3: Daily limits (optional - use unlimited as fallback)
+        const { data: limitsData } = await supabase
+          .from('user_daily_limits')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        console.log('[fetchUserData] Daily limits loaded:', limitsData ? 'yes' : 'using defaults');
+
+        // Query 4: Daily usage (optional - use zero as fallback)
+        const { data: usageData } = await supabase
+          .from('user_daily_usage')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .eq('usage_date', today)
+          .maybeSingle();
+
+        console.log('[fetchUserData] Daily usage loaded:', usageData ? 'yes' : 'using defaults');
+
+        // If no usage record for today, create one (fire and forget)
+        if (!usageData) {
+          supabase
+            .from('user_daily_usage')
+            .insert({
+              user_id: authUser.id,
+              usage_date: today,
+              ai_analysis: 0,
+              chat_messages: 0,
+              exports: 0
+            })
+            .then(() => console.log('[fetchUserData] Created daily usage record'))
+            .catch((err) => console.error('[fetchUserData] Failed to create usage record:', err));
+        }
+
+        // Build and return user object
+        const userObject = {
+          id: userData.id,
+          email: userData.email,
+          fullName: userData.full_name,
+          role: role as UserRole,
+          status: userData.status as UserStatus,
+          preferences: userData.preferences as User['preferences'],
+          dailyLimits: {
+            aiAnalysis: limitsData?.ai_analysis || -1,
+            chatMessages: limitsData?.chat_messages || -1,
+            exports: limitsData?.exports || -1
+          },
+          usageToday: {
+            aiAnalysis: usageData?.ai_analysis || 0,
+            chatMessages: usageData?.chat_messages || 0,
+            exports: usageData?.exports || 0
+          },
+          lastLogin: userData.last_login,
+          createdAt: userData.created_at
+        };
+
+        console.log('[fetchUserData] ✅ User object built successfully for:', userObject.email);
+        return userObject;
+
+      } catch (error: any) {
+        console.error(`[fetchUserData] Attempt ${attempt} - Critical error:`, error);
+        if (attempt < maxRetries) {
+          console.log('[fetchUserData] Will retry due to critical error...');
+          continue; // Retry
+        }
+        toast.error('خطا در بارگذاری اطلاعات کاربر');
         return null;
       }
-
-      console.log('[fetchUserData] User data loaded:', userData.email);
-
-      // Query 2: User roles (optional - use guest as fallback)
-      const { data: rolesData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', authUser.id)
-        .maybeSingle();
-
-      const role = rolesData?.role || 'guest';
-      console.log('[fetchUserData] User role:', role);
-
-      // Query 3: Daily limits (optional - use unlimited as fallback)
-      const { data: limitsData } = await supabase
-        .from('user_daily_limits')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .maybeSingle();
-
-      console.log('[fetchUserData] Daily limits loaded:', limitsData ? 'yes' : 'using defaults');
-
-      // Query 4: Daily usage (optional - use zero as fallback)
-      const { data: usageData } = await supabase
-        .from('user_daily_usage')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .eq('usage_date', today)
-        .maybeSingle();
-
-      console.log('[fetchUserData] Daily usage loaded:', usageData ? 'yes' : 'using defaults');
-
-      // If no usage record for today, create one (fire and forget)
-      if (!usageData) {
-        supabase
-          .from('user_daily_usage')
-          .insert({
-            user_id: authUser.id,
-            usage_date: today,
-            ai_analysis: 0,
-            chat_messages: 0,
-            exports: 0
-          })
-          .then(() => console.log('[fetchUserData] Created daily usage record'))
-          .catch((err) => console.error('[fetchUserData] Failed to create usage record:', err));
-      }
-
-      // Build and return user object
-      const userObject = {
-        id: userData.id,
-        email: userData.email,
-        fullName: userData.full_name,
-        role: role as UserRole,
-        status: userData.status as UserStatus,
-        preferences: userData.preferences as User['preferences'],
-        dailyLimits: {
-          aiAnalysis: limitsData?.ai_analysis || -1,
-          chatMessages: limitsData?.chat_messages || -1,
-          exports: limitsData?.exports || -1
-        },
-        usageToday: {
-          aiAnalysis: usageData?.ai_analysis || 0,
-          chatMessages: usageData?.chat_messages || 0,
-          exports: usageData?.exports || 0
-        },
-        lastLogin: userData.last_login,
-        createdAt: userData.created_at
-      };
-
-      console.log('[fetchUserData] User object built successfully for:', userObject.email);
-      return userObject;
-
-    } catch (error: any) {
-      console.error('[fetchUserData] Critical error:', error);
-      toast.error('خطا در بارگذاری اطلاعات کاربر');
-      return null;
     }
+
+    // Should never reach here, but just in case
+    console.error('[fetchUserData] All retry attempts exhausted');
+    return null;
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -421,13 +459,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('[NewAuthContext] Auth state changed:', event, session?.user?.email);
-        
+
         // Skip INITIAL_SESSION event as we already handled it above
         if (event === 'INITIAL_SESSION') return;
-        
+
         setSession(session);
-        
+
         if (session?.user) {
+          // CRITICAL FIX: Add delay for SIGNED_IN to allow auth.uid() to propagate to RLS
+          if (event === 'SIGNED_IN') {
+            console.log('[NewAuthContext] SIGNED_IN detected - waiting 500ms for auth.uid() to propagate to RLS...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+
           const userData = await fetchUserData(session.user);
           console.log('[NewAuthContext] User data fetched:', userData);
           setUser(userData);
