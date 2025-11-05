@@ -77,119 +77,210 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
-    console.log('[NewAuthContext] fetchUserData START for:', authUser.email, 'ID:', authUser.id);
-    
-    // Wait longer to ensure auth session is fully propagated
+    console.log('=== FETCHUSERDATA START ===');
+    console.log('[1/8] Starting fetchUserData for:', authUser.email, 'ID:', authUser.id);
+
+    // Helper function to run query with timeout
+    const queryWithTimeout = async <T,>(
+      queryName: string,
+      queryFn: () => Promise<T>,
+      timeoutMs = 10000
+    ): Promise<T> => {
+      console.log(`[Query] ${queryName} - Starting...`);
+      const startTime = Date.now();
+
+      try {
+        const result = await Promise.race([
+          queryFn(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`${queryName} timeout after ${timeoutMs}ms`)), timeoutMs)
+          )
+        ]);
+
+        const duration = Date.now() - startTime;
+        console.log(`[Query] ${queryName} - SUCCESS (${duration}ms)`);
+        return result;
+      } catch (error: any) {
+        const duration = Date.now() - startTime;
+        console.error(`[Query] ${queryName} - FAILED (${duration}ms):`, {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint
+        });
+        throw error;
+      }
+    };
+
+    // Wait to ensure auth session is propagated
+    console.log('[2/8] Waiting 500ms for session propagation...');
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+    console.log('[2/8] Wait complete');
+
+    // Verify session
+    console.log('[3/8] Verifying session...');
     try {
-      // First verify we can get current session
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      console.log('[NewAuthContext] Current session check:', {
+      const { data: sessionData, error: sessionError } = await queryWithTimeout(
+        'Session Check',
+        () => supabase.auth.getSession()
+      );
+
+      console.log('[3/8] Session verification result:', {
         hasSession: !!sessionData?.session,
         userId: sessionData?.session?.user?.id,
         authUserId: authUser.id,
         match: sessionData?.session?.user?.id === authUser.id
       });
-      
+
       if (sessionError || !sessionData?.session) {
-        console.error('[NewAuthContext] No valid session found');
+        console.error('[3/8] CRITICAL: No valid session found');
         throw new Error('نشست کاربری معتبر یافت نشد');
       }
-      
-      console.log('[NewAuthContext] Starting parallel queries...');
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Fetch all data in parallel with longer timeout
-      const [userResult, roleResult, limitsResult, usageResult] = await Promise.all([
-        Promise.race([
-          supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Users query timeout')), 10000))
-        ]),
-        Promise.race([
-          supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Role query timeout')), 10000))
-        ]),
-        Promise.race([
-          supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Limits query timeout')), 10000))
-        ]),
-        Promise.race([
-          supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle(),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Usage query timeout')), 10000))
-        ])
-      ]);
+      console.log('[3/8] Session verified successfully');
+    } catch (error: any) {
+      console.error('[3/8] Session verification FAILED:', error?.message);
+      toast.error('خطا در تایید نشست کاربری');
+      return null;
+    }
 
-      console.log('[NewAuthContext] All queries completed:', {
-        hasUser: !!userResult.data,
-        hasRole: !!roleResult.data,
-        hasLimits: !!limitsResult.data,
-        hasUsage: !!usageResult.data,
-        userError: userResult.error?.message,
-        roleError: roleResult.error?.message,
-        limitsError: limitsResult.error?.message,
-        usageError: usageResult.error?.message
-      });
+    const today = new Date().toISOString().split('T')[0];
 
-      const { data: userData, error: userError } = userResult;
-      const { data: roleData, error: roleError } = roleResult;
-      const { data: limitsData, error: limitsError } = limitsResult;
-      const { data: usageData, error: usageError } = usageResult;
-      
-      if (userError) {
-        console.error('[NewAuthContext] Users query error:', userError);
-        throw new Error('خطا در بارگذاری پروفایل: ' + userError.message);
+    // Initialize partial data holders
+    let userData: any = null;
+    let roleData: any = null;
+    let limitsData: any = null;
+    let usageData: any = null;
+
+    // QUERY 1: Users table
+    console.log('[4/8] Querying USERS table...');
+    try {
+      const result = await queryWithTimeout(
+        'Users Table',
+        () => supabase.from('users').select('*').eq('id', authUser.id).maybeSingle()
+      );
+
+      if (result.error) {
+        console.error('[4/8] Users query returned error:', result.error);
+        throw new Error('خطا در بارگذاری پروفایل: ' + result.error.message);
       }
-      
-      if (!userData) {
-        console.error('[NewAuthContext] No user data found');
+
+      if (!result.data) {
+        console.error('[4/8] CRITICAL: No user data found for ID:', authUser.id);
         throw new Error('پروفایل کاربر یافت نشد');
       }
-      
-      if (roleError) {
-        console.error('[NewAuthContext] Role query error:', roleError);
-        throw new Error('خطا در بارگذاری نقش کاربر: ' + roleError.message);
-      }
-      
-      if (!roleData) {
-        console.error('[NewAuthContext] No role data found');
-        throw new Error('نقش کاربر یافت نشد');
-      }
-      
-      if (limitsError) {
-        console.error('[NewAuthContext] Limits query error:', limitsError);
-        throw new Error('خطا در بارگذاری محدودیت‌ها: ' + limitsError.message);
-      }
-      
-      if (!limitsData) {
-        console.error('[NewAuthContext] No limits data found');
-        throw new Error('محدودیت‌های کاربر یافت نشد');
+
+      userData = result.data;
+      console.log('[4/8] Users query SUCCESS. Found user:', userData.email);
+    } catch (error: any) {
+      console.error('[4/8] Users query FAILED - Cannot continue:', error?.message);
+      toast.error(error?.message || 'خطا در بارگذاری پروفایل کاربر');
+      return null;
+    }
+
+    // QUERY 2: User roles table
+    console.log('[5/8] Querying USER_ROLES table...');
+    try {
+      const result = await queryWithTimeout(
+        'User Roles Table',
+        () => supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle()
+      );
+
+      if (result.error) {
+        console.error('[5/8] User_roles query returned error:', result.error);
+        throw new Error('خطا در بارگذاری نقش: ' + result.error.message);
       }
 
-      if (usageError && usageError.code !== 'PGRST116') {
-        console.error('[NewAuthContext] Usage query error:', usageError);
-        throw new Error('خطا در بارگذاری مصرف روزانه: ' + usageError.message);
+      if (!result.data) {
+        console.error('[5/8] WARNING: No role data found for user:', authUser.id);
+        console.log('[5/8] Continuing with default guest role...');
+        roleData = { role: 'guest' };
+      } else {
+        roleData = result.data;
+        console.log('[5/8] User_roles query SUCCESS. Role:', roleData.role);
+      }
+    } catch (error: any) {
+      console.error('[5/8] User_roles query FAILED:', error?.message);
+      console.log('[5/8] Using fallback guest role');
+      roleData = { role: 'guest' };
+    }
+
+    // QUERY 3: User daily limits table
+    console.log('[6/8] Querying USER_DAILY_LIMITS table...');
+    try {
+      const result = await queryWithTimeout(
+        'User Daily Limits Table',
+        () => supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle()
+      );
+
+      if (result.error) {
+        console.error('[6/8] User_daily_limits query returned error:', result.error);
+        throw new Error('خطا در بارگذاری محدودیت‌ها: ' + result.error.message);
       }
 
-      // If no usage record for today, create one
-      if (!usageData) {
-        console.log('[NewAuthContext] Creating new usage record for today...');
-        const { error: insertError } = await supabase
-          .from('user_daily_usage')
-          .insert({
-            user_id: authUser.id,
-            usage_date: today,
-            ai_analysis: 0,
-            chat_messages: 0,
-            exports: 0
-          });
-        
-        if (insertError) {
-          console.error('[NewAuthContext] Insert usage error:', insertError);
+      if (!result.data) {
+        console.error('[6/8] WARNING: No limits data found for user:', authUser.id);
+        console.log('[6/8] Using default limits (unlimited)...');
+        limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
+      } else {
+        limitsData = result.data;
+        console.log('[6/8] User_daily_limits query SUCCESS. Limits:', limitsData);
+      }
+    } catch (error: any) {
+      console.error('[6/8] User_daily_limits query FAILED:', error?.message);
+      console.log('[6/8] Using fallback unlimited limits');
+      limitsData = { ai_analysis: -1, chat_messages: -1, exports: -1 };
+    }
+
+    // QUERY 4: User daily usage table
+    console.log('[7/8] Querying USER_DAILY_USAGE table for date:', today);
+    try {
+      const result = await queryWithTimeout(
+        'User Daily Usage Table',
+        () => supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
+      );
+
+      if (result.error && result.error.code !== 'PGRST116') {
+        console.error('[7/8] User_daily_usage query returned error:', result.error);
+        console.log('[7/8] Continuing with zero usage...');
+      }
+
+      if (!result.data) {
+        console.log('[7/8] No usage record found for today, creating one...');
+        try {
+          const { error: insertError } = await queryWithTimeout(
+            'Insert Daily Usage',
+            () => supabase.from('user_daily_usage').insert({
+              user_id: authUser.id,
+              usage_date: today,
+              ai_analysis: 0,
+              chat_messages: 0,
+              exports: 0
+            })
+          );
+
+          if (insertError) {
+            console.error('[7/8] Failed to create usage record:', insertError);
+          } else {
+            console.log('[7/8] Usage record created successfully');
+          }
+        } catch (insertErr: any) {
+          console.error('[7/8] Insert usage record FAILED:', insertErr?.message);
         }
-      }
 
-      console.log('[NewAuthContext] Building user object...');
+        usageData = { ai_analysis: 0, chat_messages: 0, exports: 0 };
+      } else {
+        usageData = result.data;
+        console.log('[7/8] User_daily_usage query SUCCESS. Usage:', usageData);
+      }
+    } catch (error: any) {
+      console.error('[7/8] User_daily_usage query FAILED:', error?.message);
+      console.log('[7/8] Using fallback zero usage');
+      usageData = { ai_analysis: 0, chat_messages: 0, exports: 0 };
+    }
+
+    // Build user object
+    console.log('[8/8] Building final user object...');
+    try {
       const userObject = {
         id: userData.id,
         email: userData.email,
@@ -210,23 +301,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastLogin: userData.last_login,
         createdAt: userData.created_at
       };
-      
-      console.log('[NewAuthContext] User object built successfully:', {
+
+      console.log('[8/8] User object built successfully:', {
         email: userObject.email,
         role: userObject.role,
-        status: userObject.status
+        status: userObject.status,
+        dailyLimits: userObject.dailyLimits,
+        usageToday: userObject.usageToday
       });
-      
+      console.log('=== FETCHUSERDATA SUCCESS ===');
+
       return userObject;
     } catch (error: any) {
-      console.error('[NewAuthContext] FATAL ERROR in fetchUserData:', {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-        stack: error?.stack
-      });
-      toast.error(error?.message || 'خطا در بارگذاری اطلاعات کاربر');
+      console.error('[8/8] CRITICAL: Failed to build user object:', error?.message);
+      toast.error('خطا در ساخت اطلاعات کاربر');
       return null;
     }
   }, []);
