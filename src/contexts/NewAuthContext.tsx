@@ -79,8 +79,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
     try {
       console.log('[fetchUserData] Fetching user data for:', authUser.email);
-      console.log('[fetchUserData] auth.uid() available:', !!authUser.id);
-      console.log('[fetchUserData] User ID:', authUser.id);
+      
+      // Double-check auth.uid() is ready with getUser()
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !currentUser) {
+        console.error('[fetchUserData] auth.uid() not available:', authError);
+        console.log('[fetchUserData] Clearing session and redirecting to login');
+        await supabase.auth.signOut();
+        return null;
+      }
+      
+      console.log('[fetchUserData] auth.uid() confirmed:', currentUser.id);
 
       const today = new Date().toISOString().split('T')[0];
 
@@ -88,12 +98,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: userData, error: usersError } = await supabase
         .from('users')
         .select('*')
-        .eq('id', authUser.id)
+        .eq('id', currentUser.id)
         .maybeSingle();
 
       if (usersError || !userData) {
         console.error('[fetchUserData] Users query failed:', usersError);
         toast.error('خطا در بارگذاری پروفایل کاربر');
+        await supabase.auth.signOut();
         return null;
       }
 
@@ -103,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: rolesData } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', authUser.id)
+        .eq('user_id', currentUser.id)
         .maybeSingle();
 
       const role = rolesData?.role || 'guest';
@@ -113,7 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: limitsData } = await supabase
         .from('user_daily_limits')
         .select('*')
-        .eq('user_id', authUser.id)
+        .eq('user_id', currentUser.id)
         .maybeSingle();
 
       console.log('[fetchUserData] Daily limits loaded:', limitsData ? 'yes' : 'using defaults');
@@ -122,53 +133,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: usageData } = await supabase
         .from('user_daily_usage')
         .select('*')
-        .eq('user_id', authUser.id)
+        .eq('user_id', currentUser.id)
         .eq('usage_date', today)
         .maybeSingle();
 
-      console.log('[fetchUserData] Daily usage loaded:', usageData ? 'yes' : 'using defaults');
+        console.log('[fetchUserData] Daily usage loaded:', usageData ? 'yes' : 'using defaults');
 
-      // If no usage record for today, create one (fire and forget)
-      if (!usageData) {
-        void supabase
-          .from('user_daily_usage')
-          .insert({
-            user_id: authUser.id,
-            usage_date: today,
-            ai_analysis: 0,
-            chat_messages: 0,
-            exports: 0
-          })
-          .then(() => console.log('[fetchUserData] Created daily usage record'));
-      }
+        // If no usage record for today, create one (fire and forget)
+        if (!usageData) {
+          void supabase
+            .from('user_daily_usage')
+            .insert({
+              user_id: currentUser.id,
+              usage_date: today,
+              ai_analysis: 0,
+              chat_messages: 0,
+              exports: 0
+            })
+            .then(() => console.log('[fetchUserData] Created daily usage record'));
+        }
 
-      // Build and return user object
-      const userObject = {
-        id: userData.id,
-        email: userData.email,
-        fullName: userData.full_name,
-        role: role as UserRole,
-        status: userData.status as UserStatus,
-        preferences: userData.preferences as User['preferences'],
-        dailyLimits: {
-          aiAnalysis: limitsData?.ai_analysis || -1,
-          chatMessages: limitsData?.chat_messages || -1,
-          exports: limitsData?.exports || -1
-        },
-        usageToday: {
-          aiAnalysis: usageData?.ai_analysis || 0,
-          chatMessages: usageData?.chat_messages || 0,
-          exports: usageData?.exports || 0
-        },
-        lastLogin: userData.last_login,
-        createdAt: userData.created_at
-      };
+        // Build and return user object
+        const userObject = {
+          id: userData.id,
+          email: userData.email,
+          fullName: userData.full_name,
+          role: role as UserRole,
+          status: userData.status as UserStatus,
+          preferences: userData.preferences as User['preferences'],
+          dailyLimits: {
+            aiAnalysis: limitsData?.ai_analysis || -1,
+            chatMessages: limitsData?.chat_messages || -1,
+            exports: limitsData?.exports || -1
+          },
+          usageToday: {
+            aiAnalysis: usageData?.ai_analysis || 0,
+            chatMessages: usageData?.chat_messages || 0,
+            exports: usageData?.exports || 0
+          },
+          lastLogin: userData.last_login,
+          createdAt: userData.created_at
+        };
 
-      console.log('[fetchUserData] User object built successfully for:', userObject.email);
-      return userObject;
+        console.log('[fetchUserData] User object built successfully for:', userObject.email);
+        return userObject;
 
     } catch (error: any) {
       console.error('[fetchUserData] Critical error:', error);
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('timeout')) {
+        console.error('[fetchUserData] Network/timeout error - clearing cached session');
+        await supabase.auth.signOut();
+      }
       toast.error('خطا در بارگذاری اطلاعات کاربر');
       return null;
     }
@@ -179,10 +194,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const RETRY_DELAY = 1000; // 1 second
     
     try {
-      // Add initial delay on first attempt to ensure auth.uid() is ready
+      // Add initial delay on first attempt to ensure auth.uid() and RLS are ready
+      // INCREASED to 2000ms to handle cached session restore issues
       if (retryCount === 0) {
-        console.log('[fetchUserDataWithRetry] Adding initial 500ms delay for auth.uid() to be ready');
-        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('[fetchUserDataWithRetry] Adding initial 2000ms delay for auth.uid() and RLS to be ready');
+        await new Promise(resolve => setTimeout(resolve, 2000));
       } else {
         // Add increasing delay for retries
         const delay = RETRY_DELAY * retryCount;
