@@ -128,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // If no usage record for today, create one (fire and forget)
       if (!usageData) {
-        supabase
+        void supabase
           .from('user_daily_usage')
           .insert({
             user_id: authUser.id,
@@ -137,8 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             chat_messages: 0,
             exports: 0
           })
-          .then(() => console.log('[fetchUserData] Created daily usage record'))
-          .catch((err) => console.error('[fetchUserData] Failed to create usage record:', err));
+          .then(() => console.log('[fetchUserData] Created daily usage record'));
       }
 
       // Build and return user object

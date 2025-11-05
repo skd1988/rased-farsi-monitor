@@ -47,8 +47,8 @@ export function TargetAvatar({
       // Compress image first
       const compressed = await compressImage(file);
       
-      // Upload to Supabase Storage
-      const fileName = `${name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.jpg`;
+      // Upload to Supabase Storage - use timestamp-only for URL-safe filename
+      const fileName = `target-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.jpg`;
       
       const { data, error } = await supabase.storage
         .from('target-photos')
