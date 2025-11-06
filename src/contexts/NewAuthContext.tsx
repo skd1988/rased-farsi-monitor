@@ -83,22 +83,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isInitializedRef = useRef(false);
   const retryCountRef = useRef(0);
 
-  // Clear any corrupted auth state from localStorage
+  // Clear any corrupted auth state from localStorage - REMOVED
+  // This function was too aggressive and was clearing valid sessions
+  // Instead, we rely on supabase.auth.signOut() which properly clears auth state
   const clearCorruptedAuthState = useCallback(() => {
-    console.log('[AuthContext] Clearing potentially corrupted auth state');
+    console.log('[AuthContext] Attempting to sign out and clear auth state');
     try {
-      // Get all localStorage keys
-      const keys = Object.keys(localStorage);
-      
-      // Remove Supabase auth keys
-      keys.forEach(key => {
-        if (key.startsWith('sb-') || key.includes('supabase')) {
-          console.log('[AuthContext] Removing localStorage key:', key);
-          localStorage.removeItem(key);
-        }
+      // Use Supabase's built-in signOut which properly clears the session
+      supabase.auth.signOut().then(() => {
+        toast.info('حالت احراز هویت بازنشانی شد. لطفاً دوباره وارد شوید.');
+      }).catch((error) => {
+        console.error('[AuthContext] Error during signOut:', error);
+        toast.error('خطا در خروج از سیستم');
       });
-      
-      toast.info('حالت احراز هویت بازنشانی شد. لطفاً دوباره وارد شوید.');
     } catch (error) {
       console.error('[AuthContext] Error clearing auth state:', error);
     }
@@ -327,8 +324,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success('با موفقیت خارج شدید');
     } catch (error) {
       console.error('[AuthContext] Error signing out:', error);
-      // Force clear even if signOut fails
-      clearCorruptedAuthState();
+      // If signOut fails, just clear local state and reload
+      setUser(null);
+      setSession(null);
       window.location.href = '/login';
     }
   };
@@ -508,24 +506,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[AuthContext] Initializing auth state');
     isInitializedRef.current = true;
 
-    // Set up loading timeout with recovery
+    // Set up loading timeout with recovery - ONLY for truly stuck states
     loadingTimeoutRef.current = setTimeout(() => {
       if (mounted && loading) {
-        console.error('[AuthContext] Loading timeout exceeded!');
-        toast.error('خطا در بارگذاری. در حال بازنشانی...', {
-          duration: 5000
+        console.error('[AuthContext] Loading timeout exceeded after 30 seconds!');
+        toast.error('خطا در بارگذاری. لطفاً صفحه را رفرش کنید.', {
+          duration: 10000
         });
         
-        // Force clear and redirect to login
-        clearCorruptedAuthState();
+        // Just stop loading, don't clear session
+        // User can retry by refreshing manually
         setLoading(false);
-        setUser(null);
-        setSession(null);
-        
-        // Redirect after a short delay
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 1000);
       }
     }, MAX_LOADING_TIME);
 
@@ -542,30 +533,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[AuthContext] Initial session check:', session?.user?.email || 'No session');
         setSession(session);
         
-        if (session?.user && mounted) {
-          try {
-            const userData = await fetchUserData(session.user);
-            
-            if (mounted) {
-              if (userData) {
-                setUser(userData);
-                console.log('[AuthContext] User loaded successfully');
-              } else {
-                console.error('[AuthContext] Failed to load user data');
-              }
-            }
-          } catch (error) {
-            console.error('[AuthContext] Error fetching user data:', error);
-            if (mounted) {
-              toast.error('خطا در بارگذاری اطلاعات کاربر');
+      if (session?.user && mounted) {
+        try {
+          const userData = await fetchUserData(session.user);
+          
+          if (mounted) {
+            if (userData) {
+              setUser(userData);
+              console.log('[AuthContext] User loaded successfully');
+            } else {
+              console.error('[AuthContext] Failed to load user data - signing out');
+              // If we can't load user data, sign out properly
+              await supabase.auth.signOut();
+              setSession(null);
+              setUser(null);
             }
           }
+        } catch (error) {
+          console.error('[AuthContext] Error fetching user data:', error);
+          if (mounted) {
+            toast.error('خطا در بارگذاری اطلاعات کاربر');
+            // Sign out on error to ensure clean state
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+          }
         }
-      } catch (error) {
-        console.error('[AuthContext] Init auth error:', error);
-        if (mounted) {
-          clearCorruptedAuthState();
-        }
+      }
+    } catch (error) {
+      console.error('[AuthContext] Init auth error:', error);
+      if (mounted) {
+        // Don't clear corrupted state aggressively
+        // Just ensure we're signed out
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+      }
       } finally {
         if (mounted) {
           setLoading(false);
