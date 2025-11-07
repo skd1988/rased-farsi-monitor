@@ -268,7 +268,6 @@ const Settings = () => {
     }
 
     return {
-      deepseek_api_key: "",
       google_sheet_id: localStorage.getItem("sheetId") || "11VzLIg5-evMkdGBUPzFgGXiv6nTgEL4r1wc4FDn2TKQ",
       google_sheet_name: localStorage.getItem("sheetName") || "Sheet1",
       google_api_key: localStorage.getItem("googleApiKey") || "",
@@ -2009,65 +2008,37 @@ const Settings = () => {
                 <CardDescription>پیکربندی کلیدهای API برای سرویس‌های خارجی</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-3">
-                  <Label htmlFor="deepseek-key">کلید API دیپ‌سیک</Label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Input
-                        id="deepseek-key"
-                        type={showApiKey ? "text" : "password"}
-                        value={settings.deepseek_api_key}
-                        onChange={(e) => setSettings({ ...settings, deepseek_api_key: e.target.value })}
-                        placeholder="sk-..."
-                        dir="ltr"
-                        className="text-left"
-                      />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="absolute left-2 top-1/2 -translate-y-1/2"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                      >
-                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
+                <Alert>
+                  <Shield className="h-4 w-4" />
+                  <AlertTitle>مدیریت امن کلیدهای API</AlertTitle>
+                  <AlertDescription>
+                    کلیدهای API به صورت ایمن در سمت سرور نگهداری می‌شوند و فقط مدیران سیستم می‌توانند آن‌ها را تغییر دهند. 
+                    این رویکرد از افشای کلیدهای محرمانه در مرورگر کاربران جلوگیری می‌کند.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">DeepSeek AI API</h4>
+                      <p className="text-sm text-muted-foreground">برای تحلیل هوش مصنوعی محتوا</p>
                     </div>
-                    <Button onClick={handleTestConnection} disabled={isSaving || !settings.deepseek_api_key}>
-                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "تست اتصال"}
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    {apiKeyStatus === "connected" ? (
-                      <>
-                        <CheckCircle className="h-4 w-4 text-success" />
-                        <span className="text-success">متصل</span>
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">عدم اتصال</span>
-                      </>
-                    )}
-                    {lastTestedTime && (
-                      <span className="text-muted-foreground">
-                        • آخرین تست: {new Date(lastTestedTime).toLocaleString("fa-IR")}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-success" />
+                      <span className="text-sm text-success">فعال</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-3 opacity-50">
-                  <Label>کلید OpenAI API</Label>
-                  <div className="flex gap-2">
-                    <Input disabled placeholder="به زودی..." dir="ltr" />
-                    <Button disabled>تست اتصال</Button>
+                <div className="space-y-3 rounded-lg border p-4 opacity-50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">OpenAI API</h4>
+                      <p className="text-sm text-muted-foreground">در نسخه بعدی فعال خواهد شد</p>
+                    </div>
+                    <span className="text-sm text-muted-foreground">غیرفعال</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">این قابلیت در نسخه بعدی فعال خواهد شد</span>
                 </div>
-
-                <Button onClick={handleSaveApiKey} disabled={isSaving}>
-                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : null}
-                  ذخیره کلیدهای API
-                </Button>
               </CardContent>
             </Card>
 
@@ -2384,17 +2355,8 @@ const Settings = () => {
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <span className="font-medium">DeepSeek API</span>
                     <div className="flex items-center gap-2">
-                      {apiKeyStatus === "connected" ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 text-success" />
-                          <span className="text-sm text-success">متصل</span>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground">عدم اتصال</span>
-                        </>
-                      )}
+                      <CheckCircle className="h-4 w-4 text-success" />
+                      <span className="text-sm text-success">فعال</span>
                     </div>
                   </div>
 

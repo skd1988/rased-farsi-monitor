@@ -21,6 +21,48 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    // Create client with user's auth token
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check user has required role (analyst, admin, or super_admin)
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!roleData || !['admin', 'super_admin', 'analyst'].includes(roleData.role)) {
+      return new Response(JSON.stringify({ error: 'Insufficient permissions' }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`Authenticated user: ${user.email}, role: ${roleData.role}`);
     console.log("Chat request received");
 
     const { question, conversationHistory = [] }: ChatRequest = await req.json();
@@ -32,26 +74,28 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const deepseekApiKey = Deno.env.get("DEEPSEEK_API_KEY");
 
     if (!deepseekApiKey) {
       throw new Error("DEEPSEEK_API_KEY not configured");
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Use service role key for database operations
+    const supabaseService = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
     console.log(`Processing question: "${question}"`);
 
     // Fetch relevant data from Supabase
-    const relevantData = await fetchRelevantData(supabase, question);
+    const relevantData = await fetchRelevantData(supabaseService, question);
 
     // Call DeepSeek API (using same method as analyze-post)
     const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
 
     // Log API usage
-    await logAPIUsage(supabase, question, aiResponse.usage);
+    await logAPIUsage(supabaseService, question, aiResponse.usage);
 
     const processingTime = Date.now() - startTime;
     console.log(`Response generated in ${processingTime}ms`);
