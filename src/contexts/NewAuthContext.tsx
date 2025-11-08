@@ -68,7 +68,7 @@ const PERMISSIONS = {
 const INACTIVITY_TIMEOUT = 8 * 60 * 60 * 1000; // 8 hours
 const WARNING_BEFORE_LOGOUT = 5 * 60 * 1000; // 5 minutes
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
-const MAX_LOADING_TIME = 30 * 1000; // 30 seconds - increased from 10
+const MAX_LOADING_TIME = 15 * 1000; // 15 seconds
 const RETRY_DELAYS = [500, 1000, 2000]; // Retry delays in ms
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -101,78 +101,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const fetchUserData = useCallback(async (authUser: SupabaseUser, retryCount = 0): Promise<User | null> => {
+  const fetchUserData = useCallback(async (
+    authUser: SupabaseUser, 
+    retryCount = 0,
+    skipSessionCheck = false
+  ): Promise<User | null> => {
     console.log('[AuthContext] fetchUserData START', {
       email: authUser.email,
       id: authUser.id,
-      retry: retryCount
+      retry: retryCount,
+      skipSessionCheck
     });
     
     try {
-      // Wait for RLS policies to be ready (exponential backoff)
-      const delay = RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)];
-      await new Promise(resolve => setTimeout(resolve, delay));
+      // Only delay on retries (optimized delays)
+      if (retryCount > 0) {
+        const OPTIMIZED_DELAYS = [200, 500, 1000];
+        const delay = OPTIMIZED_DELAYS[Math.min(retryCount - 1, OPTIMIZED_DELAYS.length - 1)];
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
       
-      // Verify session is still valid
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !sessionData?.session) {
-        console.error('[AuthContext] Session verification failed:', sessionError);
-        throw new Error('جلسه معتبر نیست');
+      // Only verify session during initialization, not after login
+      if (!skipSessionCheck) {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !sessionData?.session) {
+          console.error('[AuthContext] Session verification failed:', sessionError);
+          throw new Error('جلسه معتبر نیست');
+        }
       }
 
-      // Fetch all user data in parallel
-      const today = new Date().toISOString().split('T')[0];
-      
-      const [userResult, roleResult, limitsResult, usageResult] = await Promise.all([
-        supabase.from('users').select('*').eq('id', authUser.id).maybeSingle(),
-        supabase.from('user_roles').select('role').eq('user_id', authUser.id).maybeSingle(),
-        supabase.from('user_daily_limits').select('*').eq('user_id', authUser.id).maybeSingle(),
-        supabase.from('user_daily_usage').select('*').eq('user_id', authUser.id).eq('usage_date', today).maybeSingle()
-      ]);
-
-      console.log('[AuthContext] Query results:', {
-        hasUser: !!userResult.data,
-        hasRole: !!roleResult.data,
-        hasLimits: !!limitsResult.data,
-        hasUsage: !!usageResult.data,
-        userError: userResult.error?.message,
-        roleError: roleResult.error?.message,
-        limitsError: limitsResult.error?.message,
-        usageError: usageResult.error?.message
+      // Use optimized single database function call
+      const { data, error } = await supabase.rpc('get_user_with_details', { 
+        p_user_id: authUser.id 
       });
 
-      const { data: userData, error: userError } = userResult;
-      const { data: roleData, error: roleError } = roleResult;
-      const { data: limitsData, error: limitsError } = limitsResult;
-      const { data: usageData, error: usageError } = usageResult;
-      
-      // Check for critical errors with retry logic
-      if (userError) {
-        console.error('[AuthContext] User query error:', userError);
+      console.log('[AuthContext] Database query result:', {
+        hasData: !!data,
+        error: error?.message
+      });
+
+      if (error) {
+        console.error('[AuthContext] Database query error:', error);
         
-        if (userError.message.includes('permission') && retryCount < RETRY_DELAYS.length) {
+        if (error.message.includes('permission') && retryCount < 2) {
           console.log('[AuthContext] Retrying due to permissions error...');
-          return fetchUserData(authUser, retryCount + 1);
+          return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
         }
         
-        throw new Error('خطا در بارگذاری پروفایل: ' + userError.message);
+        throw new Error('خطا در بارگذاری اطلاعات: ' + error.message);
       }
+      
+      if (!data) {
+        console.error('[AuthContext] No data returned from database');
+        throw new Error('داده‌های کاربر یافت نشد');
+      }
+
+      const userData = data.user;
+      const roleData = data.role;
+      const limitsData = data.limits;
+      const usageData = data.usage;
       
       if (!userData) {
         console.error('[AuthContext] No user data found');
         throw new Error('پروفایل کاربر یافت نشد');
-      }
-      
-      if (roleError && roleError.code !== 'PGRST116') {
-        console.error('[AuthContext] Role query error:', roleError);
-        
-        if (roleError.message.includes('permission') && retryCount < RETRY_DELAYS.length) {
-          console.log('[AuthContext] Retrying due to role permissions error...');
-          return fetchUserData(authUser, retryCount + 1);
-        }
-        
-        throw new Error('خطا در بارگذاری نقش کاربر: ' + roleError.message);
       }
       
       if (!roleData) {
@@ -180,23 +172,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('نقش کاربر یافت نشد');
       }
       
-      if (limitsError && limitsError.code !== 'PGRST116') {
-        console.error('[AuthContext] Limits query error:', limitsError);
-        throw new Error('خطا در بارگذاری محدودیت‌ها: ' + limitsError.message);
-      }
-      
       if (!limitsData) {
         console.error('[AuthContext] No limits data found');
         throw new Error('محدودیت‌های کاربر یافت نشد');
       }
 
-      if (usageError && usageError.code !== 'PGRST116') {
-        console.error('[AuthContext] Usage query error:', usageError);
-      }
-
-      if (!usageData) {
+      // Create usage record if it doesn't exist
+      if (!usageData || !usageData.id) {
+        const today = new Date().toISOString().split('T')[0];
         console.log('[AuthContext] Creating new usage record for today');
-        const { error: insertError } = await supabase
+        await supabase
           .from('user_daily_usage')
           .insert({
             user_id: authUser.id,
@@ -205,17 +190,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             chat_messages: 0,
             exports: 0
           });
-        
-        if (insertError) {
-          console.error('[AuthContext] Insert usage error:', insertError);
-        }
       }
 
       const userObject: User = {
         id: userData.id,
         email: userData.email,
         fullName: userData.full_name,
-        role: roleData.role as UserRole,
+        role: roleData as UserRole,
         status: userData.status as UserStatus,
         preferences: userData.preferences as User['preferences'],
         dailyLimits: {
@@ -281,17 +262,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
 
       if (data.session) {
-        // Update last login
-        await supabase
-          .from('users')
-          .update({ last_login: new Date().toISOString() })
-          .eq('id', data.user.id);
-
         setSession(data.session);
-        const userData = await fetchUserData(data.user);
+        
+        // Skip session check since we just logged in
+        const userData = await fetchUserData(data.user, 0, true);
         
         if (userData) {
           setUser(userData);
+          
+          // Update last login in background (non-blocking)
+          supabase
+            .from('users')
+            .update({ last_login: new Date().toISOString() })
+            .eq('id', data.user.id)
+            .then(() => console.log('[AuthContext] Last login updated'))
+            .catch((err) => console.error('[AuthContext] Last login update error:', err));
+          
           setLastActivity(Date.now());
           retryCountRef.current = 0;
           toast.success('خوش آمدید!');
@@ -506,16 +492,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('[AuthContext] Initializing auth state');
     isInitializedRef.current = true;
 
-    // Set up loading timeout with recovery - ONLY for truly stuck states
+    // Set up loading timeout with recovery
     loadingTimeoutRef.current = setTimeout(() => {
       if (mounted && loading) {
-        console.error('[AuthContext] Loading timeout exceeded after 30 seconds!');
+        console.error('[AuthContext] Loading timeout exceeded after 15 seconds!');
         toast.error('خطا در بارگذاری. لطفاً صفحه را رفرش کنید.', {
           duration: 10000
         });
-        
-        // Just stop loading, don't clear session
-        // User can retry by refreshing manually
         setLoading(false);
       }
     }, MAX_LOADING_TIME);

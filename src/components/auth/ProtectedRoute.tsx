@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useNewAuth } from '@/contexts/NewAuthContext';
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -34,9 +35,21 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary mb-4" />
-          <p className="text-muted-foreground">در حال بارگذاری...</p>
+        <div className="text-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+          <div className="space-y-2">
+            <p className="text-lg font-medium">در حال بارگذاری...</p>
+            <p className="text-sm text-muted-foreground">
+              در حال احراز هویت و دریافت اطلاعات کاربر
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={() => window.location.reload()}
+            className="mt-4"
+          >
+            تلاش مجدد
+          </Button>
         </div>
       </div>
     );
