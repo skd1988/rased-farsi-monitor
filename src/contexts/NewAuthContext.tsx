@@ -134,7 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Use optimized single database function call
       const { data, error } = await supabase.rpc('get_user_with_details', { 
         p_user_id: authUser.id 
-      }).single();
+      });
 
       console.log('[AuthContext] Database query result:', {
         hasData: !!data,
@@ -158,8 +158,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('داده‌های کاربر یافت نشد');
       }
 
-      // Parse the JSON result from the database function
-      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      // Data is already a JSON object from the database function
+      const result = data as { user: any; role: string; limits: any; usage: any };
       const userData = result.user;
       const roleData = result.role;
       const limitsData = result.limits;
