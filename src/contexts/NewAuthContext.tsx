@@ -134,11 +134,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Use optimized single database function call
       const { data, error } = await supabase.rpc('get_user_with_details', { 
         p_user_id: authUser.id 
-      });
+      }).single();
 
       console.log('[AuthContext] Database query result:', {
         hasData: !!data,
-        error: error?.message
+        error: error?.message,
+        dataStructure: data ? Object.keys(data) : []
       });
 
       if (error) {
@@ -157,10 +158,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('داده‌های کاربر یافت نشد');
       }
 
-      const userData = data.user;
-      const roleData = data.role;
-      const limitsData = data.limits;
-      const usageData = data.usage;
+      // Parse the JSON result from the database function
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      const userData = result.user;
+      const roleData = result.role;
+      const limitsData = result.limits;
+      const usageData = result.usage;
       
       if (!userData) {
         console.error('[AuthContext] No user data found');
@@ -271,12 +274,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(userData);
           
           // Update last login in background (non-blocking)
-          supabase
+          void supabase
             .from('users')
             .update({ last_login: new Date().toISOString() })
             .eq('id', data.user.id)
-            .then(() => console.log('[AuthContext] Last login updated'))
-            .catch((err) => console.error('[AuthContext] Last login update error:', err));
+            .then(({ error }) => {
+              if (error) {
+                console.error('[AuthContext] Last login update error:', error);
+              } else {
+                console.log('[AuthContext] Last login updated');
+              }
+            });
           
           setLastActivity(Date.now());
           retryCountRef.current = 0;
