@@ -34,17 +34,18 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Show loading spinner while checking auth
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <div className="space-y-2">
-            <p className="text-lg font-medium">در حال بارگذاری...</p>
+            <h3 className="text-lg font-semibold">در حال بارگذاری...</h3>
             <p className="text-sm text-muted-foreground">
               در حال احراز هویت و دریافت اطلاعات کاربر
             </p>
           </div>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => window.location.reload()}
             className="mt-4"
           >
