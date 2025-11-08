@@ -68,7 +68,7 @@ const PERMISSIONS = {
 const INACTIVITY_TIMEOUT = 8 * 60 * 60 * 1000; // 8 hours
 const WARNING_BEFORE_LOGOUT = 5 * 60 * 1000; // 5 minutes
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
-const MAX_LOADING_TIME = 15 * 1000; // 15 seconds
+const MAX_LOADING_TIME = 15000; // 15 seconds
 const RETRY_DELAYS = [500, 1000, 2000]; // Retry delays in ms
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -102,17 +102,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchUserData = useCallback(async (
-    authUser: SupabaseUser, 
+    authUser: SupabaseUser,
     retryCount = 0,
     skipSessionCheck = false
   ): Promise<User | null> => {
-    console.log('[AuthContext] fetchUserData START', {
+    console.log('[AuthContext] 🚀 fetchUserData START', {
       email: authUser.email,
       id: authUser.id,
       retry: retryCount,
       skipSessionCheck
     });
-    
+
     try {
       // Only delay on retries (optimized delays)
       if (retryCount > 0) {
@@ -120,50 +120,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const delay = OPTIMIZED_DELAYS[Math.min(retryCount - 1, OPTIMIZED_DELAYS.length - 1)];
         await new Promise(resolve => setTimeout(resolve, delay));
       }
-      
-      // Only verify session during initialization, not after login
+
+      // Only verify session if not skipped (skip after fresh login)
       if (!skipSessionCheck) {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !sessionData?.session) {
+        const { error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
           console.error('[AuthContext] Session verification failed:', sessionError);
           throw new Error('جلسه معتبر نیست');
         }
       }
 
       // Use optimized single database function call
-      const { data, error } = await supabase.rpc('get_user_with_details', { 
-        p_user_id: authUser.id 
+      console.log('[AuthContext] 📊 Calling get_user_with_details RPC...');
+      const { data, error } = await supabase.rpc('get_user_with_details', {
+        p_user_id: authUser.id
       });
 
-      console.log('[AuthContext] Database query result:', {
+      console.log('[AuthContext] 📥 RPC Response:', {
         hasData: !!data,
         error: error?.message,
-        dataStructure: data ? Object.keys(data) : []
+        dataType: Array.isArray(data) ? 'array' : typeof data,
+        dataKeys: data ? (Array.isArray(data) ? Object.keys(data[0] || {}) : Object.keys(data)) : []
       });
 
       if (error) {
-        console.error('[AuthContext] Database query error:', error);
-        
+        console.error('[AuthContext] ❌ Database error:', error);
+
         if (error.message.includes('permission') && retryCount < 2) {
           console.log('[AuthContext] Retrying due to permissions error...');
           return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
         }
-        
+
         throw new Error('خطا در بارگذاری اطلاعات: ' + error.message);
       }
-      
+
       if (!data) {
         console.error('[AuthContext] No data returned from database');
         throw new Error('داده‌های کاربر یافت نشد');
       }
 
-      // Data is already a JSON object from the database function
-      const result = data as { user: any; role: string; limits: any; usage: any };
-      const userData = result.user;
-      const roleData = result.role;
-      const limitsData = result.limits;
-      const usageData = result.usage;
+      // Parse the returned data from RPC function
+      const result = Array.isArray(data) ? data[0] : data;
+      const userData = typeof result.user_data === 'string' ? JSON.parse(result.user_data) : result.user_data;
+      const limitsData = typeof result.limits_data === 'string' ? JSON.parse(result.limits_data) : result.limits_data;
+      const usageData = typeof result.usage_data === 'string' ? JSON.parse(result.usage_data) : result.usage_data;
+      const roleData = result.role_data;
       
       if (!userData) {
         console.error('[AuthContext] No user data found');
@@ -215,13 +216,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastLogin: userData.last_login,
         createdAt: userData.created_at
       };
-      
-      console.log('[AuthContext] User object built successfully:', {
+
+      console.log('[AuthContext] ✅ User object created successfully', {
         email: userObject.email,
         role: userObject.role,
         status: userObject.status
       });
-      
+
       return userObject;
       
     } catch (error: any) {
@@ -256,7 +257,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -266,13 +267,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data.session) {
         setSession(data.session);
-        
+
         // Skip session check since we just logged in
         const userData = await fetchUserData(data.user, 0, true);
-        
+
         if (userData) {
           setUser(userData);
-          
+
           // Update last login in background (non-blocking)
           void supabase
             .from('users')
@@ -285,7 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 console.log('[AuthContext] Last login updated');
               }
             });
-          
+
           setLastActivity(Date.now());
           retryCountRef.current = 0;
           toast.success('خوش آمدید!');
