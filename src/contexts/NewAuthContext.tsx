@@ -616,15 +616,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Set up auth state listener with improved error handling
   useEffect(() => {
     let mounted = true;
-    
+
     // Prevent double initialization
     if (isInitializedRef.current) {
       console.log('[AuthContext] Already initialized, skipping');
       return;
     }
-    
+
     console.log('[AuthContext] Initializing auth state');
-    isInitializedRef.current = true;
+    // Don't set isInitializedRef here - set it after initAuth completes
 
     // Set up loading timeout with recovery
     loadingTimeoutRef.current = setTimeout(() => {
@@ -711,6 +711,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             clearTimeout(loadingTimeoutRef.current);
             loadingTimeoutRef.current = null;
           }
+          // Mark as initialized AFTER initAuth completes
+          isInitializedRef.current = true;
+          console.log('[AuthContext] ✅ Initialization complete');
         }
       }
     };
@@ -729,9 +732,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         console.log('[AuthContext] Processing auth event:', event);
 
-        // Skip INITIAL_SESSION as we handle it above
-        if (event === 'INITIAL_SESSION') {
-          console.log('[AuthContext] Skipping INITIAL_SESSION (handled in initAuth)');
+        // Skip all events during initialization
+        if (event === 'INITIAL_SESSION' || !isInitializedRef.current) {
+          console.log('[AuthContext] Skipping event during initialization:', event);
           return;
         }
         
