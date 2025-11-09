@@ -142,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         dataType: Array.isArray(data) ? 'array' : typeof data,
         dataKeys: data ? (Array.isArray(data) ? Object.keys(data[0] || {}) : Object.keys(data)) : []
       });
+      console.log('[AuthContext] 🔍 Raw RPC Data:', JSON.stringify(data));
 
       if (error) {
         console.error('[AuthContext] ❌ Database error:', error);
@@ -159,25 +160,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('داده‌های کاربر یافت نشد');
       }
 
+      // More detailed logging for structure analysis
+      console.log('[AuthContext] 🔍 Data structure analysis:', {
+        isArray: Array.isArray(data),
+        isEmptyArray: Array.isArray(data) && data.length === 0,
+        dataLength: Array.isArray(data) ? data.length : 'N/A',
+        dataType: typeof data,
+        dataKeys: Array.isArray(data) ?
+          (data.length > 0 ? Object.keys(data[0]) : []) :
+          Object.keys(data)
+      });
+
       // Parse the returned data from RPC function
-      const result = Array.isArray(data) ? data[0] : data;
+      let result;
+      if (Array.isArray(data)) {
+        if (data.length === 0) {
+          console.error('[AuthContext] Empty array returned - user not found in database');
+          throw new Error('کاربر در دیتابیس یافت نشد. لطفاً ابتدا ثبت نام کنید.');
+        }
+        result = data[0];
+      } else {
+        result = data;
+      }
+
+      console.log('[AuthContext] 🔍 Result object properties:', {
+        hasUserData: 'user_data' in result,
+        hasRoleData: 'role_data' in result,
+        hasLimitsData: 'limits_data' in result,
+        hasUsageData: 'usage_data' in result,
+        userDataType: typeof result.user_data,
+        roleDataType: typeof result.role_data,
+        resultKeys: Object.keys(result)
+      });
+
       const userData = typeof result.user_data === 'string' ? JSON.parse(result.user_data) : result.user_data;
       const limitsData = typeof result.limits_data === 'string' ? JSON.parse(result.limits_data) : result.limits_data;
       const usageData = typeof result.usage_data === 'string' ? JSON.parse(result.usage_data) : result.usage_data;
       const roleData = result.role_data;
-      
+
+      console.log('[AuthContext] 🔍 Parsed data check:', {
+        hasUserData: !!userData,
+        hasRoleData: !!roleData,
+        hasLimitsData: !!limitsData,
+        hasUsageData: !!usageData,
+        userDataKeys: userData ? Object.keys(userData) : null,
+        limitsDataKeys: limitsData ? Object.keys(limitsData) : null
+      });
+
       if (!userData) {
-        console.error('[AuthContext] No user data found');
+        console.error('[AuthContext] No user data found in result:', {
+          result,
+          user_data_value: result.user_data,
+          user_data_type: typeof result.user_data
+        });
         throw new Error('پروفایل کاربر یافت نشد');
       }
-      
+
       if (!roleData) {
-        console.error('[AuthContext] No role data found');
+        console.error('[AuthContext] No role data found in result:', {
+          result,
+          role_data_value: result.role_data,
+          role_data_type: typeof result.role_data
+        });
         throw new Error('نقش کاربر یافت نشد');
       }
-      
+
       if (!limitsData) {
-        console.error('[AuthContext] No limits data found');
+        console.error('[AuthContext] No limits data found in result:', {
+          result,
+          limits_data_value: result.limits_data,
+          limits_data_type: typeof result.limits_data
+        });
         throw new Error('محدودیت‌های کاربر یافت نشد');
       }
 
@@ -257,21 +310,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
+      console.log('[AuthContext] Starting signIn for email:', email);
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      console.log('[AuthContext] Supabase signIn response:', {
+        hasSession: !!data.session,
+        hasUser: !!data.user,
+        error: error?.message,
+        errorCode: error?.code,
+        errorStatus: error?.status
+      });
+
+      if (error) {
+        console.error('[AuthContext] Supabase auth error:', {
+          message: error.message,
+          code: error.code,
+          status: error.status,
+          name: error.name
+        });
+        throw error;
+      }
 
       if (data.session) {
+        console.log('[AuthContext] Session created, user ID:', data.user.id);
         setSession(data.session);
 
         // Skip session check since we just logged in
+        console.log('[AuthContext] Fetching user data...');
         const userData = await fetchUserData(data.user, 0, true);
 
         if (userData) {
+          console.log('[AuthContext] User data fetched successfully:', {
+            email: userData.email,
+            role: userData.role,
+            status: userData.status
+          });
           setUser(userData);
 
           // Update last login in background (non-blocking)
@@ -291,12 +368,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           retryCountRef.current = 0;
           toast.success('خوش آمدید!');
         } else {
+          console.error('[AuthContext] Failed to fetch user data');
           throw new Error('خطا در بارگذاری اطلاعات کاربر');
         }
+      } else {
+        console.error('[AuthContext] No session returned from Supabase');
+        throw new Error('خطا در ایجاد نشست');
       }
     } catch (error: any) {
-      console.error('[AuthContext] Sign in error:', error);
-      toast.error(error?.message || 'خطا در ورود به سیستم');
+      console.error('[AuthContext] Sign in error:', {
+        message: error?.message,
+        code: error?.code,
+        status: error?.status,
+        name: error?.name,
+        stack: error?.stack
+      });
+
+      // Don't show toast here - let the Login component handle user-facing messages
       throw error;
     } finally {
       setLoading(false);
