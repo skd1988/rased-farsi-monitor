@@ -142,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         dataType: Array.isArray(data) ? 'array' : typeof data,
         dataKeys: data ? (Array.isArray(data) ? Object.keys(data[0] || {}) : Object.keys(data)) : []
       });
+      console.log('[AuthContext] 🔍 Raw RPC Data:', JSON.stringify(data));
 
       if (error) {
         console.error('[AuthContext] ❌ Database error:', error);
