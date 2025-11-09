@@ -83,17 +83,19 @@ export function TargetAvatar({
         .getPublicUrl(fileName);
 
       // Update target profile with all available names
-      // The database will automatically generate unique_identifier via trigger
+      // Use name_persian as the unique key (required by current DB schema)
+      const namePersian = target.name_persian || target.name_english || target.name_arabic || '';
+
       const { error: upsertError } = await supabase
         .from('target_profiles')
         .upsert({
-          name_persian: target.name_persian || null,
+          name_persian: namePersian,
           name_english: target.name_english || null,
           name_arabic: target.name_arabic || null,
           photo_url: publicUrl,
           photo_source: 'manual'
         }, {
-          onConflict: 'unique_identifier',
+          onConflict: 'name_persian',
           ignoreDuplicates: false
         });
 
