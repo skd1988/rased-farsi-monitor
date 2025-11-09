@@ -617,26 +617,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user && mounted) {
         try {
           const userData = await fetchUserData(session.user);
-          
+
           if (mounted) {
             if (userData) {
               setUser(userData);
               console.log('[AuthContext] User loaded successfully');
             } else {
-              console.error('[AuthContext] Failed to load user data - signing out');
-              // If we can't load user data, sign out properly
-              await supabase.auth.signOut();
-              setSession(null);
+              console.error('[AuthContext] Failed to load user data - will retry on next action');
+              // Don't sign out! Just set loading to false
+              // User will be prompted to login again only if they try to do something
               setUser(null);
             }
           }
         } catch (error) {
           console.error('[AuthContext] Error fetching user data:', error);
           if (mounted) {
-            toast.error('خطا در بارگذاری اطلاعات کاربر');
-            // Sign out on error to ensure clean state
-            await supabase.auth.signOut();
-            setSession(null);
+            // Don't sign out on error during session restoration
+            // Keep the session, just set user to null
+            // This allows retry on next user action
+            console.log('[AuthContext] Keeping session for retry, user will be null');
             setUser(null);
           }
         }
