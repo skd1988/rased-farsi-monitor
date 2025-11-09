@@ -183,35 +183,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         result = data;
       }
 
-      console.log('[AuthContext] 🔍 Result object properties:', {
-        hasUserData: 'user_data' in result,
-        hasRoleData: 'role_data' in result,
-        hasLimitsData: 'limits_data' in result,
-        hasUsageData: 'usage_data' in result,
-        userDataType: typeof result.user_data,
-        roleDataType: typeof result.role_data,
+      console.log('[AuthContext] 🔍 Result object properties (flat):', {
+        hasId: 'id' in result,
+        hasEmail: 'email' in result,
+        hasRole: 'role' in result,
+        hasFullName: 'full_name' in result,
         resultKeys: Object.keys(result)
       });
 
-      const userData = typeof result.user_data === 'string' ? JSON.parse(result.user_data) : result.user_data;
-      const limitsData = typeof result.limits_data === 'string' ? JSON.parse(result.limits_data) : result.limits_data;
-      const usageData = typeof result.usage_data === 'string' ? JSON.parse(result.usage_data) : result.usage_data;
-      const roleData = result.role_data;
+      // RPC directly returns flat object - no nested structures
+      const userData = {
+        id: result.id,
+        email: result.email,
+        full_name: result.full_name,
+        status: result.status,
+        preferences: result.preferences,
+        last_login: result.last_login,
+        created_at: result.created_at,
+        updated_at: result.updated_at
+      };
+
+      const roleData = result.role;
+
+      const limitsData = {
+        ai_analysis: result.daily_ai_analysis_limit,
+        chat_messages: result.daily_chat_messages_limit,
+        exports: result.daily_exports_limit
+      };
+
+      const usageData = {
+        ai_analysis: result.daily_ai_analysis_used || 0,
+        chat_messages: result.daily_chat_messages_used || 0,
+        exports: result.daily_exports_used || 0
+      };
 
       console.log('[AuthContext] 🔍 Parsed data check:', {
         hasUserData: !!userData,
         hasRoleData: !!roleData,
         hasLimitsData: !!limitsData,
         hasUsageData: !!usageData,
-        userDataKeys: userData ? Object.keys(userData) : null,
-        limitsDataKeys: limitsData ? Object.keys(limitsData) : null
+        userEmail: userData.email,
+        userRole: roleData
       });
 
-      if (!userData) {
+      if (!userData.id || !userData.email) {
         console.error('[AuthContext] No user data found in result:', {
           result,
-          user_data_value: result.user_data,
-          user_data_type: typeof result.user_data
+          userData
         });
         throw new Error('پروفایل کاربر یافت نشد');
       }
@@ -219,34 +237,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!roleData) {
         console.error('[AuthContext] No role data found in result:', {
           result,
-          role_data_value: result.role_data,
-          role_data_type: typeof result.role_data
+          role_value: result.role
         });
         throw new Error('نقش کاربر یافت نشد');
       }
 
-      if (!limitsData) {
+      if (!limitsData.ai_analysis && limitsData.ai_analysis !== 0) {
         console.error('[AuthContext] No limits data found in result:', {
           result,
-          limits_data_value: result.limits_data,
-          limits_data_type: typeof result.limits_data
+          limitsData
         });
         throw new Error('محدودیت‌های کاربر یافت نشد');
-      }
-
-      // Create usage record if it doesn't exist
-      if (!usageData || !usageData.id) {
-        const today = new Date().toISOString().split('T')[0];
-        console.log('[AuthContext] Creating new usage record for today');
-        await supabase
-          .from('user_daily_usage')
-          .insert({
-            user_id: authUser.id,
-            usage_date: today,
-            ai_analysis: 0,
-            chat_messages: 0,
-            exports: 0
-          });
       }
 
       const userObject: User = {
@@ -262,9 +263,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           exports: limitsData.exports
         },
         usageToday: {
-          aiAnalysis: usageData?.ai_analysis || 0,
-          chatMessages: usageData?.chat_messages || 0,
-          exports: usageData?.exports || 0
+          aiAnalysis: usageData.ai_analysis || 0,
+          chatMessages: usageData.chat_messages || 0,
+          exports: usageData.exports || 0
         },
         lastLogin: userData.last_login,
         createdAt: userData.created_at
