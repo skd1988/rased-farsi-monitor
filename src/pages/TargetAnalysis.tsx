@@ -29,6 +29,7 @@ const TargetAnalysis = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [entities, setEntities] = useState<any[]>([]);
   const [persons, setPersons] = useState<any[]>([]);
+  const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
   
   // Filters
   const [timeRange, setTimeRange] = useState('30d');
@@ -65,12 +66,20 @@ const TargetAnalysis = () => {
           .from('resistance_persons')
           .select('*')
           .eq('active', true);
-        
+
         if (personsError) throw personsError;
+
+        // Fetch target profiles (for photos)
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('target_profiles')
+          .select('name_persian, name_english, name_arabic, photo_url, photo_source');
+
+        if (profilesError) throw profilesError;
 
         setPosts(postsData || []);
         setEntities(entitiesData || []);
         setPersons(personsData || []);
+        setTargetProfiles(profilesData || []);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
@@ -105,8 +114,8 @@ const TargetAnalysis = () => {
         description: `${data.updated} پست به‌روز شد. ${data.alreadyCategorized} هدف قبلاً دسته‌بندی شده بود.`,
       });
       
-      // Refresh all data (posts, persons, entities)
-      const [postsResult, personsResult, entitiesResult] = await Promise.all([
+      // Refresh all data (posts, persons, entities, profiles)
+      const [postsResult, personsResult, entitiesResult, profilesResult] = await Promise.all([
         supabase
           .from('posts')
           .select('*')
@@ -119,12 +128,16 @@ const TargetAnalysis = () => {
         supabase
           .from('resistance_entities')
           .select('*')
-          .eq('active', true)
+          .eq('active', true),
+        supabase
+          .from('target_profiles')
+          .select('name_persian, name_english, name_arabic, photo_url, photo_source')
       ]);
-      
+
       setPosts(postsResult.data || []);
       setPersons(personsResult.data || []);
       setEntities(entitiesResult.data || []);
+      setTargetProfiles(profilesResult.data || []);
       
     } catch (error) {
       console.error('Categorization failed:', error);
@@ -206,17 +219,27 @@ const TargetAnalysis = () => {
     });
 
     // Convert to array and process
-    return Array.from(stats.values()).map(stat => ({
-      ...stat,
-      topVectors: Array.from(stat.topVectors.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([vector]) => translatePsyopTechnique(vector)),
-      weekTrend: stat.weekAttacks > 0 
-        ? Math.round(((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) / stat.weekAttacks) * 100)
-        : 0,
-    })).sort((a, b) => b.totalAttacks - a.totalAttacks);
-  }, [posts, entities]);
+    return Array.from(stats.values()).map(stat => {
+      // Find matching photo from target_profiles
+      const profile = targetProfiles.find(p =>
+        p.name_persian === stat.name_persian ||
+        p.name_english === stat.name_english
+      );
+
+      return {
+        ...stat,
+        photo_url: profile?.photo_url,
+        photo_source: profile?.photo_source,
+        topVectors: Array.from(stat.topVectors.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([vector]) => translatePsyopTechnique(vector)),
+        weekTrend: stat.weekAttacks > 0
+          ? Math.round(((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) / stat.weekAttacks) * 100)
+          : 0,
+      };
+    }).sort((a, b) => b.totalAttacks - a.totalAttacks);
+  }, [posts, entities, targetProfiles]);
 
   // Process person data - SIMPLIFIED: now expects plain string array
   const personStats = useMemo(() => {
@@ -360,8 +383,17 @@ const TargetAnalysis = () => {
       if (daysSinceLastAttack < 7) riskScore += 30;
       else if (daysSinceLastAttack < 30) riskScore += 15;
 
+      // Find matching photo from target_profiles
+      const profile = targetProfiles.find(p =>
+        p.name_persian === stat.name_persian ||
+        p.name_english === stat.name_english ||
+        p.name_arabic === stat.name_arabic
+      );
+
       return {
         ...stat,
+        photo_url: profile?.photo_url,
+        photo_source: profile?.photo_source,
         topAccusations: Array.from(stat.topAccusations.entries())
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
@@ -375,7 +407,7 @@ const TargetAnalysis = () => {
                   riskScore >= 30 ? 'Medium' : 'Low',
       };
     }).sort((a, b) => b.riskScore - a.riskScore);
-  }, [posts, persons]);
+  }, [posts, persons, targetProfiles]);
 
   // Attack vector data
   const attackVectorData = useMemo(() => {
