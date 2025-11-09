@@ -113,6 +113,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       skipSessionCheck
     });
 
+    // Maximum retries and timeout
+    const MAX_RETRIES = 3;
+    const RPC_TIMEOUT = 5000; // 5 seconds
+
     try {
       // Only delay on retries (optimized delays)
       if (retryCount > 0) {
@@ -130,11 +134,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Use optimized single database function call
-      console.log('[AuthContext] 📊 Calling get_user_with_details RPC...');
-      const { data, error } = await supabase.rpc('get_user_with_details', {
+      // RPC call with timeout
+      console.log('[AuthContext] 📊 Calling get_user_with_details RPC with timeout...');
+
+      const rpcPromise = supabase.rpc('get_user_with_details', {
         p_user_id: authUser.id
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('RPC timeout')), RPC_TIMEOUT)
+      );
+
+      const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
 
       console.log('[AuthContext] 📥 RPC Response:', {
         hasData: !!data,
@@ -284,18 +295,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         message: error?.message,
         code: error?.code,
         details: error?.details,
-        retry: retryCount
+        retry: retryCount,
+        maxRetries: 3
       });
-      
-      if (retryCount < RETRY_DELAYS.length && 
-          (error?.message?.includes('permission') || 
+
+      // Retry logic با حداکثر تعداد
+      if (retryCount < 3 &&
+          (error?.message?.includes('permission') ||
            error?.message?.includes('timeout') ||
+           error?.message?.includes('RPC timeout') ||
            error?.code === 'PGRST301')) {
-        console.log('[AuthContext] Will retry fetchUserData...');
-        return fetchUserData(authUser, retryCount + 1);
+        console.log(`[AuthContext] Will retry fetchUserData (${retryCount + 1}/3)...`);
+        return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
       }
-      
-      toast.error(error?.message || 'خطا در بارگذاری اطلاعات کاربر');
+
+      // بعد از MAX_RETRIES، فقط error بده (نه signOut)
+      console.error('[AuthContext] Max retries reached, giving up');
+      toast.error('خطا در بارگذاری اطلاعات کاربر. لطفاً صفحه را رفرش کنید.');
       return null;
     }
   }, []);
