@@ -257,21 +257,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
+      console.log('[AuthContext] Starting signIn for email:', email);
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      console.log('[AuthContext] Supabase signIn response:', {
+        hasSession: !!data.session,
+        hasUser: !!data.user,
+        error: error?.message,
+        errorCode: error?.code,
+        errorStatus: error?.status
+      });
+
+      if (error) {
+        console.error('[AuthContext] Supabase auth error:', {
+          message: error.message,
+          code: error.code,
+          status: error.status,
+          name: error.name
+        });
+        throw error;
+      }
 
       if (data.session) {
+        console.log('[AuthContext] Session created, user ID:', data.user.id);
         setSession(data.session);
 
         // Skip session check since we just logged in
+        console.log('[AuthContext] Fetching user data...');
         const userData = await fetchUserData(data.user, 0, true);
 
         if (userData) {
+          console.log('[AuthContext] User data fetched successfully:', {
+            email: userData.email,
+            role: userData.role,
+            status: userData.status
+          });
           setUser(userData);
 
           // Update last login in background (non-blocking)
@@ -291,12 +315,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           retryCountRef.current = 0;
           toast.success('خوش آمدید!');
         } else {
+          console.error('[AuthContext] Failed to fetch user data');
           throw new Error('خطا در بارگذاری اطلاعات کاربر');
         }
+      } else {
+        console.error('[AuthContext] No session returned from Supabase');
+        throw new Error('خطا در ایجاد نشست');
       }
     } catch (error: any) {
-      console.error('[AuthContext] Sign in error:', error);
-      toast.error(error?.message || 'خطا در ورود به سیستم');
+      console.error('[AuthContext] Sign in error:', {
+        message: error?.message,
+        code: error?.code,
+        status: error?.status,
+        name: error?.name,
+        stack: error?.stack
+      });
+
+      // Don't show toast here - let the Login component handle user-facing messages
       throw error;
     } finally {
       setLoading(false);

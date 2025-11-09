@@ -62,21 +62,45 @@ const Login = () => {
 
   const onSubmit = async (values: LoginFormValues) => {
     setIsLoading(true);
-    
+
     try {
+      console.log('[Login] Attempting login with email:', values.email);
       await signIn(values.email, values.password);
-      
+
+      console.log('[Login] Login successful, navigating...');
       // Navigate to return URL or dashboard
       const returnUrl = (location.state as any)?.returnUrl || '/dashboard';
       navigate(returnUrl);
     } catch (error: any) {
-      // Handle specific error cases
+      console.error('[Login] Login error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        name: error.name,
+        fullError: error
+      });
+
+      // Handle specific error cases with detailed logging
       if (error.message?.includes('Invalid login credentials')) {
-        toast.error('ایمیل یا رمز عبور اشتباه است');
+        console.error('[Login] Invalid credentials - email or password is incorrect');
+        toast.error('ایمیل یا رمز عبور اشتباه است', {
+          description: 'لطفاً اطلاعات خود را بررسی کنید'
+        });
       } else if (error.message?.includes('Email not confirmed')) {
-        toast.error('این حساب هنوز فعال نشده است');
+        console.error('[Login] Email not confirmed');
+        toast.error('این حساب هنوز فعال نشده است', {
+          description: 'لطفاً ایمیل تأیید خود را چک کنید'
+        });
+      } else if (error.message?.includes('User not found')) {
+        console.error('[Login] User not found in database');
+        toast.error('حساب کاربری پیدا نشد', {
+          description: 'لطفاً ابتدا ثبت نام کنید'
+        });
       } else {
-        toast.error('خطا در اتصال به سرور');
+        console.error('[Login] Unknown error:', error);
+        toast.error('خطا در ورود به سیستم', {
+          description: error.message || 'لطفاً دوباره تلاش کنید'
+        });
       }
       form.setValue('password', '');
       form.setFocus('email');
