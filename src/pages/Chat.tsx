@@ -93,6 +93,7 @@ const Chat = () => {
         content: msg.content,
         timestamp: new Date(msg.timestamp),
         metadata: msg.metadata,
+        structured_data: msg.metadata, // Map metadata to structured_data for rich display
       })),
     );
   };
