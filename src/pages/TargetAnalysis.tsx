@@ -352,7 +352,7 @@ const TargetAnalysis = () => {
             entity_type: 'Individual',
             position: person?.role || 'نامشخص',
             organization: person?.entity_id || 'نامشخص',
-            category: person?.role || 'همه',
+            category: person?.role || 'نامشخص',
             country: 'نامشخص',
             attack_nature: 'Personal'
           };
@@ -483,6 +483,7 @@ const TargetAnalysis = () => {
       'مرجع دینی': personStats.filter(p => p.category === 'مرجع دینی').length,
       'سخنگو': personStats.filter(p => p.category === 'سخنگو').length,
       'فعال': personStats.filter(p => p.category === 'فعال').length,
+      'نامشخص': personStats.filter(p => p.category === 'نامشخص').length,
     };
   }, [personStats]);
 
@@ -637,7 +638,7 @@ const TargetAnalysis = () => {
             {/* Tab 2: Persons */}
             <TabsContent value="persons" className="space-y-6">
               {/* Category Statistics */}
-              <div className="grid grid-cols-6 gap-3">
+              <div className="grid grid-cols-7 gap-3">
                 {Object.entries(categoryStats).map(([category, count]) => (
                   <button
                     key={category}

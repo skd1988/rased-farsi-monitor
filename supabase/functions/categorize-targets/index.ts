@@ -374,6 +374,6 @@ function categorizePersonByName(name: string): string {
   if (lowerName.includes('دبیرکل') || lowerName.includes('رهبر') || lowerName.includes('رئیس')) {
     return 'رهبر سیاسی';
   }
-  
-  return 'همه';
+
+  return 'نامشخص';
 }
