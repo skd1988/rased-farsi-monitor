@@ -15,47 +15,6 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    // 1. Verify JWT authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization' }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    // 2. Create authenticated Supabase client
-    const supabaseAuth = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    // 3. Verify user
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    // 4. Check user role
-    const { data: roleData } = await supabaseAuth
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!roleData || !['admin', 'super_admin', 'analyst'].includes(roleData.role)) {
-      return new Response(
-        JSON.stringify({ error: 'Insufficient permissions' }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
-
-    console.log(`✅ Authenticated: ${user.id} (${roleData.role})`);
-
     const { postId, title, source, language } = await req.json();
     
     console.log(`Quick screening post: ${postId}`);
