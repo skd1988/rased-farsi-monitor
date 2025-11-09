@@ -99,9 +99,20 @@ const Chat = () => {
   };
 
   const createNewConversation = async () => {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({
+        title: "خطا",
+        description: "لطفاً ابتدا وارد شوید",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from("chat_conversations")
-      .insert({ title: "گفتگوی جدید" })
+      .insert({ title: "گفتگوی جدید", user_id: user.id })
       .select()
       .single();
 
@@ -159,9 +170,20 @@ const Chat = () => {
     // Create conversation if needed
     let conversationId = currentConversationId;
     if (!conversationId) {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "خطا",
+          description: "لطفاً ابتدا وارد شوید",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data, error } = await supabase
         .from("chat_conversations")
-        .insert({ title: content.substring(0, 50) })
+        .insert({ title: content.substring(0, 50), user_id: user.id })
         .select()
         .single();
 
