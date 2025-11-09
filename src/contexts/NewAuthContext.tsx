@@ -137,15 +137,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // RPC call with timeout
       console.log('[AuthContext] 📊 Calling get_user_with_details RPC with timeout...');
 
-      const rpcPromise = supabase.rpc('get_user_with_details', {
-        p_user_id: authUser.id
-      });
+      const rpcCall = async () => {
+        try {
+          const result = await Promise.race([
+            supabase.rpc('get_user_with_details', { p_user_id: authUser.id }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('RPC_TIMEOUT')), RPC_TIMEOUT)
+            )
+          ]);
+          return result;
+        } catch (err: any) {
+          if (err.message === 'RPC_TIMEOUT') {
+            throw new Error('timeout');
+          }
+          throw err;
+        }
+      };
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('RPC timeout')), RPC_TIMEOUT)
-      );
-
-      const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+      const { data, error } = await rpcCall();
 
       console.log('[AuthContext] 📥 RPC Response:', {
         hasData: !!data,
