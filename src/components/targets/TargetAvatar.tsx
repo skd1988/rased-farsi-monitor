@@ -40,59 +40,94 @@ export function TargetAvatar({
   
   async function handleFileUpload(file: File) {
     if (!file) return;
-    
+
+    // Validation: Check if target has at least one name
+    if (!target.name_persian && !target.name_english && !target.name_arabic) {
+      toast.error('هدف باید حداقل یک نام داشته باشد');
+      return;
+    }
+
+    // Validation: Check file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('حجم فایل نباید بیشتر از ۲ مگابایت باشد');
+      return;
+    }
+
+    // Validation: Check file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('فقط فایل‌های تصویری مجاز هستند');
+      return;
+    }
+
     setUploading(true);
-    
+
     try {
       // Compress image first
       const compressed = await compressImage(file);
-      
+
       // Upload to Supabase Storage - use timestamp-only for URL-safe filename
       const fileName = `target-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.jpg`;
-      
+
       const { data, error } = await supabase.storage
         .from('target-photos')
         .upload(fileName, compressed, {
           cacheControl: '3600',
           upsert: true
         });
-      
+
       if (error) throw error;
-      
+
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('target-photos')
         .getPublicUrl(fileName);
-      
-      // Update target profile
+
+      // Update target profile with all available names
+      // Use name_persian as the unique key (required by current DB schema)
+      const namePersian = target.name_persian || target.name_english || target.name_arabic || '';
+
       const { error: upsertError } = await supabase
         .from('target_profiles')
         .upsert({
-          name_persian: target.name_persian || target.name_english || target.name_arabic || 'نامشخص',
+          name_persian: namePersian,
           name_english: target.name_english || null,
           name_arabic: target.name_arabic || null,
           photo_url: publicUrl,
           photo_source: 'manual'
         }, {
-          onConflict: 'name_persian'
+          onConflict: 'name_persian',
+          ignoreDuplicates: false
         });
-      
+
       if (upsertError) {
         console.error('Upsert error:', upsertError);
         throw upsertError;
       }
-      
+
       // Reset error state and call callback
       setImageError(false);
       if (onPhotoUpdate) {
         onPhotoUpdate(publicUrl);
       }
-      
+
       toast.success('تصویر با موفقیت آپلود شد');
-      
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Upload failed:', error);
-      toast.error('خطا در آپلود تصویر');
+
+      // Detailed error messages in Persian
+      if (error.code === '23505') {
+        // Unique constraint violation
+        toast.error('این هدف قبلاً در سیستم ثبت شده است');
+      } else if (error.message?.includes('storage')) {
+        toast.error('خطا در ذخیره‌سازی فایل. لطفاً دوباره تلاش کنید');
+      } else if (error.message?.includes('permission')) {
+        toast.error('شما دسترسی لازم برای آپلود تصویر را ندارید');
+      } else if (error.message?.includes('size')) {
+        toast.error('حجم فایل بیش از حد مجاز است');
+      } else {
+        toast.error(`خطا در آپلود تصویر: ${error.message || 'خطای نامشخص'}`);
+      }
     } finally {
       setUploading(false);
     }

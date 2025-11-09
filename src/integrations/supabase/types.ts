@@ -620,11 +620,12 @@ export type Database = {
           id: string
           name_arabic: string | null
           name_english: string | null
-          name_persian: string
+          name_persian: string | null
           organization: string | null
           photo_source: string | null
           photo_url: string | null
           position: string | null
+          unique_identifier: string | null
           updated_at: string | null
         }
         Insert: {
@@ -634,11 +635,12 @@ export type Database = {
           id?: string
           name_arabic?: string | null
           name_english?: string | null
-          name_persian: string
+          name_persian?: string | null
           organization?: string | null
           photo_source?: string | null
           photo_url?: string | null
           position?: string | null
+          unique_identifier?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -648,11 +650,12 @@ export type Database = {
           id?: string
           name_arabic?: string | null
           name_english?: string | null
-          name_persian?: string
+          name_persian?: string | null
           organization?: string | null
           photo_source?: string | null
           photo_url?: string | null
           position?: string | null
+          unique_identifier?: string | null
           updated_at?: string | null
         }
         Relationships: []
