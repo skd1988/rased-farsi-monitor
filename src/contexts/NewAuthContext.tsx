@@ -160,25 +160,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('داده‌های کاربر یافت نشد');
       }
 
+      // More detailed logging for structure analysis
+      console.log('[AuthContext] 🔍 Data structure analysis:', {
+        isArray: Array.isArray(data),
+        isEmptyArray: Array.isArray(data) && data.length === 0,
+        dataLength: Array.isArray(data) ? data.length : 'N/A',
+        dataType: typeof data,
+        dataKeys: Array.isArray(data) ?
+          (data.length > 0 ? Object.keys(data[0]) : []) :
+          Object.keys(data)
+      });
+
       // Parse the returned data from RPC function
-      const result = Array.isArray(data) ? data[0] : data;
+      let result;
+      if (Array.isArray(data)) {
+        if (data.length === 0) {
+          console.error('[AuthContext] Empty array returned - user not found in database');
+          throw new Error('کاربر در دیتابیس یافت نشد. لطفاً ابتدا ثبت نام کنید.');
+        }
+        result = data[0];
+      } else {
+        result = data;
+      }
+
+      console.log('[AuthContext] 🔍 Result object properties:', {
+        hasUserData: 'user_data' in result,
+        hasRoleData: 'role_data' in result,
+        hasLimitsData: 'limits_data' in result,
+        hasUsageData: 'usage_data' in result,
+        userDataType: typeof result.user_data,
+        roleDataType: typeof result.role_data,
+        resultKeys: Object.keys(result)
+      });
+
       const userData = typeof result.user_data === 'string' ? JSON.parse(result.user_data) : result.user_data;
       const limitsData = typeof result.limits_data === 'string' ? JSON.parse(result.limits_data) : result.limits_data;
       const usageData = typeof result.usage_data === 'string' ? JSON.parse(result.usage_data) : result.usage_data;
       const roleData = result.role_data;
-      
+
+      console.log('[AuthContext] 🔍 Parsed data check:', {
+        hasUserData: !!userData,
+        hasRoleData: !!roleData,
+        hasLimitsData: !!limitsData,
+        hasUsageData: !!usageData,
+        userDataKeys: userData ? Object.keys(userData) : null,
+        limitsDataKeys: limitsData ? Object.keys(limitsData) : null
+      });
+
       if (!userData) {
-        console.error('[AuthContext] No user data found');
+        console.error('[AuthContext] No user data found in result:', {
+          result,
+          user_data_value: result.user_data,
+          user_data_type: typeof result.user_data
+        });
         throw new Error('پروفایل کاربر یافت نشد');
       }
-      
+
       if (!roleData) {
-        console.error('[AuthContext] No role data found');
+        console.error('[AuthContext] No role data found in result:', {
+          result,
+          role_data_value: result.role_data,
+          role_data_type: typeof result.role_data
+        });
         throw new Error('نقش کاربر یافت نشد');
       }
-      
+
       if (!limitsData) {
-        console.error('[AuthContext] No limits data found');
+        console.error('[AuthContext] No limits data found in result:', {
+          result,
+          limits_data_value: result.limits_data,
+          limits_data_type: typeof result.limits_data
+        });
         throw new Error('محدودیت‌های کاربر یافت نشد');
       }
 
