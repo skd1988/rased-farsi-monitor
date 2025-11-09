@@ -476,6 +476,7 @@ async function performQuickDetection(post: any, retries = 3) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "apikey": Deno.env.get("SUPABASE_ANON_KEY")!,
             "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
           },
           body: JSON.stringify({
@@ -524,6 +525,7 @@ async function performDeepAnalysis(post: any, quickResult: any, retries = 3) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "apikey": Deno.env.get("SUPABASE_ANON_KEY")!,
             "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
           },
           body: JSON.stringify({
