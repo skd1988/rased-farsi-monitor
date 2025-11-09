@@ -61,6 +61,17 @@ const Chat = () => {
   }, [messages]);
 
   const loadConversations = async () => {
+    console.log("=== Loading conversations ===");
+
+    // Check if user is authenticated
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    console.log("Auth user:", authUser?.id);
+
+    if (!authUser) {
+      console.warn("No authenticated user found");
+      return;
+    }
+
     const { data, error } = await supabase
       .from("chat_conversations")
       .select("*")
@@ -68,13 +79,17 @@ const Chat = () => {
 
     if (error) {
       console.error("Error loading conversations:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
       return;
     }
 
+    console.log(`Loaded ${data?.length || 0} conversations`);
     setConversations(data || []);
   };
 
   const loadMessages = async (conversationId: string) => {
+    console.log("=== Loading messages for conversation:", conversationId);
+
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
@@ -83,9 +98,11 @@ const Chat = () => {
 
     if (error) {
       console.error("Error loading messages:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
       return;
     }
 
+    console.log(`Loaded ${data?.length || 0} messages`);
     setMessages(
       (data || []).map((msg) => ({
         id: msg.id,
