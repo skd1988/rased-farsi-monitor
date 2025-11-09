@@ -134,27 +134,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // RPC call with timeout
+      // RPC call with explicit timeout and error handling
       console.log('[AuthContext] 📊 Calling get_user_with_details RPC with timeout...');
 
-      const rpcCall = async () => {
-        try {
-          const result = await Promise.race([
-            supabase.rpc('get_user_with_details', { p_user_id: authUser.id }),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('RPC_TIMEOUT')), RPC_TIMEOUT)
-            )
-          ]);
-          return result;
-        } catch (err: any) {
-          if (err.message === 'RPC_TIMEOUT') {
-            throw new Error('timeout');
-          }
-          throw err;
-        }
-      };
+      let data, error;
+      try {
+        const timeoutMs = RPC_TIMEOUT;
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('RPC_TIMEOUT')), timeoutMs);
+        });
 
-      const { data, error } = await rpcCall();
+        const rpcPromise = supabase.rpc('get_user_with_details', {
+          p_user_id: authUser.id
+        });
+
+        const response = await Promise.race([rpcPromise, timeoutPromise]) as any;
+        data = response.data;
+        error = response.error;
+
+        console.log('[AuthContext] 📥 RPC completed', {
+          hasData: !!data,
+          hasError: !!error,
+          errorMessage: error?.message
+        });
+      } catch (err: any) {
+        console.error('[AuthContext] 🔥 RPC call failed:', err);
+
+        if (err.message === 'RPC_TIMEOUT') {
+          console.log('[AuthContext] ⏱️ RPC timeout - will retry');
+          throw new Error('timeout');
+        }
+        throw err;
+      }
 
       console.log('[AuthContext] 📥 RPC Response:', {
         hasData: !!data,
