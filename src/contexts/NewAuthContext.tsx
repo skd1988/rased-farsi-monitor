@@ -639,14 +639,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Check for existing session
     const initAuth = async () => {
+      console.log('[AuthContext] 🔄 Starting initAuth...');
+
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
+        console.log('[AuthContext] 📞 Calling getSession...');
+
+        // Add timeout to getSession
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('getSession timeout')), 5000)
+        );
+
+        const { data: { session }, error } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as any;
+
+        console.log('[AuthContext] ✅ getSession completed', {
+          hasSession: !!session,
+          email: session?.user?.email,
+          error: error?.message
+        });
+
         if (error) {
           console.error('[AuthContext] getSession error:', error);
           throw error;
         }
-        
+
         console.log('[AuthContext] Initial session check:', session?.user?.email || 'No session');
         setSession(session);
         
@@ -701,12 +720,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return;
-        
-        console.log('[AuthContext] Auth state changed:', event, session?.user?.email);
-        
+        console.log('[AuthContext] 🔔 Auth event received:', event, session?.user?.email);
+
+        if (!mounted) {
+          console.log('[AuthContext] ⚠️ Component unmounted, ignoring event');
+          return;
+        }
+
+        console.log('[AuthContext] Processing auth event:', event);
+
         // Skip INITIAL_SESSION as we handle it above
-        if (event === 'INITIAL_SESSION') return;
+        if (event === 'INITIAL_SESSION') {
+          console.log('[AuthContext] Skipping INITIAL_SESSION (handled in initAuth)');
+          return;
+        }
         
         setSession(session);
         
