@@ -18,6 +18,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // ✅ Check if client wants streaming
+  const url = new URL(req.url);
+  const useStream = url.searchParams.get('stream') === 'true';
+
   const startTime = Date.now();
 
   try {
@@ -32,7 +36,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
+
     // Create client with user's auth token
     const supabase = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } }
@@ -64,6 +68,7 @@ serve(async (req) => {
 
     console.log(`Authenticated user: ${user.email}, role: ${roleData.role}`);
     console.log("Chat request received");
+    console.log("Streaming mode:", useStream);
 
     const { question, conversationHistory = [] }: ChatRequest = await req.json();
 
@@ -90,6 +95,38 @@ serve(async (req) => {
 
     // Fetch relevant data from Supabase
     const relevantData = await fetchRelevantData(supabaseService, question);
+
+    // ✅ Handle streaming response
+    if (useStream) {
+      console.log("Starting streaming response...");
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of streamDeepSeekResponse(deepseekApiKey, question, relevantData, conversationHistory)) {
+              const data = `data: ${JSON.stringify(chunk)}\n\n`;
+              controller.enqueue(encoder.encode(data));
+            }
+            controller.close();
+          } catch (error) {
+            console.error("Streaming error:", error);
+            const errorData = `data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`;
+            controller.enqueue(encoder.encode(errorData));
+            controller.close();
+          }
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
 
     // Call DeepSeek API (using same method as analyze-post)
     const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
@@ -466,6 +503,215 @@ async function fetchRelevantData(supabase: any, question: string) {
       type: 'general',
       data: fallbackData || [],
       posts: fallbackData || []
+    };
+  }
+}
+
+// ✅ Streaming version of DeepSeek API call
+async function* streamDeepSeekResponse(apiKey: string, question: string, data: any, history: any[]) {
+  const dataContext = buildDataContext(data);
+
+  // Build conversation history
+  const historyMessages = history.slice(-10).map((msg: any) => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+
+  // Detect if this is a general conversation (not analytical)
+  const isGeneralConversation =
+    question.toLowerCase().match(/^(سلام|hi|hello|چطوری|حالت|خوبی|ممنون|thanks|مرسی)/i) ||
+    data.type === 'general' && (data.data?.length === 0 || !question.match(/چند|تعداد|تحلیل|بررسی|کمپین|حمله|psyop/i));
+
+  // Create intelligent prompt based on query type (same as non-streaming)
+  const prompt = isGeneralConversation
+    ? `شما یک دستیار هوشمند و دوستانه هستید که در تحلیل عملیات روانی تخصص دارید.
+
+سوال کاربر: ${question}
+
+${historyMessages.length > 0 ? `تاریخچه گفتگو:\n${historyMessages.map((m) => `${m.role}: ${m.content}`).join("\n")}\n` : ""}
+
+⚠️ این یک سوال عمومی/احوالپرسی است - نه یک درخواست تحلیلی.
+
+دستورالعمل:
+- به صورت دوستانه و طبیعی پاسخ بده (به فارسی)
+- از داده‌های رسانه‌ای استفاده **نکن**
+- تحلیل PsyOp ارائه **نده**
+- فقط یک پاسخ مودبانه و مختصر بده
+
+مثال‌های پاسخ مناسب:
+- سلام! → "سلام! چطور می‌تونم کمکتون کنم؟ 😊"
+- چطوری؟ → "خوبم ممنون! شما چطور؟ در چه زمینه‌ای می‌تونم کمک کنم؟"
+- ممنون → "خواهش می‌کنم! اگه سوال دیگه‌ای دارید در خدمتم."
+
+خروجی را دقیقاً به این فرمت JSON بده:
+{
+  "answer": "پاسخ مختصر و دوستانه به فارسی",
+  "summary": null,
+  "key_stats": null,
+  "top_targets": [],
+  "top_techniques": [],
+  "top_sources": [],
+  "actionable_insights": [],
+  "recommendations": [],
+  "keyFindings": [],
+  "statistics": {},
+  "sources": {"posts": []},
+  "related_posts": []
+}`
+    : `شما تحلیلگر ارشد عملیات روانی علیه محور مقاومت هستید.
+
+سوال کاربر: ${question}
+
+${historyMessages.length > 0 ? `تاریخچه گفتگو:\n${historyMessages.map((m) => `${m.role}: ${m.content}`).join("\n")}\n` : ""}
+
+نوع تحلیل: ${data.type}
+
+داده‌های تحلیل شده:
+${dataContext}
+
+خروجی را دقیقاً به این فرمت JSON بده:
+
+{
+  "answer": "پاسخ اصلی با **markdown formatting** (bold, bullets, etc.) - 2-3 پاراگراف فارسی",
+  "summary": "خلاصه یک‌خطی (حداکثر 100 کاراکتر)",
+  "key_stats": {
+    "total_psyops": عدد یا null,
+    "critical_threats": عدد یا null,
+    "high_threats": عدد یا null,
+    "active_campaigns": عدد یا null,
+    "urgent_responses_needed": عدد یا null
+  },
+  "top_targets": [
+    {"entity": "نام نهاد", "count": عدد, "threat": "Critical|High|Medium"}
+  ],
+  "top_techniques": [
+    {"technique": "نام تکنیک", "count": عدد}
+  ],
+  "top_sources": [
+    {"source": "نام منبع", "count": عدد, "credibility": "Known Enemy Source|Suspicious Source|..."}
+  ],
+  "actionable_insights": [
+    "بینش عملیاتی قابل اجرا اول",
+    "بینش عملیاتی قابل اجرا دوم"
+  ],
+  "recommendations": [
+    "توصیه فوری اول",
+    "توصیه فوری دوم"
+  ],
+  "keyFindings": ["یافته 1", "یافته 2"],
+  "statistics": {},
+  "sources": {"posts": []},
+  "related_posts": []
+}
+
+قوانین مهم:
+1. از داده‌های واقعی استفاده کن (نه تخمین)
+2. answer باید markdown داشته باشد (**bold**, bullets)
+3. فقط top 5 را در هر لیست نشان بده
+4. actionable_insights باید قابل اجرا باشند
+5. key_stats را از داده‌های واقعی پر کن
+6. همیشه به فارسی پاسخ بده`;
+
+  console.log("Calling DeepSeek API with streaming...");
+
+  const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 4000,
+      stream: true, // ✅ Enable streaming
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DeepSeek API error: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullContent = '';
+
+  while (true) {
+    const { done, value } = await reader!.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content || '';
+          if (content) {
+            fullContent += content;
+            yield { type: 'content', content };
+          }
+        } catch (e) {
+          console.error('Error parsing stream chunk:', e);
+        }
+      }
+    }
+  }
+
+  // بعد از تموم شدن stream، JSON رو parse کن
+  console.log("Stream completed, parsing final JSON...");
+  try {
+    const jsonMatch = fullContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const aiAnswer = JSON.parse(jsonMatch[0]);
+      yield {
+        type: 'complete',
+        data: {
+          answer: aiAnswer.answer || fullContent,
+          summary: aiAnswer.summary,
+          key_stats: aiAnswer.key_stats,
+          top_targets: aiAnswer.top_targets,
+          top_techniques: aiAnswer.top_techniques,
+          top_sources: aiAnswer.top_sources,
+          actionable_insights: aiAnswer.actionable_insights,
+          recommendations: aiAnswer.recommendations,
+          related_posts: aiAnswer.related_posts,
+          keyFindings: aiAnswer.keyFindings || [],
+          statistics: aiAnswer.statistics || {},
+          sources: aiAnswer.sources || { posts: [] },
+        }
+      };
+    } else {
+      console.warn("No JSON found in streamed response");
+      yield {
+        type: 'complete',
+        data: {
+          answer: fullContent,
+          keyFindings: [],
+          statistics: {},
+          sources: { posts: [] },
+          recommendations: [],
+        }
+      };
+    }
+  } catch (e) {
+    console.error("Error parsing final JSON:", e);
+    yield {
+      type: 'complete',
+      data: {
+        answer: fullContent,
+        keyFindings: [],
+        statistics: {},
+        sources: { posts: [] },
+        recommendations: [],
+      }
     };
   }
 }

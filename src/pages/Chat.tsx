@@ -272,88 +272,131 @@ const Chat = () => {
 
     console.log("Conversation history length:", conversationHistory.length);
 
-    // Call Edge Function - NO MOCKS!
+    // ✅ Call Edge Function with streaming
     setIsLoading(true);
-    try {
-      console.log("Calling chat-assistant Edge Function...");
 
-      const response = await supabase.functions.invoke("chat-assistant", {
-        body: {
+    // Add temporary assistant message for streaming
+    const streamingMessageId = (Date.now() + 1).toString();
+    const streamingMessage: Message = {
+      id: streamingMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, streamingMessage]);
+
+    try {
+      console.log("Calling chat-assistant Edge Function with streaming...");
+
+      // Get the function URL
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = supabase.supabaseUrl;
+      const functionUrl = `${supabaseUrl}/functions/v1/chat-assistant?stream=true`;
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
           question: content,
           conversationHistory,
-        },
+        }),
       });
 
-      console.log("Response received:", response);
-
-      if (response.error) {
-        console.error("Edge Function error:", response.error);
-        throw response.error;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      if (!response.data || !response.data.answer) {
-        console.error("Invalid response data:", response.data);
-        throw new Error("Invalid response from API");
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamedContent = '';
+      let finalData: any = null;
+
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === 'content') {
+                streamedContent += data.content;
+
+                // Update message in real-time
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === streamingMessageId
+                      ? { ...msg, content: streamedContent }
+                      : msg
+                  )
+                );
+              } else if (data.type === 'complete') {
+                finalData = data.data;
+              } else if (data.type === 'error') {
+                throw new Error(data.error);
+              }
+            } catch (e) {
+              console.error('Error parsing SSE:', e);
+            }
+          }
+        }
       }
 
-      console.log("AI Answer:", response.data.answer);
+      console.log("✅ Streaming completed");
 
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
+      // Update with final structured data
+      const finalMessage: Message = {
+        id: streamingMessageId,
         role: "assistant",
-        content: response.data.answer,
+        content: finalData?.answer || streamedContent,
         timestamp: new Date(),
         metadata: {
-          sources: response.data.sources,
-          statistics: response.data.statistics,
-          keyFindings: response.data.keyFindings,
-          recommendations: response.data.recommendations,
+          sources: finalData?.sources,
+          statistics: finalData?.statistics,
+          keyFindings: finalData?.keyFindings,
+          recommendations: finalData?.recommendations,
         },
         structured_data: {
-          answer: response.data.answer,
-          summary: response.data.summary,
-          key_stats: response.data.key_stats,
-          top_targets: response.data.top_targets,
-          top_techniques: response.data.top_techniques,
-          top_sources: response.data.top_sources,
-          actionable_insights: response.data.actionable_insights,
-          recommendations: response.data.recommendations,
-          related_posts: response.data.related_posts,
+          answer: finalData?.answer || streamedContent,
+          summary: finalData?.summary,
+          key_stats: finalData?.key_stats,
+          top_targets: finalData?.top_targets,
+          top_techniques: finalData?.top_techniques,
+          top_sources: finalData?.top_sources,
+          actionable_insights: finalData?.actionable_insights,
+          recommendations: finalData?.recommendations,
+          related_posts: finalData?.related_posts,
         },
-        followUpQuestions: response.data.followUpQuestions || [],
+        followUpQuestions: [], // Will be generated after streaming
       };
 
-      setMessages((prev) => [...prev, aiMessage]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === streamingMessageId ? finalMessage : msg
+        )
+      );
 
-      // Save AI message to database with complete metadata
+      // Save to database with complete metadata
       const completeMetadata = {
-        // Legacy metadata fields (for backward compatibility)
-        sources: response.data.sources,
-        statistics: response.data.statistics,
-        keyFindings: response.data.keyFindings,
-        recommendations: response.data.recommendations,
-
-        // New structured data
-        structured_data: {
-          answer: response.data.answer,
-          summary: response.data.summary,
-          key_stats: response.data.key_stats,
-          top_targets: response.data.top_targets,
-          top_techniques: response.data.top_techniques,
-          top_sources: response.data.top_sources,
-          actionable_insights: response.data.actionable_insights,
-          recommendations: response.data.recommendations,
-          related_posts: response.data.related_posts,
-        },
-
-        // Follow-up questions
-        followUpQuestions: response.data.followUpQuestions || [],
+        sources: finalData?.sources,
+        statistics: finalData?.statistics,
+        keyFindings: finalData?.keyFindings,
+        recommendations: finalData?.recommendations,
+        structured_data: finalMessage.structured_data,
+        followUpQuestions: [],
       };
 
       const { error: aiSaveError } = await supabase.from("chat_messages").insert({
         conversation_id: conversationId,
         role: "assistant",
-        content: aiMessage.content,
+        content: finalMessage.content,
         metadata: completeMetadata,
         timestamp: new Date().toISOString(),
       });
@@ -367,28 +410,27 @@ const Chat = () => {
         });
       }
 
-      console.log("✅ AI message saved successfully with structured data");
-
       // Update conversation timestamp
       await supabase
         .from("chat_conversations")
         .update({ updated_at: new Date().toISOString() })
         .eq("id", conversationId);
 
+      console.log("✅ Streaming message saved successfully");
       console.log("=== END: Message sent successfully ===");
     } catch (error) {
-      console.error("=== ERROR in handleSendMessage ===");
+      console.error("=== ERROR in streaming ===");
       console.error("Error details:", error);
       console.error("Error type:", typeof error);
       console.error("Error object:", JSON.stringify(error, null, 2));
 
-      // Show detailed error in chat
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `❌ خطا در ارسال پیام:
+      // Remove streaming message and show error
+      setMessages((prev) => prev.filter(msg => msg.id !== streamingMessageId));
 
-${error instanceof Error ? error.message : "خطای نامشخص"}
+      const errorMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        role: "assistant",
+        content: `❌ خطا در دریافت پاسخ: ${error instanceof Error ? error.message : "خطای نامشخص"}
 
 لطفاً موارد زیر را بررسی کنید:
 - اتصال اینترنت
@@ -403,7 +445,7 @@ ${error instanceof Error ? error.message : "خطای نامشخص"}
 
       toast({
         title: "خطا",
-        description: "ارسال پیام با خطا مواجه شد - Console را چک کنید",
+        description: "خطا در دریافت پاسخ",
         variant: "destructive",
       });
     } finally {
