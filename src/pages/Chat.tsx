@@ -61,20 +61,30 @@ const Chat = () => {
   }, [messages]);
 
   const loadConversations = async () => {
+    console.log("🔄 Loading conversations...");
+
     const { data, error } = await supabase
       .from("chat_conversations")
       .select("*")
       .order("updated_at", { ascending: false });
 
     if (error) {
-      console.error("Error loading conversations:", error);
+      console.error("❌ Error loading conversations:", error);
+      toast({
+        title: "خطا در بارگذاری گفتگوها",
+        description: error.message,
+        variant: "destructive",
+      });
       return;
     }
 
+    console.log(`✅ Loaded ${data?.length || 0} conversations`);
     setConversations(data || []);
   };
 
   const loadMessages = async (conversationId: string) => {
+    console.log("=== Loading messages for conversation:", conversationId);
+
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
@@ -83,25 +93,54 @@ const Chat = () => {
 
     if (error) {
       console.error("Error loading messages:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
       return;
     }
 
+    console.log(`📨 Loading ${data?.length || 0} messages...`);
+
     setMessages(
-      (data || []).map((msg) => ({
-        id: msg.id,
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-        timestamp: new Date(msg.timestamp),
-        metadata: msg.metadata,
-        structured_data: msg.metadata, // Map metadata to structured_data for rich display
-      })),
+      (data || []).map((msg) => {
+        const message = {
+          id: msg.id,
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          metadata: msg.metadata,
+          structured_data: msg.metadata?.structured_data || null,
+          followUpQuestions: msg.metadata?.followUpQuestions || [],
+        };
+
+        // Debug log for first message
+        if (msg.role === "assistant") {
+          console.log("💬 Loaded assistant message:", {
+            hasStructuredData: !!message.structured_data,
+            hasFollowUps: message.followUpQuestions.length > 0,
+          });
+        }
+
+        return message;
+      }),
     );
+
+    console.log("✅ Messages loaded successfully");
   };
 
   const createNewConversation = async () => {
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({
+        title: "خطا",
+        description: "لطفاً ابتدا وارد شوید",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from("chat_conversations")
-      .insert({ title: "گفتگوی جدید" })
+      .insert({ title: "گفتگوی جدید", user_id: user.id })
       .select()
       .single();
 
@@ -155,13 +194,29 @@ const Chat = () => {
 
     console.log("=== START: Sending message ===");
     console.log("Message content:", content);
+    console.log("Current state:", {
+      conversationId: currentConversationId,
+      messagesCount: messages.length,
+      isLoading,
+    });
 
     // Create conversation if needed
     let conversationId = currentConversationId;
     if (!conversationId) {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "خطا",
+          description: "لطفاً ابتدا وارد شوید",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data, error } = await supabase
         .from("chat_conversations")
-        .insert({ title: content.substring(0, 50) })
+        .insert({ title: content.substring(0, 50), user_id: user.id })
         .select()
         .single();
 
@@ -190,11 +245,24 @@ const Chat = () => {
     setMessages((prev) => [...prev, userMessage]);
 
     // Save user message to database
-    await supabase.from("chat_messages").insert({
+    const { error: userSaveError } = await supabase.from("chat_messages").insert({
       conversation_id: conversationId,
       role: "user",
       content,
+      timestamp: new Date().toISOString(),
     });
+
+    if (userSaveError) {
+      console.error("❌ Error saving user message:", userSaveError);
+      toast({
+        title: "خطا در ذخیره پیام",
+        description: userSaveError.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log("✅ User message saved successfully");
 
     // Build conversation history (last 10 messages)
     const conversationHistory = messages.slice(-10).map((msg) => ({
@@ -257,13 +325,49 @@ const Chat = () => {
 
       setMessages((prev) => [...prev, aiMessage]);
 
-      // Save AI message to database
-      await supabase.from("chat_messages").insert({
+      // Save AI message to database with complete metadata
+      const completeMetadata = {
+        // Legacy metadata fields (for backward compatibility)
+        sources: response.data.sources,
+        statistics: response.data.statistics,
+        keyFindings: response.data.keyFindings,
+        recommendations: response.data.recommendations,
+
+        // New structured data
+        structured_data: {
+          answer: response.data.answer,
+          summary: response.data.summary,
+          key_stats: response.data.key_stats,
+          top_targets: response.data.top_targets,
+          top_techniques: response.data.top_techniques,
+          top_sources: response.data.top_sources,
+          actionable_insights: response.data.actionable_insights,
+          recommendations: response.data.recommendations,
+          related_posts: response.data.related_posts,
+        },
+
+        // Follow-up questions
+        followUpQuestions: response.data.followUpQuestions || [],
+      };
+
+      const { error: aiSaveError } = await supabase.from("chat_messages").insert({
         conversation_id: conversationId,
         role: "assistant",
         content: aiMessage.content,
-        metadata: aiMessage.metadata,
+        metadata: completeMetadata,
+        timestamp: new Date().toISOString(),
       });
+
+      if (aiSaveError) {
+        console.error("❌ Error saving AI message:", aiSaveError);
+        toast({
+          title: "خطا در ذخیره پاسخ",
+          description: aiSaveError.message,
+          variant: "destructive",
+        });
+      }
+
+      console.log("✅ AI message saved successfully with structured data");
 
       // Update conversation timestamp
       await supabase
