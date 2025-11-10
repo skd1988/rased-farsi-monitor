@@ -153,26 +153,30 @@ const ChatSidebar = ({
                             })}
                           </p>
                         </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                        {/* ✅ همیشه نمایش بده (نه فقط hover) */}
+                        <div className="flex gap-1 flex-shrink-0">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7"
+                            className="h-7 w-7 hover:bg-accent"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleEditStart(conv.id, conv.title);
                             }}
+                            title="ویرایش عنوان"
                           >
                             <Edit2 className="w-3 h-3" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteClick(conv.id);
                             }}
+                            title="حذف گفتگو"
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>

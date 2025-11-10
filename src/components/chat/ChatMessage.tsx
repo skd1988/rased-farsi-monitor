@@ -1,10 +1,17 @@
-import { Bot, User, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ChatResponseRich } from './ChatResponseRich';
 import { FollowUpSuggestions } from './FollowUpSuggestions';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface Message {
   id: string;
@@ -63,10 +70,10 @@ const ChatMessage = ({ message, onFollowUpSelect }: ChatMessageProps) => {
       <div className={cn('flex-1 space-y-2', isUser && 'flex flex-col items-end')}>
         <div
           className={cn(
-            'inline-block rounded-2xl max-w-[85%]',
+            'inline-block rounded-2xl max-w-[85%] shadow-sm',
             isUser
-              ? 'bg-primary text-primary-foreground px-4 py-3'
-              : 'bg-muted px-4 py-3'
+              ? 'bg-primary text-primary-foreground px-4 py-3 rounded-tl-sm'
+              : 'bg-muted px-4 py-3 rounded-tr-sm'
           )}
         >
           {!isUser && message.structured_data ? (
@@ -133,16 +140,57 @@ const ChatMessage = ({ message, onFollowUpSelect }: ChatMessageProps) => {
         {/* Actions */}
         {!isUser && (
           <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={handleCopy}>
-              <Copy className="w-4 h-4 mr-2" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCopy}
+              className="hover:bg-accent"
+            >
+              <Copy className="w-4 h-4 ml-2" />
               کپی
             </Button>
-            <Button variant="ghost" size="sm">
-              <ThumbsUp className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="sm">
-              <ThumbsDown className="w-4 h-4" />
-            </Button>
+
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hover:bg-green-500/10 hover:text-green-500"
+                title="مفید بود"
+              >
+                <ThumbsUp className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hover:bg-red-500/10 hover:text-red-500"
+                title="مفید نبود"
+              >
+                <ThumbsDown className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={handleCopy}>
+                  <Copy className="w-4 h-4 ml-2" />
+                  کپی متن
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <Copy className="w-4 h-4 ml-2" />
+                  کپی به عنوان Markdown
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Copy className="w-4 h-4 ml-2" />
+                  خروجی PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>

@@ -490,22 +490,28 @@ const Chat = () => {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div className="flex-1 overflow-y-auto px-6 py-8 chat-messages">
           {messages.length === 0 ? (
             <div className="max-w-3xl mx-auto">
-              <div className="text-center mb-12">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-                  <Sparkles className="w-8 h-8 text-primary" />
+              <div className="text-center mb-12 animate-in fade-in duration-500">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 mb-6 animate-in zoom-in duration-300 delay-150">
+                  <Sparkles className="w-10 h-10 text-primary animate-pulse" />
                 </div>
-                <h2 className="text-3xl font-bold mb-2">🛡️ سلام! من دستیار تحلیل عملیات روانی هستم</h2>
-                <p className="text-muted-foreground">می‌توانم در شناسایی، تحلیل و پاسخ به جنگ روانی علیه محور مقاومت به شما کمک کنم</p>
-                <p className="text-sm text-muted-foreground mt-2">درباره PsyOp های شناسایی‌شده، اهداف حملات، کمپین‌های هماهنگ، و استراتژی پاسخ‌دهی سوال بپرسید</p>
+                <h2 className="text-3xl font-bold mb-3 bg-gradient-to-l from-primary to-primary/60 bg-clip-text text-transparent">
+                  🛡️ سلام! من دستیار تحلیل عملیات روانی هستم
+                </h2>
+                <p className="text-muted-foreground text-lg mb-2">
+                  می‌توانم در شناسایی، تحلیل و پاسخ به جنگ روانی علیه محور مقاومت به شما کمک کنم
+                </p>
+                <p className="text-sm text-muted-foreground/80">
+                  💡 درباره PsyOp های شناسایی‌شده، اهداف حملات، کمپین‌های هماهنگ، و استراتژی پاسخ‌دهی سوال بپرسید
+                </p>
               </div>
 
               <QuickPrompts onSelectPrompt={handleQuickPrompt} />
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-8">
               {messages.map((message) => (
                 <ChatMessage 
                   key={message.id} 
@@ -514,11 +520,22 @@ const Chat = () => {
                 />
               ))}
               {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-lg p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                      <span className="text-sm text-muted-foreground">در حال تایپ...</span>
+                <div className="flex items-start gap-4">
+                  {/* Avatar skeleton */}
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-muted animate-pulse" />
+
+                  {/* Content skeleton */}
+                  <div className="flex-1 space-y-3 bg-muted rounded-2xl rounded-tr-sm p-4 max-w-[85%]">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="text-sm text-muted-foreground mr-2">در حال تحلیل...</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-background/50 rounded animate-pulse w-full" />
+                      <div className="h-3 bg-background/50 rounded animate-pulse w-5/6" />
+                      <div className="h-3 bg-background/50 rounded animate-pulse w-4/6" />
                     </div>
                   </div>
                 </div>

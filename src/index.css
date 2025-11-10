@@ -196,4 +196,39 @@ All colors MUST be HSL.
   .transition-smooth {
     transition: var(--transition-smooth);
   }
+
+  /* Custom Scrollbar for Chat */
+  .chat-messages::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .chat-messages::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+    border-radius: 4px;
+  }
+
+  .chat-messages::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+
+  .chat-messages::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.8);
+  }
+
+  /* Smooth animations */
+  @keyframes slideInFromRight {
+    from {
+      transform: translateX(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .message-enter {
+    animation: slideInFromRight 0.3s ease-out;
+  }
 }
