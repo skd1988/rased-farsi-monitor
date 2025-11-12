@@ -35,23 +35,42 @@ export default function ChannelAnalytics() {
   const [platformFilter, setPlatformFilter] = useState('all');
 
   useEffect(() => {
+    // Force fresh data on every page load
     fetchChannels();
+
+    // Log for debugging
+    console.log('🔄 Channel Analytics mounted at:', new Date().toISOString());
   }, []);
 
   const fetchChannels = async () => {
     try {
       setLoading(true);
 
-      // Fetch channels directly from social_media_channels table
+      console.log('📡 Fetching channels from social_media_channels table...');
+
+      // Fetch channels with explicit limit to avoid any caching
       const { data: channelsData, error: channelsError } = await supabase
         .from('social_media_channels')
         .select('*')
+        .limit(1000)
         .order('threat_multiplier', { ascending: false });
 
-      if (channelsError) throw channelsError;
+      console.log('📊 Received channels:', {
+        total: channelsData?.length || 0,
+        platforms: channelsData?.reduce((acc: any, ch: any) => {
+          acc[ch.platform] = (acc[ch.platform] || 0) + 1;
+          return acc;
+        }, {}),
+        first3: channelsData?.slice(0, 3).map((ch: any) => ({
+          name: ch.channel_name,
+          platform: ch.platform
+        }))
+      });
 
-      // 🔍 DEBUG: Log first 3 channels
-      console.log('📊 First 3 channels from DB:', channelsData?.slice(0, 3));
+      if (channelsError) {
+        console.error('❌ Error fetching channels:', channelsError);
+        throw channelsError;
+      }
 
       // Map database fields to component interface
       const channelsArray = (channelsData || []).map(channel => ({
@@ -65,9 +84,10 @@ export default function ChannelAnalytics() {
         last_activity: channel.last_analyzed_at || channel.created_at
       }));
 
+      console.log('✅ Channels loaded successfully:', channelsArray.length);
       setChannels(channelsArray);
     } catch (error) {
-      console.error('Error fetching channels:', error);
+      console.error('❌ Error fetching channels:', error);
       toast({
         title: "خطا در دریافت داده‌ها",
         description: "مشکلی در دریافت اطلاعات کانال‌ها پیش آمد",
