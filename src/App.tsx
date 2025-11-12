@@ -15,6 +15,7 @@ import Dashboard from "./pages/Dashboard";
 import PsyOpDetection from "./pages/PsyOpDetection";
 import CampaignTracking from "./pages/CampaignTracking";
 import TargetAnalysis from "./pages/TargetAnalysis";
+import SourceIntelligence from "./pages/SourceIntelligence";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
 import Chat from "./pages/Chat";
@@ -58,6 +59,7 @@ const App = () => (
                     <Route path="/psyop-detection" element={<PsyOpDetection />} />
                     <Route path="/campaign-tracking" element={<CampaignTracking />} />
                     <Route path="/target-analysis" element={<TargetAnalysis />} />
+                    <Route path="/source-intelligence" element={<SourceIntelligence />} />
                     <Route path="/posts" element={<PostsExplorer />} />
                     
                     <Route path="/ai-analysis" element={
