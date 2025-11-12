@@ -34,6 +34,7 @@ const Dashboard = () => {
   const [aiAnalysis, setAiAnalysis] = useState<any[]>([]);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
+  const [socialMediaChannels, setSocialMediaChannels] = useState<any[]>([]);
   const [highThreatSourcesCount, setHighThreatSourcesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [postsTablePage, setPostsTablePage] = useState(1);
@@ -90,6 +91,22 @@ const Dashboard = () => {
           .select('name_english, name_persian, name_arabic, photo_url');
 
         if (profilesError) console.error('Error fetching profiles:', profilesError);
+
+        // Fetch social media channels for platform mapping
+        console.log('📊 Fetching social media channels for platform mapping...');
+        const { data: channelsData, error: channelsError } = await supabase
+          .from('social_media_channels')
+          .select('channel_name, platform');
+
+        if (channelsError) {
+          console.error('❌ Error fetching channels:', channelsError);
+        } else {
+          console.log('📊 Platform mapping loaded:', {
+            totalChannels: channelsData?.length || 0,
+            platforms: [...new Set(channelsData?.map(ch => ch.platform))]
+          });
+          setSocialMediaChannels(channelsData || []);
+        }
 
         // Fetch high threat sources count
         const { count: highThreatCount, error: sourcesError } = await supabase
@@ -541,31 +558,49 @@ const Dashboard = () => {
 
   // Social Media Distribution
   const socialMediaData = useMemo(() => {
-    const platformCounts: Record<string, number> = {};
-    
-    posts.forEach(post => {
-      const source = post.source?.toLowerCase() || 'نامشخص';
-      const sourceUrl = post.source_url?.toLowerCase() || '';
-      
-      // Map sources to social media platforms
-      let platform = 'سایر';
-      if (source.includes('telegram') || source.includes('تلگرام') || source.includes('t.me') || sourceUrl.includes('t.me')) {
-        platform = 'تلگرام';
-      } else if (source.includes('twitter') || source.includes('x.com') || source.includes('توییتر') || sourceUrl.includes('x.com') || sourceUrl.includes('twitter.com')) {
-        platform = 'توییتر (X)';
-      } else if (source.includes('instagram') || source.includes('اینستاگرام') || sourceUrl.includes('instagram.com')) {
-        platform = 'اینستاگرام';
-      } else if (source.includes('facebook') || source.includes('فیسبوک') || sourceUrl.includes('facebook.com')) {
-        platform = 'فیسبوک';
-      } else if (source.includes('youtube') || source.includes('یوتیوب') || sourceUrl.includes('youtube.com')) {
-        platform = 'یوتیوب';
-      } else if (source.includes('whatsapp') || source.includes('واتساپ') || sourceUrl.includes('whatsapp.com')) {
-        platform = 'واتساپ';
-      }
-      
-      platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+    console.log('📈 Calculating social media distribution...');
+
+    // Create channel -> platform mapping from database
+    const channelPlatformMap = new Map(
+      socialMediaChannels.map(ch => [ch.channel_name, ch.platform])
+    );
+
+    console.log('📊 Channel mapping size:', channelPlatformMap.size);
+
+    // Filter posts that have channel_name (social media posts)
+    const socialMediaPosts = posts.filter(post =>
+      post.channel_name && channelPlatformMap.has(post.channel_name)
+    );
+
+    console.log('📈 Social media posts found:', {
+      total: socialMediaPosts.length,
+      sample: socialMediaPosts.slice(0, 3).map(p => ({
+        channel: p.channel_name,
+        platform: channelPlatformMap.get(p.channel_name)
+      }))
     });
-    
+
+    // Count by platform using the mapping
+    const platformCounts: Record<string, number> = {};
+
+    socialMediaPosts.forEach(post => {
+      const platform = channelPlatformMap.get(post.channel_name) || 'Other';
+
+      // Map English names to Persian
+      const persianPlatform = {
+        'Telegram': 'تلگرام',
+        'Facebook': 'فیسبوک',
+        'YouTube': 'یوتیوب',
+        'Twitter': 'توییتر (X)',
+        'Instagram': 'اینستاگرام',
+        'WhatsApp': 'واتساپ'
+      }[platform] || platform;
+
+      platformCounts[persianPlatform] = (platformCounts[persianPlatform] || 0) + 1;
+    });
+
+    console.log('✅ Platform counts:', platformCounts);
+
     const colors = {
       'تلگرام': 'hsl(200, 98%, 39%)',
       'توییتر (X)': 'hsl(203, 89%, 53%)',
@@ -575,16 +610,16 @@ const Dashboard = () => {
       'واتساپ': 'hsl(142, 70%, 49%)',
       'سایر': 'hsl(215, 20%, 65%)'
     };
-    
+
     return Object.entries(platformCounts)
-      .filter(([name]) => name !== 'سایر')
+      .filter(([name]) => name !== 'سایر' && name !== 'Other')
       .map(([name, value]) => ({
         name,
         value,
         fill: colors[name as keyof typeof colors] || colors['سایر']
       }))
       .sort((a, b) => b.value - a.value);
-  }, [posts]);
+  }, [posts, socialMediaChannels]);
 
   // Calculate source threat data for chart
   const sourceThreatData = useMemo(() => {
