@@ -42,73 +42,28 @@ export default function ChannelAnalytics() {
     try {
       setLoading(true);
 
-      // Group posts by source (channel) and calculate metrics
-      const { data: posts, error } = await supabase
-        .from('posts')
-        .select('id, source, source_url, source_type, is_psyop, threat_level, published_at')
-        .order('published_at', { ascending: false });
+      // Fetch channels directly from social_media_channels table
+      const { data: channelsData, error: channelsError } = await supabase
+        .from('social_media_channels')
+        .select('*')
+        .order('threat_multiplier', { ascending: false });
 
-      if (error) throw error;
+      if (channelsError) throw channelsError;
 
-      // Process posts to create channel statistics
-      const channelMap = new Map<string, any>();
+      // 🔍 DEBUG: Log first 3 channels
+      console.log('📊 First 3 channels from DB:', channelsData?.slice(0, 3));
 
-      posts?.forEach(post => {
-        const channelName = post.source || 'نامشخص';
-        const platform = getPlatform(post.source_type || '', post.source_url || '');
-
-        if (!channelMap.has(channelName)) {
-          channelMap.set(channelName, {
-            id: channelName,
-            channel_name: channelName,
-            platform: platform,
-            channel_url: post.source_url,
-            threat_level: 'Low',
-            total_posts: 0,
-            psyop_posts: 0,
-            last_activity: post.published_at,
-            critical_count: 0,
-            high_count: 0
-          });
-        }
-
-        const channel = channelMap.get(channelName);
-        channel.total_posts++;
-
-        if (post.is_psyop) {
-          channel.psyop_posts++;
-        }
-
-        if (post.threat_level === 'Critical') {
-          channel.critical_count++;
-        } else if (post.threat_level === 'High') {
-          channel.high_count++;
-        }
-
-        // Update last activity if this post is newer
-        if (new Date(post.published_at) > new Date(channel.last_activity)) {
-          channel.last_activity = post.published_at;
-        }
-      });
-
-      // Calculate threat level for each channel
-      const channelsArray = Array.from(channelMap.values()).map(channel => {
-        const psyopRate = channel.total_posts > 0
-          ? (channel.psyop_posts / channel.total_posts) * 100
-          : 0;
-
-        if (channel.critical_count >= 5 || psyopRate >= 50) {
-          channel.threat_level = 'Critical';
-        } else if (channel.critical_count >= 2 || channel.high_count >= 5 || psyopRate >= 30) {
-          channel.threat_level = 'High';
-        } else if (channel.psyop_posts >= 3 || psyopRate >= 15) {
-          channel.threat_level = 'Medium';
-        } else {
-          channel.threat_level = 'Low';
-        }
-
-        return channel;
-      });
+      // Map database fields to component interface
+      const channelsArray = (channelsData || []).map(channel => ({
+        id: channel.id,
+        channel_name: channel.channel_name,
+        platform: channel.platform || 'Other',
+        channel_url: channel.channel_url,
+        threat_level: channel.threat_level || 'Low',
+        total_posts: channel.total_posts || 0,
+        psyop_posts: channel.historical_psyop_count || 0,
+        last_activity: channel.last_analyzed_at || channel.created_at
+      }));
 
       setChannels(channelsArray);
     } catch (error) {
@@ -121,20 +76,6 @@ export default function ChannelAnalytics() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getPlatform = (sourceType: string, sourceUrl: string): string => {
-    const url = sourceUrl?.toLowerCase() || '';
-    const type = sourceType?.toLowerCase() || '';
-
-    if (url.includes('t.me') || type.includes('telegram')) return 'Telegram';
-    if (url.includes('twitter.com') || url.includes('x.com') || type.includes('twitter')) return 'Twitter/X';
-    if (url.includes('instagram.com') || type.includes('instagram')) return 'Instagram';
-    if (url.includes('facebook.com') || type.includes('facebook')) return 'Facebook';
-    if (url.includes('youtube.com') || type.includes('youtube')) return 'YouTube';
-    if (type.includes('rss')) return 'RSS Feed';
-
-    return 'Other';
   };
 
   // KPI Calculations
