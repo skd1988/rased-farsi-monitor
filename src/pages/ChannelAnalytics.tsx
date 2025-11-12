@@ -53,6 +53,44 @@ const ChannelAnalytics = () => {
     // Force fresh data on every page load
     console.log('🔄 Channel Analytics mounted at:', new Date().toISOString());
     fetchData();
+    
+    // 🔔 Real-time subscription for channel changes
+    console.log('👂 Setting up real-time subscription...');
+    const channel = supabase
+      .channel('social_media_channels_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'social_media_channels'
+        },
+        (payload) => {
+          console.log('🔔 Channel data changed:', payload.eventType, payload.new || payload.old);
+          
+          // Show toast notification
+          toast({
+            title: "🔄 داده‌ها به‌روزرسانی شدند",
+            description: payload.eventType === 'INSERT' 
+              ? "کانال جدید اضافه شد" 
+              : payload.eventType === 'UPDATE'
+              ? "کانال به‌روز شد"
+              : "کانال حذف شد",
+          });
+          
+          // Refresh data
+          fetchData();
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Subscription status:', status);
+      });
+    
+    // Cleanup on unmount
+    return () => {
+      console.log('🔌 Unsubscribing from channel changes...');
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchData = async () => {
