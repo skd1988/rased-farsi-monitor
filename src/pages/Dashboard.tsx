@@ -16,6 +16,7 @@ import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import TopTargetedPersonsChart from '@/components/dashboard/TopTargetedPersonsChart';
 import TopTargetedOrganizationsChart from '@/components/dashboard/TopTargetedOrganizationsChart';
+import { SourceThreatChart } from '@/components/dashboard/SourceThreatChart';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -33,6 +34,7 @@ const Dashboard = () => {
   const [aiAnalysis, setAiAnalysis] = useState<any[]>([]);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
+  const [highThreatSourcesCount, setHighThreatSourcesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [postsTablePage, setPostsTablePage] = useState(1);
   const postsPerPage = 50;
@@ -86,13 +88,23 @@ const Dashboard = () => {
         const { data: profilesData, error: profilesError } = await supabase
           .from('target_profiles')
           .select('name_english, name_persian, name_arabic, photo_url');
-        
+
         if (profilesError) console.error('Error fetching profiles:', profilesError);
-        
+
+        // Fetch high threat sources count
+        const { count: highThreatCount, error: sourcesError } = await supabase
+          .from('source_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('active', true)
+          .gte('threat_multiplier', 2.0);
+
+        if (sourcesError) console.error('Error fetching sources:', sourcesError);
+
         setPosts(allPosts);
         setAiAnalysis(analysisData || []);
         setCampaigns(campaignsData || []);
         setTargetProfiles(profilesData || []);
+        setHighThreatSourcesCount(highThreatCount || 0);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
@@ -573,7 +585,37 @@ const Dashboard = () => {
       }))
       .sort((a, b) => b.value - a.value);
   }, [posts]);
-  
+
+  // Calculate source threat data for chart
+  const sourceThreatData = useMemo(() => {
+    const sourceMap = new Map<string, { count: number; threat_multiplier: number }>();
+
+    posts.forEach(post => {
+      if (!post.source) return;
+
+      const current = sourceMap.get(post.source) || { count: 0, threat_multiplier: 1.0 };
+      current.count++;
+      // Get threat multiplier from post (if calculated) or use default
+      if (post.source_impact_score) {
+        // Estimate threat multiplier from impact score (reverse calculation)
+        current.threat_multiplier = Math.max(current.threat_multiplier,
+          post.source_impact_score > 600 ? 2.0 :
+          post.source_impact_score > 400 ? 1.5 : 1.0
+        );
+      }
+      sourceMap.set(post.source, current);
+    });
+
+    return Array.from(sourceMap.entries())
+      .map(([source, data]) => ({
+        source,
+        count: data.count,
+        threat_multiplier: data.threat_multiplier
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10); // Top 10 sources
+  }, [posts]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -596,7 +638,7 @@ const Dashboard = () => {
         </div>
 
         {/* Data Collection KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <DataCollectionKPI
             title="کل پست‌های جمع‌آوری شده"
             value={totalPosts.toLocaleString('fa-IR')}
@@ -625,6 +667,14 @@ const Dashboard = () => {
             }}
           />
           <DataCollectionKPI
+            title="منابع پرخطر"
+            value={highThreatSourcesCount}
+            subtitle={`ضریب تهدید بالا`}
+            icon={AlertTriangle}
+            colorScheme="red"
+            onClick={() => navigate('/source-intelligence')}
+          />
+          <DataCollectionKPI
             title="سلامت جمع‌آوری"
             value={`${collectionHealth}%`}
             subtitle={`انتظار: ~${expectedDailyVolume} پست/روز`}
@@ -636,10 +686,9 @@ const Dashboard = () => {
 
         {/* Charts */}
         <div className="grid md:grid-cols-3 gap-4">
-          <SourceTypeChart
-            data={sourceTypeData}
-            totalSources={totalSources}
-            onSegmentClick={(type) => navigate(`/posts?sourceType=${type}`)}
+          <SourceThreatChart
+            data={sourceThreatData}
+            onSourceClick={(source) => navigate(`/source-intelligence?source=${source}`)}
           />
           <CollectionTimelineChart
             data={collectionTimelineData}

@@ -74,15 +74,22 @@ const menuStructure: MenuGroup[] = [
         badge: { type: 'count', source: 'activeCampaigns' },
         description: 'ردیابی کمپین‌ها'
       },
-      { 
-        label: 'تحلیل اهداف', 
-        icon: Target, 
+      {
+        label: 'تحلیل اهداف',
+        icon: Target,
         route: '/target-analysis',
         description: 'اهداف و الگوهای حملات'
       },
-      { 
-        label: 'هوش و روندها', 
-        icon: TrendingUp, 
+      {
+        label: 'تحلیل منابع',
+        icon: Newspaper,
+        route: '/source-intelligence',
+        badge: { type: 'count', source: 'highThreatSources' },
+        description: 'وزن‌دهی و اعتبارسنجی منابع'
+      },
+      {
+        label: 'هوش و روندها',
+        icon: TrendingUp,
         route: '/intelligence',
         description: 'تحلیل روندها و الگوها'
       }
@@ -162,6 +169,7 @@ const Sidebar = () => {
   const [criticalCount, setCriticalCount] = useState(0);
   const [activeCampaigns, setActiveCampaigns] = useState(0);
   const [urgentResponses, setUrgentResponses] = useState(0);
+  const [highThreatSources, setHighThreatSources] = useState(0);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
     return saved ? JSON.parse(saved) : false;
@@ -203,9 +211,19 @@ const Sidebar = () => {
           .eq('threat_level', 'Critical')
           .neq('status', 'حل شده')
           .gte('published_at', twoHoursAgo);
-        
+
         if (urgentError) throw urgentError;
         setUrgentResponses(urgentCount || 0);
+
+        // Fetch high threat sources count
+        const { count: highThreatCount, error: sourcesError } = await supabase
+          .from('source_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('active', true)
+          .gte('threat_multiplier', 2.0);
+
+        if (sourcesError) throw sourcesError;
+        setHighThreatSources(highThreatCount || 0);
       } catch (error) {
         console.error('Error fetching counts:', error);
       }
@@ -262,6 +280,7 @@ const Sidebar = () => {
       if (badge.source === 'criticalThreats') return criticalCount;
       if (badge.source === 'activeCampaigns') return activeCampaigns;
       if (badge.source === 'urgentResponses') return urgentResponses;
+      if (badge.source === 'highThreatSources') return highThreatSources;
     }
     
     return null;
