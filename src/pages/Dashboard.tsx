@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { translateSourceType } from '@/utils/sourceTypeTranslations';
 import { formatDistanceToNowIran, formatIranDate } from '@/lib/dateUtils';
-import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain } from 'lucide-react';
+import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain, Flame } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import DataCollectionKPI from '@/components/dashboard/DataCollectionKPI';
 import SourceTypeChart from '@/components/dashboard/SourceTypeChart';
@@ -24,6 +24,8 @@ import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const Dashboard = () => {
   console.log('[Dashboard] Component mounting...');
@@ -394,6 +396,41 @@ const Dashboard = () => {
       .slice(0, 10);
   }, [posts, targetProfiles]);
 
+  // Top Risky Channels
+  const topRiskyChannelsData = useMemo(() => {
+    const channelStats: Record<string, {
+      channel_name: string;
+      threat_score: number;
+      critical_count: number;
+      high_count: number;
+    }> = {};
+
+    posts.forEach(post => {
+      if (!post.channel_name || !post.is_psyop) return;
+
+      const channelName = post.channel_name;
+      if (!channelStats[channelName]) {
+        channelStats[channelName] = {
+          channel_name: channelName,
+          threat_score: 0,
+          critical_count: 0,
+          high_count: 0
+        };
+      }
+
+      if (post.threat_level === 'Critical') channelStats[channelName].critical_count++;
+      if (post.threat_level === 'High') channelStats[channelName].high_count++;
+    });
+
+    return Object.values(channelStats)
+      .map(ch => ({
+        ...ch,
+        threat_score: (ch.critical_count * 40) + (ch.high_count * 20)
+      }))
+      .sort((a, b) => b.threat_score - a.threat_score)
+      .slice(0, 10);
+  }, [posts]);
+
   // Campaign Heatmap (last 90 days)
   const heatmapData = useMemo(() => {
     const days = 90;
@@ -721,14 +758,46 @@ const Dashboard = () => {
 
         {/* Charts */}
         <div className="grid md:grid-cols-3 gap-4">
-          <SourceThreatChart
-            data={sourceThreatData}
-            onSourceClick={(source) => navigate(`/source-intelligence?source=${source}`)}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Flame className="w-5 h-5 text-red-600" />
+                Top 10 کانال پرخطر
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                بر اساس امتیاز تهدید
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={topRiskyChannelsData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis
+                    dataKey="channel_name"
+                    type="category"
+                    width={120}
+                    style={{ fontSize: '12px' }}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="threat_score" fill="#ef4444" radius={[0, 4, 4, 0]}>
+                    {topRiskyChannelsData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.threat_score >= 100 ? '#dc2626' : '#ef4444'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
           <CollectionTimelineChart
             data={collectionTimelineData}
             onClick={() => navigate('/posts')}
           />
+
           <SocialMediaPieChart data={socialMediaData} />
         </div>
       </div>
