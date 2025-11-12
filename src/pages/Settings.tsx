@@ -824,6 +824,136 @@ const Settings = () => {
     }
   };
 
+  // Helper function to detect political alignment from source
+  const detectPoliticalAlignment = (source: string, url: string): string => {
+    const checkText = `${source} ${url}`.toLowerCase();
+
+    // Known enemy sources
+    const enemyPatterns = [
+      { pattern: /saudi|سعود|العربية/i, alignment: 'Saudi-Aligned' },
+      { pattern: /israel|יהודי|يديعوت|القدس|جيروزاليم/i, alignment: 'Israeli-Affiliated' },
+      { pattern: /معارض|المعارض|اندپندنت عربية|اندبندنت عربية|العربي الجديد/i, alignment: 'Anti-Resistance' },
+      { pattern: /bbc|cnn|france24|dw/i, alignment: 'Western-Aligned' },
+    ];
+
+    for (const { pattern, alignment } of enemyPatterns) {
+      if (pattern.test(checkText)) {
+        return alignment;
+      }
+    }
+
+    // Pro-resistance sources
+    const proResistancePatterns = [
+      /almayadeen|الميادين|almanar|المنار|قناة المسيرة|الأخبار/i,
+      /parstoday|presstv|الوفاق|al-wefaq/i,
+    ];
+
+    for (const pattern of proResistancePatterns) {
+      if (pattern.test(checkText)) {
+        return 'Pro-Resistance';
+      }
+    }
+
+    return 'Neutral';
+  };
+
+  // Helper function to upsert source profile
+  const upsertSourceProfile = async (source: string, sourceUrl: string, sourceType: string, country: string, isPsyop: boolean) => {
+    try {
+      // Check if source profile already exists
+      const { data: existing } = await supabase
+        .from('source_profiles')
+        .select('*')
+        .eq('source_name', source)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing: increment PsyOp counts if this is a PsyOp
+        if (isPsyop) {
+          await supabase
+            .from('source_profiles')
+            .update({
+              historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
+              last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
+            })
+            .eq('id', existing.id);
+        }
+      } else {
+        // Create new source profile with intelligent defaults
+        const politicalAlignment = detectPoliticalAlignment(source, sourceUrl);
+        const newProfile = {
+          source_name: source,
+          source_type: sourceType,
+          political_alignment: politicalAlignment,
+          reach_score: 50, // Default medium reach
+          credibility_score: 50, // Default medium credibility
+          virality_coefficient: 1.0, // Neutral
+          threat_multiplier: politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli') ? 1.5 : 1.0,
+          historical_psyop_count: isPsyop ? 1 : 0,
+          last_30days_psyop_count: isPsyop ? 1 : 0,
+          country: country,
+          active: true,
+        };
+
+        await supabase.from('source_profiles').insert([newProfile]);
+      }
+    } catch (error) {
+      console.error('Error upserting source profile:', error);
+    }
+  };
+
+  // Helper function to upsert social media channel
+  const upsertSocialMediaChannel = async (channelName: string, platform: string, sourceUrl: string, country: string, isPsyop: boolean) => {
+    try {
+      // Extract channel ID from URL
+      let channelId = null;
+      if (platform === 'Telegram' && sourceUrl.includes('t.me/')) {
+        channelId = sourceUrl.split('t.me/')[1]?.split('/')[0];
+      }
+
+      // Check if channel already exists
+      const { data: existing } = await supabase
+        .from('social_media_channels')
+        .select('*')
+        .eq('channel_name', channelName)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing: increment PsyOp counts if this is a PsyOp
+        if (isPsyop) {
+          await supabase
+            .from('social_media_channels')
+            .update({
+              historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
+              last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
+            })
+            .eq('id', existing.id);
+        }
+      } else {
+        // Create new channel with intelligent defaults
+        const politicalAlignment = detectPoliticalAlignment(channelName, sourceUrl);
+        const newChannel = {
+          channel_name: channelName,
+          channel_id: channelId,
+          platform: platform,
+          political_alignment: politicalAlignment,
+          reach_score: 50, // Default medium reach
+          credibility_score: 50, // Default medium credibility
+          virality_coefficient: platform === 'Telegram' ? 1.3 : 1.0, // Telegram spreads faster
+          threat_multiplier: politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli') ? 2.0 : 1.0,
+          historical_psyop_count: isPsyop ? 1 : 0,
+          last_30days_psyop_count: isPsyop ? 1 : 0,
+          language: [country === 'Iran' ? 'فارسی' : country === 'Lebanon' || country === 'Iraq' ? 'عربی' : 'انگلیسی'],
+          country: country,
+        };
+
+        await supabase.from('social_media_channels').insert([newChannel]);
+      }
+    } catch (error) {
+      console.error('Error upserting social media channel:', error);
+    }
+  };
+
   const handleManualSync = async () => {
     if (!settings.google_sheet_id || !settings.google_sheet_name) {
       toast({
@@ -1813,6 +1943,33 @@ const Settings = () => {
             if (errorCount <= 3) console.error("Failed post:", post);
           } else {
             importedCount++;
+
+            // ✨ NEW: Update source profiles and channels
+            await upsertSourceProfile(
+              cleanSource,
+              finalUrl,
+              post.source_type,
+              post.source_country || 'نامشخص',
+              false // We don't know if it's PsyOp yet during initial import
+            );
+
+            // If it's social media, also update channels table
+            if (post.source_type === 'social_media') {
+              const platform = finalUrl.includes('t.me') || finalUrl.includes('telegram') ? 'Telegram' :
+                               finalUrl.includes('twitter.com') || finalUrl.includes('x.com') ? 'Twitter' :
+                               finalUrl.includes('facebook.com') ? 'Facebook' :
+                               finalUrl.includes('instagram.com') ? 'Instagram' :
+                               finalUrl.includes('youtube.com') ? 'YouTube' : 'Other';
+
+              await upsertSocialMediaChannel(
+                cleanSource,
+                platform,
+                finalUrl,
+                post.source_country || 'نامشخص',
+                false
+              );
+            }
+
             if (importedCount % 10 === 0) {
               console.log(`✅ Imported ${importedCount}/${rowsToSync.length}`);
             }
