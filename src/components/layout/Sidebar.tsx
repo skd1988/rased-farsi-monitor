@@ -1,19 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  Home, 
-  FileText, 
-  Brain, 
-  MessageSquare, 
-  AlertTriangle, 
-  TrendingUp, 
-  Settings, 
-  Newspaper, 
-  Wrench, 
-  Activity, 
-  Shield, 
-  Network, 
+import {
+  Home,
+  FileText,
+  Brain,
+  MessageSquare,
+  AlertTriangle,
+  TrendingUp,
+  Settings,
+  Newspaper,
+  Wrench,
+  Activity,
+  Shield,
+  Network,
   Target,
+  Radio,
   ChevronDown,
   ChevronUp,
   PanelLeftClose,
@@ -86,6 +87,12 @@ const menuStructure: MenuGroup[] = [
         route: '/source-intelligence',
         badge: { type: 'count', source: 'highThreatSources' },
         description: 'وزن‌دهی و اعتبارسنجی منابع'
+      },
+      {
+        label: 'تحلیل کانال‌ها',
+        icon: Radio,
+        route: '/channel-analytics',
+        description: 'رصد کانال‌های Social Media'
       },
       {
         label: 'هوش و روندها',
