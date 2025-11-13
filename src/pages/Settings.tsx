@@ -927,6 +927,34 @@ const Settings = () => {
     return 'Neutral';
   };
 
+  // Helper function to normalize source_type to valid database values
+  const normalizeSourceType = (sourceType: string): 'social_media' | 'website' | 'news_agency' | 'blog' | 'forum' => {
+    const validTypes = ['social_media', 'website', 'news_agency', 'blog', 'forum'];
+
+    // If already valid, return as-is
+    if (validTypes.includes(sourceType)) {
+      return sourceType as any;
+    }
+
+    // Map common variations
+    const typeMap: Record<string, string> = {
+      'news': 'news_agency',
+      'media': 'news_agency',
+      'social': 'social_media',
+      'sm': 'social_media',
+      'weblog': 'blog',
+      'discussion': 'forum',
+    };
+
+    const normalized = typeMap[sourceType.toLowerCase()];
+    if (normalized && validTypes.includes(normalized)) {
+      return normalized as any;
+    }
+
+    // Default fallback
+    return 'website';
+  };
+
   // Helper function to upsert source profile
   const upsertSourceProfile = async (source: string, sourceUrl: string, sourceType: string, country: string, isPsyop: boolean) => {
     try {
@@ -986,7 +1014,7 @@ const Settings = () => {
         // Validate all fields before insert
         const newProfile = {
           source_name: cleanSourceName,
-          source_type: sourceType || 'website',
+          source_type: normalizeSourceType(sourceType),
           political_alignment: politicalAlignment || 'Neutral',
           reach_score: 50,
           credibility_score: 50,
@@ -1000,6 +1028,7 @@ const Settings = () => {
 
         console.log(`🔍 Attempting to insert source profile:`, {
           name: newProfile.source_name,
+          type: newProfile.source_type,
           country: newProfile.country,
           alignment: newProfile.political_alignment
         });
@@ -1025,6 +1054,46 @@ const Settings = () => {
         source: source
       });
     }
+  };
+
+  // Helper function to normalize platform to valid database values
+  const normalizePlatform = (platform: string): string => {
+    const validPlatforms = [
+      'Telegram', 'Twitter', 'Facebook', 'Instagram',
+      'YouTube', 'TikTok', 'LinkedIn', 'WhatsApp', 'Snapchat'
+    ];
+
+    // If already valid, return as-is
+    if (validPlatforms.includes(platform)) {
+      return platform;
+    }
+
+    // Map common variations
+    const platformMap: Record<string, string> = {
+      'telegram': 'Telegram',
+      'twitter': 'Twitter',
+      'x': 'Twitter',
+      'x.com': 'Twitter',
+      'facebook': 'Facebook',
+      'fb': 'Facebook',
+      'instagram': 'Instagram',
+      'ig': 'Instagram',
+      'youtube': 'YouTube',
+      'yt': 'YouTube',
+      'tiktok': 'TikTok',
+      'linkedin': 'LinkedIn',
+      'whatsapp': 'WhatsApp',
+      'snapchat': 'Snapchat',
+      'snap': 'Snapchat',
+    };
+
+    const normalized = platformMap[platform.toLowerCase()];
+    if (normalized) {
+      return normalized;
+    }
+
+    // Default fallback - use first valid platform
+    return 'Telegram';
   };
 
   // Helper function to upsert social media channel
@@ -1106,7 +1175,7 @@ const Settings = () => {
         const newChannel = {
           channel_name: cleanChannelName,
           channel_id: channelId,
-          platform: platform || 'Other',
+          platform: normalizePlatform(platform),
           political_alignment: politicalAlignment || 'Neutral',
           reach_score: 50,
           credibility_score: 50,
