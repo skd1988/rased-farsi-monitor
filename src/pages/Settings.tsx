@@ -928,31 +928,68 @@ const Settings = () => {
   };
 
   // Helper function to normalize source_type to valid database values
-  const normalizeSourceType = (sourceType: string): 'social_media' | 'website' | 'news_agency' | 'blog' | 'forum' => {
-    const validTypes = ['social_media', 'website', 'news_agency', 'blog', 'forum'];
+  const normalizeSourceType = (sourceType: string): string => {
+    // Valid values from database constraint
+    const validTypes = [
+      'RSS Feed',
+      'News Website',
+      'Social Media',
+      'Blog',
+      'Aggregator',
+      'Government',
+      'Unknown'
+    ];
 
     // If already valid, return as-is
     if (validTypes.includes(sourceType)) {
-      return sourceType as any;
+      return sourceType;
     }
 
-    // Map common variations
+    // Map common variations to valid values
     const typeMap: Record<string, string> = {
-      'news': 'news_agency',
-      'media': 'news_agency',
-      'social': 'social_media',
-      'sm': 'social_media',
-      'weblog': 'blog',
-      'discussion': 'forum',
+      // Social Media variations
+      'social_media': 'Social Media',
+      'social': 'Social Media',
+      'sm': 'Social Media',
+
+      // News Website variations
+      'website': 'News Website',
+      'news_agency': 'News Website',
+      'news': 'News Website',
+      'news_website': 'News Website',
+      'media': 'News Website',
+      'agency': 'News Website',
+
+      // Blog variations
+      'blog': 'Blog',
+      'weblog': 'Blog',
+
+      // Forum/Discussion variations
+      'forum': 'News Website', // Map forum to News Website
+
+      // RSS variations
+      'rss': 'RSS Feed',
+      'feed': 'RSS Feed',
+      'rss_feed': 'RSS Feed',
+
+      // Government variations
+      'government': 'Government',
+      'gov': 'Government',
+      'official': 'Government',
+
+      // Aggregator variations
+      'aggregator': 'Aggregator',
+      'aggregate': 'Aggregator',
     };
 
-    const normalized = typeMap[sourceType.toLowerCase()];
-    if (normalized && validTypes.includes(normalized)) {
-      return normalized as any;
+    // Try to match with map
+    const normalized = typeMap[sourceType.toLowerCase().trim()];
+    if (normalized) {
+      return normalized;
     }
 
     // Default fallback
-    return 'website';
+    return 'News Website';
   };
 
   // Helper function to upsert source profile
