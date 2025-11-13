@@ -725,7 +725,28 @@ const Settings = () => {
   };
 
   const deleteAllPosts = async () => {
-    const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
+    // Get counts for all tables first
+    const { count: postsCount } = await supabase
+      .from("posts")
+      .select("*", { count: "exact", head: true });
+
+    const { count: channelsCount } = await supabase
+      .from("social_media_channels")
+      .select("*", { count: "exact", head: true });
+
+    const { count: sourcesCount } = await supabase
+      .from("source_profiles")
+      .select("*", { count: "exact", head: true });
+
+    const totalCount = (postsCount || 0) + (channelsCount || 0) + (sourcesCount || 0);
+
+    const confirmMsg = `⚠️ هشدار: حذف کامل تمام داده‌ها\n\n` +
+      `📊 آمار داده‌های قابل حذف:\n` +
+      `• ${postsCount || 0} پست\n` +
+      `• ${channelsCount || 0} کانال Social Media\n` +
+      `• ${sourcesCount || 0} پروفایل منبع\n\n` +
+      `⚠️ جمع کل: ${totalCount} رکورد\n\n` +
+      `آیا مطمئن هستید؟ این عملیات قابل بازگشت نیست.`;
 
     if (!confirm(confirmMsg)) return;
 
@@ -733,33 +754,82 @@ const Settings = () => {
       setCleaning(true);
 
       toast({
-        title: "شروع حذف...",
-        description: "لطفاً صبر کنید",
+        title: "شروع حذف همه داده‌ها...",
+        description: "لطفاً صبر کنید، ممکن است چند لحظه طول بکشد",
       });
 
-      let deletedTotal = 0;
-      let hasMore = true;
+      let deletedPosts = 0;
+      let deletedChannels = 0;
+      let deletedSources = 0;
 
-      while (hasMore) {
+      // Step 1: Delete all posts
+      console.log("🗑️ Step 1: Deleting posts...");
+      let hasMorePosts = true;
+      while (hasMorePosts) {
         const { data: batch } = await supabase.from("posts").select("id").limit(100);
-
         if (!batch || batch.length === 0) {
-          hasMore = false;
+          hasMorePosts = false;
           break;
         }
-
         const ids = batch.map((p) => p.id);
         await supabase.from("posts").delete().in("id", ids);
-
-        deletedTotal += batch.length;
-        console.log(`🗑️ Deleted ${deletedTotal}...`);
+        deletedPosts += batch.length;
+        console.log(`  ✅ Deleted ${deletedPosts} posts...`);
       }
 
+      // Step 2: Delete all social media channels
+      console.log("🗑️ Step 2: Deleting social media channels...");
+      let hasMoreChannels = true;
+      while (hasMoreChannels) {
+        const { data: batch } = await supabase
+          .from("social_media_channels")
+          .select("id")
+          .limit(100);
+        if (!batch || batch.length === 0) {
+          hasMoreChannels = false;
+          break;
+        }
+        const ids = batch.map((c) => c.id);
+        await supabase.from("social_media_channels").delete().in("id", ids);
+        deletedChannels += batch.length;
+        console.log(`  ✅ Deleted ${deletedChannels} channels...`);
+      }
+
+      // Step 3: Delete all source profiles
+      console.log("🗑️ Step 3: Deleting source profiles...");
+      let hasMoreSources = true;
+      while (hasMoreSources) {
+        const { data: batch } = await supabase
+          .from("source_profiles")
+          .select("id")
+          .limit(100);
+        if (!batch || batch.length === 0) {
+          hasMoreSources = false;
+          break;
+        }
+        const ids = batch.map((s) => s.id);
+        await supabase.from("source_profiles").delete().in("id", ids);
+        deletedSources += batch.length;
+        console.log(`  ✅ Deleted ${deletedSources} sources...`);
+      }
+
+      // Reset localStorage
+      const sheetSpecificKey = `lastSyncedRow_${settings.google_sheet_id}`;
+      localStorage.setItem(sheetSpecificKey, "0");
       localStorage.setItem("lastSyncedRow", "0");
+
+      const totalDeleted = deletedPosts + deletedChannels + deletedSources;
 
       toast({
         title: "✅ حذف کامل شد",
-        description: `${deletedTotal} مطلب حذف شد`,
+        description: `${totalDeleted} رکورد حذف شد:\n• ${deletedPosts} پست\n• ${deletedChannels} کانال\n• ${deletedSources} منبع`,
+      });
+
+      console.log("🎉 Deletion complete:", {
+        posts: deletedPosts,
+        channels: deletedChannels,
+        sources: deletedSources,
+        total: totalDeleted,
       });
 
       await checkSyncStatus();
