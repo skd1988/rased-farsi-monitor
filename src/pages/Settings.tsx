@@ -930,97 +930,221 @@ const Settings = () => {
   // Helper function to upsert source profile
   const upsertSourceProfile = async (source: string, sourceUrl: string, sourceType: string, country: string, isPsyop: boolean) => {
     try {
+      // Validate inputs - skip if source name is empty or invalid
+      if (!source || source.trim().length === 0) {
+        console.warn('⚠️ Skipping source profile: empty source name');
+        return;
+      }
+
+      // Skip if source name is too short or looks invalid
+      if (source.trim().length < 3) {
+        console.warn(`⚠️ Skipping source profile: source name too short: "${source}"`);
+        return;
+      }
+
+      // Clean the source name
+      const cleanSourceName = source.trim();
+
+      // CRITICAL: Validate and clean country field
+      // Convert invalid values to NULL which database accepts
+      const invalidCountries = ['نامشخص', 'نامعین', 'Unknown', 'نامشخص', '', 'null', 'undefined'];
+      const cleanCountry = (!country || invalidCountries.includes(country.trim())) ? null : country.trim();
+
       // Check if source profile already exists
-      const { data: existing } = await supabase
+      const { data: existing, error: selectError } = await supabase
         .from('source_profiles')
         .select('*')
-        .eq('source_name', source)
+        .eq('source_name', cleanSourceName)
         .maybeSingle();
+
+      if (selectError) {
+        console.error(`❌ Error checking existing source: ${selectError.message}`);
+        return;
+      }
 
       if (existing) {
         // Update existing: increment PsyOp counts if this is a PsyOp
         if (isPsyop) {
-          await supabase
+          const { error: updateError } = await supabase
             .from('source_profiles')
             .update({
               historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
               last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
             })
             .eq('id', existing.id);
+
+          if (updateError) {
+            console.error(`❌ Error updating source PsyOp count: ${updateError.message}`);
+          } else {
+            console.log(`✅ Updated source profile PsyOp count: ${cleanSourceName}`);
+          }
         }
       } else {
         // Create new source profile with intelligent defaults
-        const politicalAlignment = detectPoliticalAlignment(source, sourceUrl);
+        const politicalAlignment = detectPoliticalAlignment(cleanSourceName, sourceUrl);
+
+        // Validate all fields before insert
         const newProfile = {
-          source_name: source,
-          source_type: sourceType,
-          political_alignment: politicalAlignment,
-          reach_score: 50, // Default medium reach
-          credibility_score: 50, // Default medium credibility
-          virality_coefficient: 1.0, // Neutral
-          threat_multiplier: politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli') ? 1.5 : 1.0,
+          source_name: cleanSourceName,
+          source_type: sourceType || 'website',
+          political_alignment: politicalAlignment || 'Neutral',
+          reach_score: 50,
+          credibility_score: 50,
+          virality_coefficient: 1.0,
+          threat_multiplier: (politicalAlignment && (politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli'))) ? 1.5 : 1.0,
           historical_psyop_count: isPsyop ? 1 : 0,
           last_30days_psyop_count: isPsyop ? 1 : 0,
-          country: country,
+          country: cleanCountry, // NULL if invalid
           active: true,
         };
 
-        await supabase.from('source_profiles').insert([newProfile]);
+        console.log(`🔍 Attempting to insert source profile:`, {
+          name: newProfile.source_name,
+          country: newProfile.country,
+          alignment: newProfile.political_alignment
+        });
+
+        const { error: insertError } = await supabase
+          .from('source_profiles')
+          .insert([newProfile]);
+
+        if (insertError) {
+          console.error(`❌ Error creating source profile for "${cleanSourceName}":`, {
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            code: insertError.code
+          });
+        } else {
+          console.log(`✨ Created source profile: ${cleanSourceName}`);
+        }
       }
-    } catch (error) {
-      console.error('Error upserting source profile:', error);
+    } catch (error: any) {
+      console.error('❌ Exception in upsertSourceProfile:', {
+        message: error.message,
+        source: source
+      });
     }
   };
 
   // Helper function to upsert social media channel
   const upsertSocialMediaChannel = async (channelName: string, platform: string, sourceUrl: string, country: string, isPsyop: boolean) => {
     try {
+      // Validate inputs - skip if channel name is empty or invalid
+      if (!channelName || channelName.trim().length === 0) {
+        console.warn('⚠️ Skipping channel: empty channel name');
+        return;
+      }
+
+      // Skip if channel name is too short
+      if (channelName.trim().length < 3) {
+        console.warn(`⚠️ Skipping channel: name too short: "${channelName}"`);
+        return;
+      }
+
+      // Clean the channel name
+      const cleanChannelName = channelName.trim();
+
+      // CRITICAL: Validate and clean country field
+      const invalidCountries = ['نامشخص', 'نامعین', 'Unknown', '', 'null', 'undefined'];
+      const cleanCountry = (!country || invalidCountries.includes(country.trim())) ? null : country.trim();
+
       // Extract channel ID from URL
       let channelId = null;
-      if (platform === 'Telegram' && sourceUrl.includes('t.me/')) {
+      if (platform === 'Telegram' && sourceUrl && sourceUrl.includes('t.me/')) {
         channelId = sourceUrl.split('t.me/')[1]?.split('/')[0];
       }
 
       // Check if channel already exists
-      const { data: existing } = await supabase
+      const { data: existing, error: selectError } = await supabase
         .from('social_media_channels')
         .select('*')
-        .eq('channel_name', channelName)
+        .eq('channel_name', cleanChannelName)
         .maybeSingle();
+
+      if (selectError) {
+        console.error(`❌ Error checking existing channel: ${selectError.message}`);
+        return;
+      }
 
       if (existing) {
         // Update existing: increment PsyOp counts if this is a PsyOp
         if (isPsyop) {
-          await supabase
+          const { error: updateError } = await supabase
             .from('social_media_channels')
             .update({
               historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
               last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
             })
             .eq('id', existing.id);
+
+          if (updateError) {
+            console.error(`❌ Error updating channel PsyOp count: ${updateError.message}`);
+          } else {
+            console.log(`✅ Updated channel PsyOp count: ${cleanChannelName}`);
+          }
         }
       } else {
         // Create new channel with intelligent defaults
-        const politicalAlignment = detectPoliticalAlignment(channelName, sourceUrl);
+        const politicalAlignment = detectPoliticalAlignment(cleanChannelName, sourceUrl);
+
+        // CRITICAL: Properly set language array based on country
+        let languageArray: string[];
+        if (cleanCountry === 'Iran' || cleanCountry === 'ایران') {
+          languageArray = ['فارسی'];
+        } else if (['Lebanon', 'Iraq', 'Syria', 'Yemen', 'لبنان', 'عراق', 'سوریه', 'یمن'].includes(cleanCountry || '')) {
+          languageArray = ['عربی'];
+        } else if (cleanCountry && cleanCountry.length > 0) {
+          languageArray = ['انگلیسی'];
+        } else {
+          // If no country, try to detect from channel name
+          const hasArabic = /[\u0600-\u06FF]/.test(cleanChannelName);
+          const hasPersian = /[پچژگ]/.test(cleanChannelName);
+          languageArray = hasPersian ? ['فارسی'] : hasArabic ? ['عربی'] : ['انگلیسی'];
+        }
+
         const newChannel = {
-          channel_name: channelName,
+          channel_name: cleanChannelName,
           channel_id: channelId,
-          platform: platform,
-          political_alignment: politicalAlignment,
-          reach_score: 50, // Default medium reach
-          credibility_score: 50, // Default medium credibility
-          virality_coefficient: platform === 'Telegram' ? 1.3 : 1.0, // Telegram spreads faster
-          threat_multiplier: politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli') ? 2.0 : 1.0,
+          platform: platform || 'Other',
+          political_alignment: politicalAlignment || 'Neutral',
+          reach_score: 50,
+          credibility_score: 50,
+          virality_coefficient: platform === 'Telegram' ? 1.3 : 1.0,
+          threat_multiplier: (politicalAlignment && (politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli'))) ? 2.0 : 1.0,
           historical_psyop_count: isPsyop ? 1 : 0,
           last_30days_psyop_count: isPsyop ? 1 : 0,
-          language: [country === 'Iran' ? 'فارسی' : country === 'Lebanon' || country === 'Iraq' ? 'عربی' : 'انگلیسی'],
-          country: country,
+          language: languageArray, // Validated array
+          country: cleanCountry, // NULL if invalid
         };
 
-        await supabase.from('social_media_channels').insert([newChannel]);
+        console.log(`🔍 Attempting to insert channel:`, {
+          name: newChannel.channel_name,
+          platform: newChannel.platform,
+          country: newChannel.country,
+          language: newChannel.language
+        });
+
+        const { error: insertError } = await supabase
+          .from('social_media_channels')
+          .insert([newChannel]);
+
+        if (insertError) {
+          console.error(`❌ Error creating channel for "${cleanChannelName}":`, {
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            code: insertError.code
+          });
+        } else {
+          console.log(`✨ Created channel: ${cleanChannelName}`);
+        }
       }
-    } catch (error) {
-      console.error('Error upserting social media channel:', error);
+    } catch (error: any) {
+      console.error('❌ Exception in upsertSocialMediaChannel:', {
+        message: error.message,
+        channel: channelName
+      });
     }
   };
 
