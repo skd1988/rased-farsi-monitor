@@ -30,6 +30,7 @@ const CONFIG = {
   MAX_POSTS_PER_FOLDER: 500, // حداکثر تعداد در هر sync
   POSTS_PER_REQUEST: 100, // تعداد در هر request (max از Inoreader)
   MAX_PROCESSING_TIME_MS: 270000, // 4.5 دقیقه (کمتر از 5 دقیقه timeout)
+  MAX_POST_AGE_HOURS: 24, // ✅ حداکثر سن پست به ساعت
 };
 
 serve(async (req) => {
@@ -225,9 +226,18 @@ async function syncFolder(
     let requestCount = 0;
 
     // Get last sync timestamp for this folder
-    const lastTimestamp = folder.last_synced_at 
-      ? new Date(folder.last_synced_at).getTime() * 1000 // convert to microseconds
-      : undefined;
+    // ✅ قانون 24 ساعت: فقط پست‌های 24 ساعت اخیر
+    const now = Date.now();
+    const oneDayAgo = now - (CONFIG.MAX_POST_AGE_HOURS * 60 * 60 * 1000);
+    const lastSyncTime = folder.last_synced_at
+      ? new Date(folder.last_synced_at).getTime()
+      : oneDayAgo;
+
+    // استفاده از جدیدترین: یا آخرین sync یا 24 ساعت پیش
+    const sinceTime = Math.max(lastSyncTime, oneDayAgo);
+    const lastTimestamp = sinceTime * 1000; // convert to microseconds
+
+    console.log(`  📅 Fetching posts since: ${new Date(sinceTime).toISOString()}`);
 
     // Pagination loop
     do {
@@ -388,6 +398,16 @@ async function processPosts(
 
   for (const item of items) {
     try {
+      // ✅ فیلتر 24 ساعت: رد کردن پست‌های قدیمی
+      const publishedTime = item.published * 1000; // milliseconds
+      const oneDayAgo = Date.now() - (CONFIG.MAX_POST_AGE_HOURS * 60 * 60 * 1000);
+
+      if (publishedTime < oneDayAgo) {
+        console.log(`⏭️ Skipping old post (${Math.round((Date.now() - publishedTime) / (1000 * 60 * 60))}h old): ${item.title?.substring(0, 50)}...`);
+        filtered++;
+        continue;
+      }
+
       // Extract data from Inoreader response
       const post = extractPostData(item, folder);
 

@@ -1458,6 +1458,7 @@ const Settings = () => {
         noTitle: 0,
         placeholderTitle: 0,
         duplicate: 0,
+        oldPost: 0,
       };
 
       for (let i = 0; i < rowsToSync.length; i++) {
@@ -2191,7 +2192,7 @@ const Settings = () => {
                 row['Publication Date'],
                 row.timestamp,
               ];
-              
+
               for (const field of dateFields) {
                 if (field && typeof field === 'string' && field.trim().length > 0) {
                   const parsed = parseDate(field);
@@ -2201,7 +2202,7 @@ const Settings = () => {
                   return parsed;
                 }
               }
-              
+
               // Try extracting from content
               const dateFromText = extractDateFromText(title + " " + contents);
               if (dateFromText) {
@@ -2210,7 +2211,7 @@ const Settings = () => {
                 }
                 return dateFromText;
               }
-              
+
               // Fallback to today
               if (i < 3) {
                 console.log(`⚠️ No date found, using today`);
@@ -2221,6 +2222,21 @@ const Settings = () => {
             language: detectedLanguage,
             status: "جدید",
           };
+
+          // ✅ قانون 24 ساعت: رد کردن پست‌های قدیمی‌تر از 24 ساعت
+          const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+          const publishedTime = new Date(post.published_at).getTime();
+
+          if (publishedTime < oneDayAgo) {
+            const hoursOld = Math.round((Date.now() - publishedTime) / (1000 * 60 * 60));
+            console.log(`⏭️ [Row ${lastSyncedRow + i + 1}] Skipping old post (${hoursOld}h old): "${title.substring(0, 50)}..."`);
+            validationSkips.oldPost++;
+            continue;
+          }
+
+          if (i < 3) {
+            console.log(`✅ [Row ${lastSyncedRow + i + 1}] Post is within 24h, proceeding...`);
+          }
 
           // Check duplicates only by title
           const { data: existingPost } = await supabase
@@ -2282,7 +2298,7 @@ const Settings = () => {
 
       setSyncProgress(90);
 
-      const totalSkipped = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate;
+      const totalSkipped = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate + validationSkips.oldPost;
 
       console.log("📊 Validation Summary:", {
         totalRows: rowsToSync.length,
@@ -2323,7 +2339,7 @@ const Settings = () => {
 
       toast({
         title: "✅ همگام‌سازی کامل شد",
-        description: `✅ ${importedCount} مطلب وارد شد${totalSkipped > 0 ? `\n⚠️ ${totalSkipped} ردیف رد شد` : ""}${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ""}`,
+        description: `✅ ${importedCount} مطلب وارد شد${totalSkipped > 0 ? `\n⚠️ ${totalSkipped} ردیف رد شد (${validationSkips.duplicate} تکراری، ${validationSkips.oldPost} قدیمی‌تر از 24 ساعت)` : ""}${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ""}`,
       });
 
       console.log("✅ Sync completed:", {
