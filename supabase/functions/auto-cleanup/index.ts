@@ -62,6 +62,50 @@ serve(async (req) => {
     const postsArchived = archivedPosts?.length || 0;
     console.log(`📦 Archived ${postsArchived} important posts`);
 
+    // Reset 30-day counters once per day
+    const today = new Date().toISOString().split('T')[0];
+    const { data: lastReset } = await supabase
+      .from('auto_analysis_config')
+      .select('config_value')
+      .eq('config_key', 'last_counter_reset')
+      .single();
+
+    if (lastReset?.config_value !== today) {
+      console.log('🔄 Resetting 30-day counters...');
+
+      // Reset source profiles
+      const { error: resetSourcesError } = await supabase
+        .from('source_profiles')
+        .update({ last_30days_psyop_count: 0 });
+
+      if (resetSourcesError) {
+        console.error('❌ Error resetting source profiles:', resetSourcesError);
+      }
+
+      // Reset channels
+      const { error: resetChannelsError } = await supabase
+        .from('social_media_channels')
+        .update({ last_30days_psyop_count: 0 });
+
+      if (resetChannelsError) {
+        console.error('❌ Error resetting channels:', resetChannelsError);
+      }
+
+      // Update last reset date
+      const { error: upsertError } = await supabase
+        .from('auto_analysis_config')
+        .upsert({
+          config_key: 'last_counter_reset',
+          config_value: today
+        });
+
+      if (upsertError) {
+        console.error('❌ Error updating last_counter_reset:', upsertError);
+      } else {
+        console.log('✅ Counters reset successfully');
+      }
+    }
+
     // Clean up old queue items
     const queueCleaned = await supabase.rpc('cleanup_analysis_queue');
 
