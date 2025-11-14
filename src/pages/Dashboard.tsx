@@ -94,11 +94,13 @@ const Dashboard = () => {
 
         if (profilesError) console.error('Error fetching profiles:', profilesError);
 
-        // Fetch social media channels for platform mapping
-        console.log('📊 Fetching social media channels for platform mapping...');
+        // Fetch social media channels for platform mapping and threat analysis
+        console.log('📊 Fetching social media channels for platform mapping and threat analysis...');
         const { data: channelsData, error: channelsError } = await supabase
           .from('social_media_channels')
-          .select('channel_name, platform');
+          .select('*')
+          .limit(1000)
+          .order('threat_multiplier', { ascending: false });
 
         if (channelsError) {
           console.error('❌ Error fetching channels:', channelsError);
@@ -396,40 +398,60 @@ const Dashboard = () => {
       .slice(0, 10);
   }, [posts, targetProfiles]);
 
-  // Top Risky Channels
+  // Top Risky Channels - NEW VERSION (matching ChannelAnalytics approach)
   const topRiskyChannelsData = useMemo(() => {
+    console.log('🔥 Calculating Top Risky Channels for Dashboard...');
+
     const channelStats: Record<string, {
       channel_name: string;
       threat_score: number;
       critical_count: number;
       high_count: number;
+      threat_multiplier: number;
     }> = {};
 
+    // ✅ STEP 1: Count actual PsyOp posts by threat level for each channel
     posts.forEach(post => {
       if (!post.channel_name || !post.is_psyop) return;
 
       const channelName = post.channel_name;
       if (!channelStats[channelName]) {
+        // Get channel metadata from social_media_channels
+        const channelMeta = socialMediaChannels.find(c => c.channel_name === channelName);
         channelStats[channelName] = {
           channel_name: channelName,
           threat_score: 0,
           critical_count: 0,
-          high_count: 0
+          high_count: 0,
+          threat_multiplier: channelMeta?.threat_multiplier || 1.0
         };
       }
 
+      // Count posts by threat level
       if (post.threat_level === 'Critical') channelStats[channelName].critical_count++;
       if (post.threat_level === 'High') channelStats[channelName].high_count++;
     });
 
-    return Object.values(channelStats)
+    // ✅ STEP 2: Calculate threat score using the SAME formula as ChannelAnalytics
+    const result = Object.values(channelStats)
       .map(ch => ({
         ...ch,
+        // Same formula: Critical=40, High=20
         threat_score: (ch.critical_count * 40) + (ch.high_count * 20)
       }))
       .sort((a, b) => b.threat_score - a.threat_score)
       .slice(0, 10);
-  }, [posts]);
+
+    console.log('✅ Top 10 Risky Channels:', result.map(c => ({
+      name: c.channel_name,
+      score: c.threat_score,
+      critical: c.critical_count,
+      high: c.high_count,
+      multiplier: c.threat_multiplier
+    })));
+
+    return result;
+  }, [posts, socialMediaChannels]); // ⚠️ توجه: dependency به socialMediaChannels اضافه شد
 
   // Campaign Heatmap (last 90 days)
   const heatmapData = useMemo(() => {
