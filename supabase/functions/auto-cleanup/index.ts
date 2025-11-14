@@ -33,34 +33,55 @@ serve(async (req) => {
     console.log(`🕐 Retention: ${retentionHours} hours`);
     console.log(`📅 Cutoff date: ${cutoffDate.toISOString()}`);
 
-    // Smart delete: only Low/Medium threats that are NOT PsyOps
+    // STEP 1: Archive important posts FIRST (before deletion)
+    const { data: archivedPosts, error: archiveError } = await supabase
+      .from('posts')
+      .update({ status: 'Archived' })
+      .lt('created_at', cutoffDate.toISOString())
+      .neq('status', 'Archived')  // فقط پست‌هایی که قبلاً archived نشده‌اند
+      .or('threat_level.in.(High,Critical),is_psyop.eq.true')
+      .select('id, title, threat_level, is_psyop');
+
+    if (archiveError) {
+      console.error('❌ Archive error:', archiveError);
+      throw archiveError;
+    }
+
+    const postsArchived = archivedPosts?.length || 0;
+    console.log(`📦 Archived ${postsArchived} important posts`);
+
+    // Log sample of archived posts
+    if (postsArchived > 0 && archivedPosts.length > 0) {
+      console.log('📋 Sample archived posts:');
+      archivedPosts.slice(0, 3).forEach(p => {
+        console.log(`  - ${p.title?.substring(0, 50)} (${p.threat_level}, PsyOp: ${p.is_psyop})`);
+      });
+    }
+
+    // STEP 2: Delete low-priority posts (after archiving important ones)
     const { data: deletedPosts, error: deleteError } = await supabase
       .from('posts')
       .delete()
       .lt('created_at', cutoffDate.toISOString())
       .in('threat_level', ['Low', 'Medium'])
       .eq('is_psyop', false)
-      .select('id');
+      .select('id, title, threat_level');
 
     if (deleteError) {
+      console.error('❌ Delete error:', deleteError);
       throw deleteError;
     }
 
     const postsDeleted = deletedPosts?.length || 0;
     console.log(`🗑️ Deleted ${postsDeleted} old low-threat posts`);
 
-    // Archive important posts (High/Critical threats and PsyOps)
-    const { data: archivedPosts, error: archiveError } = await supabase
-      .from('posts')
-      .update({ status: 'Archived' })
-      .lt('created_at', cutoffDate.toISOString())
-      .or('threat_level.in.(High,Critical),is_psyop.eq.true')
-      .select('id');
-
-    if (archiveError) throw archiveError;
-
-    const postsArchived = archivedPosts?.length || 0;
-    console.log(`📦 Archived ${postsArchived} important posts`);
+    // Log sample of deleted posts
+    if (postsDeleted > 0 && deletedPosts.length > 0) {
+      console.log('📋 Sample deleted posts:');
+      deletedPosts.slice(0, 3).forEach(p => {
+        console.log(`  - ${p.title?.substring(0, 50)} (${p.threat_level})`);
+      });
+    }
 
     // Reset 30-day counters once per day
     const today = new Date().toISOString().split('T')[0];
