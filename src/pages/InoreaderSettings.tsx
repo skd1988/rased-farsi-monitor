@@ -142,8 +142,12 @@ const InoreaderSettings: React.FC = () => {
   const handleConnect = async () => {
     setIsLoading(true);
     try {
+      const REDIRECT_URI = window.location.hostname === 'localhost'
+        ? 'http://localhost:8080/#/settings/inoreader'
+        : 'https://skd1988.github.io/rased-farsi-monitor/#/settings/inoreader';
+
       const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'authorize' }
+        body: { action: 'authorize', redirectUri: REDIRECT_URI }
       });
 
       if (error) throw error;
