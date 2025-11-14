@@ -68,7 +68,7 @@ const PERMISSIONS = {
 const INACTIVITY_TIMEOUT = 8 * 60 * 60 * 1000; // 8 hours
 const WARNING_BEFORE_LOGOUT = 5 * 60 * 1000; // 5 minutes
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
-const MAX_LOADING_TIME = 15000; // 15 seconds
+const MAX_LOADING_TIME = 30000; // 30 seconds - increased to allow for retries
 const RETRY_DELAYS = [500, 1000, 2000]; // Retry delays in ms
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -115,13 +115,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Maximum retries and timeout
     const MAX_RETRIES = 3;
-    const RPC_TIMEOUT = 5000; // 5 seconds
+    const RPC_TIMEOUT = 15000; // 15 seconds - increased from 5s to handle slow connections
 
     try {
-      // Only delay on retries (optimized delays)
+      // Only delay on retries (optimized delays with exponential backoff)
       if (retryCount > 0) {
-        const OPTIMIZED_DELAYS = [200, 500, 1000];
+        const OPTIMIZED_DELAYS = [1000, 2000, 3000]; // Increased delays for better retry handling
         const delay = OPTIMIZED_DELAYS[Math.min(retryCount - 1, OPTIMIZED_DELAYS.length - 1)];
+        console.log(`[AuthContext] ⏳ Waiting ${delay}ms before retry ${retryCount}...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
@@ -331,7 +332,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // بعد از MAX_RETRIES، فقط error بده (نه signOut)
       console.error('[AuthContext] Max retries reached, giving up');
-      toast.error('خطا در بارگذاری اطلاعات کاربر. لطفاً صفحه را رفرش کنید.');
+
+      // Show more helpful error message based on error type
+      if (error?.message?.includes('timeout')) {
+        toast.error('اتصال به سرور کند است. لطفاً اتصال اینترنت خود را بررسی کرده و دوباره تلاش کنید.', {
+          duration: 8000
+        });
+      } else {
+        toast.error('خطا در بارگذاری اطلاعات کاربر. لطفاً صفحه را رفرش کنید.', {
+          duration: 8000
+        });
+      }
       return null;
     }
   }, []);
@@ -629,8 +640,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up loading timeout with recovery
     loadingTimeoutRef.current = setTimeout(() => {
       if (mounted && loading) {
-        console.error('[AuthContext] Loading timeout exceeded after 15 seconds!');
-        toast.error('خطا در بارگذاری. لطفاً صفحه را رفرش کنید.', {
+        console.error('[AuthContext] Loading timeout exceeded after 30 seconds!');
+        toast.error('بارگذاری طولانی شد. لطفاً اتصال اینترنت خود را بررسی کرده و صفحه را رفرش کنید.', {
           duration: 10000
         });
         setLoading(false);
@@ -644,10 +655,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('[AuthContext] 📞 Calling getSession...');
 
-        // Add timeout to getSession
+        // Add timeout to getSession (increased to 10s for slow connections)
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('getSession timeout')), 5000)
+          setTimeout(() => reject(new Error('getSession timeout')), 10000)
         );
 
         const { data: { session }, error } = await Promise.race([
