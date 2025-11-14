@@ -33,11 +33,13 @@ serve(async (req) => {
     console.log(`🕐 Retention: ${retentionHours} hours`);
     console.log(`📅 Cutoff date: ${cutoffDate.toISOString()}`);
 
-    // Delete old posts
+    // Smart delete: only Low/Medium threats that are NOT PsyOps
     const { data: deletedPosts, error: deleteError } = await supabase
       .from('posts')
       .delete()
       .lt('created_at', cutoffDate.toISOString())
+      .in('threat_level', ['Low', 'Medium'])
+      .eq('is_psyop', false)
       .select('id');
 
     if (deleteError) {
@@ -45,7 +47,20 @@ serve(async (req) => {
     }
 
     const postsDeleted = deletedPosts?.length || 0;
-    console.log(`🗑️ Deleted ${postsDeleted} old posts`);
+    console.log(`🗑️ Deleted ${postsDeleted} old low-threat posts`);
+
+    // Archive important posts (High/Critical threats and PsyOps)
+    const { data: archivedPosts, error: archiveError } = await supabase
+      .from('posts')
+      .update({ status: 'Archived' })
+      .lt('created_at', cutoffDate.toISOString())
+      .or('threat_level.in.(High,Critical),is_psyop.eq.true')
+      .select('id');
+
+    if (archiveError) throw archiveError;
+
+    const postsArchived = archivedPosts?.length || 0;
+    console.log(`📦 Archived ${postsArchived} important posts`);
 
     // Clean up old queue items
     const queueCleaned = await supabase.rpc('cleanup_analysis_queue');
@@ -56,6 +71,7 @@ serve(async (req) => {
     const summary = {
       success: true,
       posts_deleted: postsDeleted,
+      posts_archived: postsArchived,
       queue_cleaned: queueCleaned.data || 0,
       retention_hours: retentionHours,
       cutoff_date: cutoffDate.toISOString(),
