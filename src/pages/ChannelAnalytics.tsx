@@ -131,6 +131,7 @@ const ChannelAnalytics = () => {
         .from('posts')
         .select('id, title, source, channel_name, is_psyop, threat_level, source_impact_score, weighted_threat_level, published_at')
         .not('channel_name', 'is', null)
+        .neq('status', 'Archived')
         .order('published_at', { ascending: false });
       
       if (postsError) throw postsError;
