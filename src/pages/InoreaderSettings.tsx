@@ -143,8 +143,8 @@ const InoreaderSettings: React.FC = () => {
     setIsLoading(true);
     try {
       const REDIRECT_URI = window.location.hostname === 'localhost'
-        ? 'http://localhost:8080/#/settings/inoreader'
-        : 'https://skd1988.github.io/rased-farsi-monitor/#/settings/inoreader';
+        ? 'http://localhost:5173/oauth-callback.html'
+        : 'https://skd1988.github.io/rased-farsi-monitor/oauth-callback';
 
       const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
         body: { action: 'authorize', redirectUri: REDIRECT_URI }
@@ -169,13 +169,15 @@ const InoreaderSettings: React.FC = () => {
    * تکمیل اتصال بعد از redirect
    */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    // Extract code from hash (after #) since we use hash routing
+    const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+    const code = hashParams.get('code');
 
     if (code) {
       handleOAuthCallback(code);
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+      // Clean URL - remove the code from hash
+      const cleanHash = window.location.hash.split('?')[0];
+      window.history.replaceState({}, document.title, cleanHash);
     }
   }, []);
 
