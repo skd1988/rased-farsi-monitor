@@ -593,43 +593,32 @@ const Dashboard = () => {
   const socialMediaData = useMemo(() => {
     console.log('📈 Calculating social media distribution...');
 
-    // Create channel -> platform mapping from database
-    const channelPlatformMap = new Map(
-      socialMediaChannels.map(ch => [ch.channel_name, ch.platform])
-    );
-
-    console.log('📊 Channel mapping size:', channelPlatformMap.size);
-
-    // Filter posts that have channel_name (social media posts)
-    const socialMediaPosts = posts.filter(post =>
-      post.channel_name && channelPlatformMap.has(post.channel_name)
-    );
-
-    console.log('📈 Social media posts found:', {
-      total: socialMediaPosts.length,
-      sample: socialMediaPosts.slice(0, 3).map(p => ({
-        channel: p.channel_name,
-        platform: channelPlatformMap.get(p.channel_name)
-      }))
-    });
-
-    // Count by platform using the mapping
     const platformCounts: Record<string, number> = {};
 
-    socialMediaPosts.forEach(post => {
-      const platform = channelPlatformMap.get(post.channel_name) || 'Other';
+    posts.forEach(post => {
+      const source = post.source?.toLowerCase() || '';
+      const sourceUrl = post.source_url?.toLowerCase() || '';
+      const searchText = `${source} ${sourceUrl}`;
 
-      // Map English names to Persian
-      const persianPlatform = {
-        'Telegram': 'تلگرام',
-        'Facebook': 'فیسبوک',
-        'YouTube': 'یوتیوب',
-        'Twitter': 'توییتر (X)',
-        'Instagram': 'اینستاگرام',
-        'WhatsApp': 'واتساپ'
-      }[platform] || platform;
+      let platform = '';
 
-      platformCounts[persianPlatform] = (platformCounts[persianPlatform] || 0) + 1;
+      if (searchText.includes('telegram') || searchText.includes('تلگرام') || searchText.includes('t.me')) {
+        platform = 'تلگرام';
+      } else if (searchText.includes('twitter') || searchText.includes('توییتر') || searchText.includes('x.com')) {
+        platform = 'توییتر (X)';
+      } else if (searchText.includes('instagram') || searchText.includes('اینستاگرام')) {
+        platform = 'اینستاگرام';
+      } else if (searchText.includes('facebook') || searchText.includes('فیسبوک')) {
+        platform = 'فیسبوک';
+      } else if (searchText.includes('youtube') || searchText.includes('یوتیوب')) {
+        platform = 'یوتیوب';
+      } else if (searchText.includes('whatsapp') || searchText.includes('واتساپ')) {
+        platform = 'واتساپ';
+      }
+
+      if (platform) {
+        platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+      }
     });
 
     console.log('✅ Platform counts:', platformCounts);
@@ -645,14 +634,13 @@ const Dashboard = () => {
     };
 
     return Object.entries(platformCounts)
-      .filter(([name]) => name !== 'سایر' && name !== 'Other')
       .map(([name, value]) => ({
         name,
         value,
         fill: colors[name as keyof typeof colors] || colors['سایر']
       }))
       .sort((a, b) => b.value - a.value);
-  }, [posts, socialMediaChannels]);
+  }, [posts]);
 
   // Calculate source threat data for chart
   const sourceThreatData = useMemo(() => {
