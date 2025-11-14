@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اتصال به Inoreader...</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin: 0 0 0.5rem;
+            font-weight: 600;
+        }
+        p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+        .error {
+            background: #ef4444;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h1>در حال اتصال به Inoreader</h1>
+        <p>لطفاً صبر کنید...</p>
+        <div id="error" class="error" style="display: none;"></div>
+    </div>
+
+    <script>
+        (function() {
+            try {
+                // دریافت code از URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('code');
+                const error = urlParams.get('error');
+
+                if (error) {
+                    showError('خطا در OAuth: ' + error);
+                    return;
+                }
+
+                if (!code) {
+                    showError('کد OAuth یافت نشد!');
+                    return;
+                }
+
+                // هدایت به صفحه تنظیمات با hash routing
+                const baseUrl = window.location.origin + window.location.pathname.replace('/oauth-callback.html', '');
+                const redirectUrl = baseUrl + '/#/settings/inoreader?code=' + encodeURIComponent(code);
+
+                console.log('Redirecting to:', redirectUrl);
+                window.location.href = redirectUrl;
+
+            } catch (err) {
+                showError('خطای داخلی: ' + err.message);
+            }
+
+            function showError(message) {
+                document.getElementById('error').textContent = message;
+                document.getElementById('error').style.display = 'block';
+                document.querySelector('.spinner').style.display = 'none';
+            }
+        })();
+    </script>
+</body>
+</html>
