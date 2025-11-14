@@ -442,13 +442,26 @@ async function processPosts(
         continue; // Skip to next post
       }
 
+      // ✅ DEBUG: Log post details
+      console.log(`📝 Post inserted successfully:`, {
+        id: post.inoreader_item_id,
+        source: post.source,
+        source_type: post.source_type,
+        channel_name: post.channel_name,
+        is_social_media: post.source_type === 'social_media'
+      });
+
       // ✅ NEW: Upsert source profile
+      console.log(`🔄 Calling upsertSourceProfile for: ${post.source}`);
       await upsertSourceProfile(supabase, post);
 
       // ✅ NEW: Upsert channel if social media
-      if (isSocialMedia) {
+      if (post.source_type === 'social_media') {
+        console.log(`🔄 Calling upsertSocialMediaChannel for: ${post.source}`);
         await upsertSocialMediaChannel(supabase, post);
       }
+
+      console.log(`✅ Profile upsert completed for: ${post.source}`);
 
       newPosts++;
 
@@ -585,9 +598,13 @@ function createErrorResponse(message: string) {
  * Upsert source profile
  */
 async function upsertSourceProfile(supabase: any, post: any): Promise<void> {
+  console.log(`🏢 upsertSourceProfile called with source: ${post.source}`);
   try {
     const sourceName = post.source;
-    if (!sourceName || sourceName.length < 3) return;
+    if (!sourceName || sourceName.length < 3) {
+      console.log(`⚠️ Skipping source: invalid name (${sourceName})`);
+      return;
+    }
 
     const { data: existing } = await supabase
       .from('source_profiles')
@@ -636,9 +653,13 @@ async function upsertSourceProfile(supabase: any, post: any): Promise<void> {
  * Upsert social media channel
  */
 async function upsertSocialMediaChannel(supabase: any, post: any): Promise<void> {
+  console.log(`📱 upsertSocialMediaChannel called with channel: ${post.channel_name || post.source}`);
   try {
     const channelName = post.channel_name;
-    if (!channelName || channelName.length < 3) return;
+    if (!channelName || channelName.length < 3) {
+      console.log(`⚠️ Skipping channel: invalid name (${channelName})`);
+      return;
+    }
 
     const platform = detectPlatformFromUrl(post.source_url || '');
 
