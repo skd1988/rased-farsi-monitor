@@ -26,6 +26,7 @@ import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
 import PhotoManagement from "./pages/settings/PhotoManagement";
 import UserManagement from "./pages/settings/UserManagement";
+import InoreaderSettings from "./pages/InoreaderSettings";
 import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
@@ -95,7 +96,9 @@ const App = () => (
                         <UserManagement />
                       </ProtectedRoute>
                     } />
-                    
+
+                    <Route path="/settings/inoreader" element={<InoreaderSettings />} />
+
                     <Route path="/response-management" element={<ResponseManagement />} />
                     
                     <Route path="/settings" element={
