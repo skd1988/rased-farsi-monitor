@@ -343,55 +343,65 @@ const Settings = () => {
   const loadAutomationStatus = async () => {
     setAutomationLoading(true);
     try {
-      // Get system enabled status from auto_analysis_config
-      const { data: configData, error: configError } = await supabase
+      // Load system config
+      const { data: config, error: configError } = await supabase
         .from('auto_analysis_config')
-        .select('config_key, config_value')
+        .select('config_value')
         .eq('config_key', 'enabled')
         .single();
 
       if (configError) {
-        console.error('Error loading config:', configError);
-      } else {
-        setSystemEnabled(configData?.config_value ?? true);
+        console.error('Load config error:', configError);
+        throw configError;
       }
 
-      // Mock cron jobs data (since we don't have pg_cron set up yet)
-      // In production, you can query cron.job table or use RPC
-      const mockCronJobs = [
-        {
-          jobname: 'inoreader-sync',
-          schedule: '*/15 * * * *',
-          active: true,
-          command: 'SELECT net.http_post(...)',
-        },
-        {
-          jobname: 'auto-analyzer',
-          schedule: '*/5 * * * *',
-          active: true,
-          command: 'SELECT net.http_post(...)',
-        },
-        {
-          jobname: 'auto-cleanup',
-          schedule: '0 0 * * *',
-          active: true,
-          command: 'SELECT net.http_post(...)',
-        },
-      ];
+      if (config) {
+        const enabled = typeof config.config_value === 'boolean'
+          ? config.config_value
+          : config.config_value === true || config.config_value === 'true';
 
-      setCronJobs(mockCronJobs);
+        console.log('✅ Loaded automation status:', {
+          raw: config.config_value,
+          parsed: enabled
+        });
 
+        setSystemEnabled(enabled);
+      }
+
+      // Load REAL cron jobs status from Edge Function
+      console.log('📡 Fetching cron jobs from Edge Function...');
+
+      const { data: cronData, error: cronError } = await supabase.functions.invoke(
+        'get-cron-status',
+        {
+          method: 'POST',
+          body: {}
+        }
+      );
+
+      if (cronError) {
+        console.error('❌ Cron jobs fetch error:', cronError);
+        throw cronError;
+      }
+
+      if (cronData && cronData.success) {
+        console.log('✅ Loaded cron jobs:', cronData.jobs);
+        setCronJobs(cronData.jobs || []);
+      } else {
+        console.warn('⚠️ No cron jobs returned');
+        setCronJobs([]);
+      }
+
+    } catch (error: any) {
+      console.error('Load automation status error:', error);
       toast({
-        title: "وضعیت بارگذاری شد",
-        description: "اطلاعات اتوماسیون با موفقیت دریافت شد",
+        title: 'خطا در بارگذاری',
+        description: error.message,
+        variant: 'destructive',
       });
-    } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: "خطا",
-        description: "مشکل در بارگذاری وضعیت",
-        variant: "destructive",
-      });
+
+      // Fallback to empty array on error
+      setCronJobs([]);
     } finally {
       setAutomationLoading(false);
     }
