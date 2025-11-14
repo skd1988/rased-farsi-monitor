@@ -398,60 +398,34 @@ const Dashboard = () => {
       .slice(0, 10);
   }, [posts, targetProfiles]);
 
-  // Top Risky Channels - NEW VERSION (matching ChannelAnalytics approach)
+  // Top Risky Channels - SYNCED with ChannelAnalytics
   const topRiskyChannelsData = useMemo(() => {
-    console.log('🔥 Calculating Top Risky Channels for Dashboard...');
+    console.log('🔥 [Dashboard] Calculating Top Risky Channels (synced with ChannelAnalytics)...');
+    console.log('📊 [Dashboard] socialMediaChannels count:', socialMediaChannels.length);
 
-    const channelStats: Record<string, {
-      channel_name: string;
-      threat_score: number;
-      critical_count: number;
-      high_count: number;
-      threat_multiplier: number;
-    }> = {};
+    if (socialMediaChannels.length === 0) {
+      console.warn('⚠️ [Dashboard] No social media channels loaded yet');
+      return [];
+    }
 
-    // ✅ STEP 1: Count actual PsyOp posts by threat level for each channel
-    posts.forEach(post => {
-      if (!post.channel_name || !post.is_psyop) return;
+    // ✅ EXACT same logic as ChannelAnalytics
+    const result = [...socialMediaChannels]
+      .sort((a, b) => b.threat_multiplier - a.threat_multiplier)
+      .slice(0, 10)
+      .map(c => ({
+        channel_name: c.channel_name,
+        threat_score: Math.round(c.threat_multiplier * c.reach_score * c.virality_coefficient),
+        threat_multiplier: c.threat_multiplier
+      }));
 
-      const channelName = post.channel_name;
-      if (!channelStats[channelName]) {
-        // Get channel metadata from social_media_channels
-        const channelMeta = socialMediaChannels.find(c => c.channel_name === channelName);
-        channelStats[channelName] = {
-          channel_name: channelName,
-          threat_score: 0,
-          critical_count: 0,
-          high_count: 0,
-          threat_multiplier: channelMeta?.threat_multiplier || 1.0
-        };
-      }
-
-      // Count posts by threat level
-      if (post.threat_level === 'Critical') channelStats[channelName].critical_count++;
-      if (post.threat_level === 'High') channelStats[channelName].high_count++;
-    });
-
-    // ✅ STEP 2: Calculate threat score using the SAME formula as ChannelAnalytics
-    const result = Object.values(channelStats)
-      .map(ch => ({
-        ...ch,
-        // Same formula: Critical=40, High=20
-        threat_score: (ch.critical_count * 40) + (ch.high_count * 20)
-      }))
-      .sort((a, b) => b.threat_score - a.threat_score)
-      .slice(0, 10);
-
-    console.log('✅ Top 10 Risky Channels:', result.map(c => ({
+    console.log('✅ [Dashboard] Top 10 Risky Channels:', result.map(c => ({
       name: c.channel_name,
       score: c.threat_score,
-      critical: c.critical_count,
-      high: c.high_count,
       multiplier: c.threat_multiplier
     })));
 
     return result;
-  }, [posts, socialMediaChannels]); // ⚠️ توجه: dependency به socialMediaChannels اضافه شد
+  }, [socialMediaChannels]); // ⚠️ فقط به socialMediaChannels وابسته است
 
   // Campaign Heatmap (last 90 days)
   const heatmapData = useMemo(() => {
