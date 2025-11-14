@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,6 +35,8 @@ import {
   Search,
   Languages,
   Activity,
+  Play,
+  Pause,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Papa from "papaparse";
@@ -257,6 +260,11 @@ const Settings = () => {
   const [redetectProgress, setRedetectProgress] = useState(0);
   const [redetectStats, setRedetectStats] = useState({ updated: 0, total: 0, persian: 0, arabic: 0, mixed: 0 });
 
+  // Automation Control states
+  const [systemEnabled, setSystemEnabled] = useState(true);
+  const [cronJobs, setCronJobs] = useState<any[]>([]);
+  const [automationLoading, setAutomationLoading] = useState(false);
+
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem("appSettings");
     if (saved) {
@@ -329,6 +337,112 @@ const Settings = () => {
     if (updates.dark_mode !== undefined) {
       document.documentElement.classList.toggle("dark", updates.dark_mode);
     }
+  };
+
+  // Load automation status from Supabase
+  const loadAutomationStatus = async () => {
+    setAutomationLoading(true);
+    try {
+      // Get system enabled status from auto_analysis_config
+      const { data: configData, error: configError } = await supabase
+        .from('auto_analysis_config')
+        .select('config_key, config_value')
+        .eq('config_key', 'enabled')
+        .single();
+
+      if (configError) {
+        console.error('Error loading config:', configError);
+      } else {
+        setSystemEnabled(configData?.config_value ?? true);
+      }
+
+      // Mock cron jobs data (since we don't have pg_cron set up yet)
+      // In production, you can query cron.job table or use RPC
+      const mockCronJobs = [
+        {
+          jobname: 'inoreader-sync',
+          schedule: '*/15 * * * *',
+          active: true,
+          command: 'SELECT net.http_post(...)',
+        },
+        {
+          jobname: 'auto-analyzer',
+          schedule: '*/5 * * * *',
+          active: true,
+          command: 'SELECT net.http_post(...)',
+        },
+        {
+          jobname: 'auto-cleanup',
+          schedule: '0 0 * * *',
+          active: true,
+          command: 'SELECT net.http_post(...)',
+        },
+      ];
+
+      setCronJobs(mockCronJobs);
+
+      toast({
+        title: "وضعیت بارگذاری شد",
+        description: "اطلاعات اتوماسیون با موفقیت دریافت شد",
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "خطا",
+        description: "مشکل در بارگذاری وضعیت",
+        variant: "destructive",
+      });
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  // Toggle system enabled/disabled
+  const toggleSystemEnabled = async () => {
+    setAutomationLoading(true);
+    try {
+      const newValue = !systemEnabled;
+
+      // Update in Supabase
+      const { error } = await supabase
+        .from('auto_analysis_config')
+        .update({ config_value: newValue })
+        .eq('config_key', 'enabled');
+
+      if (error) throw error;
+
+      setSystemEnabled(newValue);
+
+      toast({
+        title: newValue ? "سیستم فعال شد" : "سیستم غیرفعال شد",
+        description: newValue ? "تحلیل خودکار فعال است" : "تحلیل خودکار متوقف شد",
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "خطا",
+        description: "مشکل در تغییر وضعیت سیستم",
+        variant: "destructive",
+      });
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  // Pause all cron jobs (placeholder)
+  const handlePauseAll = () => {
+    toast({
+      title: "در حال توسعه",
+      description: "این قابلیت به زودی اضافه می‌شود",
+    });
+  };
+
+  // Resume all cron jobs (placeholder)
+  const handleResumeAll = () => {
+    toast({
+      title: "در حال توسعه",
+      description: "این قابلیت به زودی اضافه می‌شود",
+    });
   };
 
   const handleSaveApiKey = () => {
@@ -2457,8 +2571,12 @@ const Settings = () => {
               <Zap className="h-4 w-4" />
               <span className="hidden sm:inline">اتوماسیون</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="api-usage" 
+            <TabsTrigger value="automation-control" className="gap-2">
+              <SettingsIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">کنترل اتوماسیون</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="api-usage"
               className="gap-2"
               onClick={() => window.location.href = '/settings/api-usage'}
             >
@@ -3189,6 +3307,163 @@ const Settings = () => {
                 </div>
 
                 <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="automation-control" className="space-y-6">
+            {/* Master Control Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>کنترل سیستم خودکار</CardTitle>
+                <CardDescription>مدیریت وضعیت کلی سیستم تحلیل خودکار</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <div className="font-medium">وضعیت سیستم</div>
+                    <p className="text-sm text-muted-foreground">
+                      {systemEnabled ? "سیستم فعال و در حال اجرا است" : "سیستم غیرفعال است"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={systemEnabled ? "default" : "secondary"}>
+                      {systemEnabled ? "✅ فعال" : "⏸️ غیرفعال"}
+                    </Badge>
+                    <Switch
+                      checked={systemEnabled}
+                      onCheckedChange={toggleSystemEnabled}
+                      disabled={automationLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={loadAutomationStatus}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={automationLoading}
+                  >
+                    {automationLoading ? (
+                      <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 me-2" />
+                    )}
+                    بارگذاری وضعیت
+                  </Button>
+                  <Button
+                    onClick={handlePauseAll}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={automationLoading || !systemEnabled}
+                  >
+                    <Pause className="h-4 w-4 me-2" />
+                    توقف همه
+                  </Button>
+                  <Button
+                    onClick={handleResumeAll}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={automationLoading || systemEnabled}
+                  >
+                    <Play className="h-4 w-4 me-2" />
+                    راه‌اندازی همه
+                  </Button>
+                </div>
+
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>توجه</AlertTitle>
+                  <AlertDescription>
+                    غیرفعال کردن سیستم باعث توقف تحلیل خودکار می‌شود. پست‌های جدید در صف تحلیل قرار می‌گیرند اما پردازش نمی‌شوند.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
+            {/* Cron Jobs Status Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>وضعیت Cron Jobs</CardTitle>
+                <CardDescription>نمایش وضعیت وظایف زمان‌بندی شده</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {cronJobs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                    <p>در حال بارگذاری وضعیت...</p>
+                  </div>
+                ) : (
+                  cronJobs.map((job, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <div className="font-medium">{job.jobname}</div>
+                        <p className="text-xs text-muted-foreground font-mono">{job.schedule}</p>
+                      </div>
+                      <Badge variant={job.active ? "default" : "secondary"}>
+                        {job.active ? "✅ فعال" : "⏸️ غیرفعال"}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            {/* SQL Commands Helper Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>دستورات SQL برای مدیریت</CardTitle>
+                <CardDescription>دستورات مفید برای مدیریت دستی سیستم</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">غیرفعال کردن سیستم:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`UPDATE auto_analysis_config
+SET config_value = false
+WHERE config_key = 'enabled';`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">فعال کردن سیستم:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`UPDATE auto_analysis_config
+SET config_value = true
+WHERE config_key = 'enabled';`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">مشاهده Cron Jobs:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`SELECT * FROM cron.job
+ORDER BY jobid;`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">غیرفعال کردن یک Job:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`SELECT cron.unschedule('job-name-here');`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">مشاهده تنظیمات:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`SELECT * FROM auto_analysis_config;`}
+                  </pre>
+                </div>
+
+                <Alert>
+                  <Database className="h-4 w-4" />
+                  <AlertTitle>نکته</AlertTitle>
+                  <AlertDescription>
+                    این دستورات را می‌توانید در SQL Editor سوپابیس اجرا کنید. برای دسترسی به Dashboard Supabase مراجعه کنید.
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           </TabsContent>
