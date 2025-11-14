@@ -18,7 +18,8 @@ import {
   ChevronDown,
   ChevronUp,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Rss
 } from 'lucide-react';
 import logo from '@/assets/logo.svg';
 import { cn } from '@/lib/utils';
@@ -149,21 +150,27 @@ const menuStructure: MenuGroup[] = [
     color: 'gray',
     collapsible: true,
     items: [
-      { 
-        label: 'تنظیمات', 
-        icon: Settings, 
+      {
+        label: 'تنظیمات',
+        icon: Settings,
         route: '/settings',
         description: 'پیکربندی سیستم'
       },
-      { 
-        label: 'مصرف API', 
-        icon: Activity, 
+      {
+        label: 'Inoreader RSS',
+        icon: Rss,
+        route: '/settings/inoreader',
+        description: 'مدیریت Inoreader و RSS'
+      },
+      {
+        label: 'مصرف API',
+        icon: Activity,
         route: '/api-usage',
         description: 'آمار و هزینه API'
       },
-      { 
-        label: 'تست سیستم', 
-        icon: Wrench, 
+      {
+        label: 'تست سیستم',
+        icon: Wrench,
         route: '/system-test',
         badge: { type: 'label', label: 'Debug' },
         description: 'تست و دیباگ'
