@@ -423,6 +423,14 @@ async function processPosts(
         continue;
       }
 
+      // Detect if social media
+      const isSocialMedia = post.source_type === 'social_media';
+
+      // Set channel_name for social media
+      if (isSocialMedia) {
+        post.channel_name = post.source;
+      }
+
       // Insert new post
       const { error: insertError } = await supabase
         .from('posts')
@@ -431,9 +439,18 @@ async function processPosts(
       if (insertError) {
         console.error('❌ Insert error:', insertError);
         filtered++;
-      } else {
-        newPosts++;
+        continue; // Skip to next post
       }
+
+      // ✅ NEW: Upsert source profile
+      await upsertSourceProfile(supabase, post);
+
+      // ✅ NEW: Upsert channel if social media
+      if (isSocialMedia) {
+        await upsertSocialMediaChannel(supabase, post);
+      }
+
+      newPosts++;
 
     } catch (error: any) {
       console.error('❌ Error processing post:', error);
@@ -562,4 +579,219 @@ function createErrorResponse(message: string) {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     }
   );
+}
+
+/**
+ * Upsert source profile
+ */
+async function upsertSourceProfile(supabase: any, post: any): Promise<void> {
+  try {
+    const sourceName = post.source;
+    if (!sourceName || sourceName.length < 3) return;
+
+    const { data: existing } = await supabase
+      .from('source_profiles')
+      .select('*')
+      .eq('source_name', sourceName)
+      .maybeSingle();
+
+    if (existing) {
+      // Update psyop counts if needed
+      if (post.is_psyop) {
+        await supabase
+          .from('source_profiles')
+          .update({
+            historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
+            last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
+          })
+          .eq('id', existing.id);
+      }
+    } else {
+      // Create new profile
+      const politicalAlignment = detectPoliticalAlignment(post.source, post.source_url || '');
+
+      const newProfile = {
+        source_name: sourceName,
+        source_type: normalizeSourceType(post.source_type),
+        political_alignment: politicalAlignment,
+        reach_score: 50,
+        credibility_score: 50,
+        virality_coefficient: 1.0,
+        threat_multiplier: (politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli')) ? 1.5 : 1.0,
+        historical_psyop_count: post.is_psyop ? 1 : 0,
+        last_30days_psyop_count: post.is_psyop ? 1 : 0,
+        country: post.source_country || null,
+        active: true,
+      };
+
+      await supabase.from('source_profiles').insert([newProfile]);
+      console.log(`✨ Created source profile: ${sourceName}`);
+    }
+  } catch (error: any) {
+    console.error('❌ Error upserting source profile:', error.message);
+  }
+}
+
+/**
+ * Upsert social media channel
+ */
+async function upsertSocialMediaChannel(supabase: any, post: any): Promise<void> {
+  try {
+    const channelName = post.channel_name;
+    if (!channelName || channelName.length < 3) return;
+
+    const platform = detectPlatformFromUrl(post.source_url || '');
+
+    const { data: existing } = await supabase
+      .from('social_media_channels')
+      .select('*')
+      .eq('channel_name', channelName)
+      .maybeSingle();
+
+    if (existing) {
+      // Update psyop counts if needed
+      if (post.is_psyop) {
+        await supabase
+          .from('social_media_channels')
+          .update({
+            historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
+            last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
+          })
+          .eq('id', existing.id);
+      }
+    } else {
+      // Create new channel
+      const politicalAlignment = detectPoliticalAlignment(channelName, post.source_url || '');
+      const languageArray = getLanguageArray(post.language, post.source_country);
+
+      const newChannel = {
+        channel_name: channelName,
+        channel_id: extractChannelId(post.source_url || '', platform),
+        platform: normalizePlatform(platform),
+        political_alignment: politicalAlignment,
+        reach_score: 50,
+        credibility_score: 50,
+        virality_coefficient: platform === 'Telegram' ? 1.3 : 1.0,
+        threat_multiplier: (politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli')) ? 2.0 : 1.0,
+        historical_psyop_count: post.is_psyop ? 1 : 0,
+        last_30days_psyop_count: post.is_psyop ? 1 : 0,
+        language: languageArray,
+        country: post.source_country || null,
+      };
+
+      await supabase.from('social_media_channels').insert([newChannel]);
+      console.log(`✨ Created channel: ${channelName} (${platform})`);
+    }
+  } catch (error: any) {
+    console.error('❌ Error upserting channel:', error.message);
+  }
+}
+
+/**
+ * Helper: Detect platform from URL
+ */
+function detectPlatformFromUrl(url: string): string {
+  if (!url) return 'Unknown';
+  const urlLower = url.toLowerCase();
+
+  if (urlLower.includes('t.me') || urlLower.includes('telegram')) return 'Telegram';
+  if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) return 'Twitter';
+  if (urlLower.includes('facebook.com')) return 'Facebook';
+  if (urlLower.includes('instagram.com')) return 'Instagram';
+  if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) return 'YouTube';
+  if (urlLower.includes('tiktok.com')) return 'TikTok';
+
+  return 'Unknown';
+}
+
+/**
+ * Helper: Extract channel ID
+ */
+function extractChannelId(url: string, platform: string): string | null {
+  if (!url) return null;
+  if (platform === 'Telegram' && url.includes('t.me/')) {
+    return url.split('t.me/')[1]?.split('/')[0] || null;
+  }
+  return null;
+}
+
+/**
+ * Helper: Get language array
+ */
+function getLanguageArray(language: string, country: string | null): string[] {
+  if (language === 'Persian') return ['فارسی'];
+  if (language === 'Arabic') return ['عربی'];
+  if (language === 'English') return ['انگلیسی'];
+
+  if (country === 'Iran') return ['فارسی'];
+  if (['Lebanon', 'Iraq', 'Syria', 'Yemen'].includes(country || '')) return ['عربی'];
+
+  return ['انگلیسی'];
+}
+
+/**
+ * Helper: Normalize platform
+ */
+function normalizePlatform(platform: string): string {
+  const validPlatforms = ['Telegram', 'Twitter', 'Facebook', 'Instagram', 'YouTube', 'TikTok', 'LinkedIn', 'WhatsApp', 'Snapchat'];
+  if (validPlatforms.includes(platform)) return platform;
+
+  const platformMap: Record<string, string> = {
+    'telegram': 'Telegram',
+    'twitter': 'Twitter',
+    'x': 'Twitter',
+    'facebook': 'Facebook',
+    'instagram': 'Instagram',
+    'youtube': 'YouTube',
+    'tiktok': 'TikTok',
+  };
+
+  return platformMap[platform.toLowerCase()] || 'Telegram';
+}
+
+/**
+ * Helper: Normalize source type
+ */
+function normalizeSourceType(sourceType: string): string {
+  const validTypes = ['RSS Feed', 'News Website', 'Social Media', 'Blog', 'Aggregator', 'Government', 'Unknown'];
+  if (validTypes.includes(sourceType)) return sourceType;
+
+  const typeMap: Record<string, string> = {
+    'social_media': 'Social Media',
+    'website': 'News Website',
+    'news_agency': 'News Website',
+    'blog': 'Blog',
+    'forum': 'News Website',
+  };
+
+  return typeMap[sourceType.toLowerCase()] || 'News Website';
+}
+
+/**
+ * Helper: Detect political alignment
+ */
+function detectPoliticalAlignment(source: string, url: string): string {
+  const checkText = `${source} ${url}`.toLowerCase();
+
+  const enemyPatterns = [
+    { pattern: /saudi|سعود|العربية/i, alignment: 'Saudi-Aligned' },
+    { pattern: /israel|יהודי|يديعوت|القدس|جيروزاليم/i, alignment: 'Israeli-Affiliated' },
+    { pattern: /معارض|المعارض|اندپندنت عربية|اندبندنت عربية|العربي الجديد/i, alignment: 'Anti-Resistance' },
+    { pattern: /bbc|cnn|france24|dw/i, alignment: 'Western-Aligned' },
+  ];
+
+  for (const { pattern, alignment } of enemyPatterns) {
+    if (pattern.test(checkText)) return alignment;
+  }
+
+  const proResistancePatterns = [
+    /almayadeen|الميادين|almanar|المنار|قناة المسيرة|الأخبار/i,
+    /parstoday|presstv|الوفاق|al-wefaq/i,
+  ];
+
+  for (const pattern of proResistancePatterns) {
+    if (pattern.test(checkText)) return 'Pro-Resistance';
+  }
+
+  return 'Neutral';
 }
