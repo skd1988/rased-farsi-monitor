@@ -273,12 +273,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('نقش کاربر یافت نشد');
       }
 
+      // If limits data is missing, use default values instead of throwing error
       if (!limitsData.ai_analysis && limitsData.ai_analysis !== 0) {
-        console.error('[AuthContext] No limits data found in result:', {
+        console.warn('[AuthContext] No limits data found, using defaults:', {
           result,
           limitsData
         });
-        throw new Error('محدودیت‌های کاربر یافت نشد');
+        limitsData.ai_analysis = 10;
+        limitsData.chat_messages = 50;
+        limitsData.exports = 20;
       }
 
       const userObject: User = {
