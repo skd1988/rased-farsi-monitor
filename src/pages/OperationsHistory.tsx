@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -78,6 +78,37 @@ const COLORS = {
 };
 
 const CHART_COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#06B6D4', '#F97316'];
+
+// Translation dictionaries
+const vectorTranslations: Record<string, string> = {
+  'Legitimacy Questioning': 'زیر سؤال بردن مشروعیت',
+  'Weakness Portrayal': 'نمایش ضعف',
+  'Foreign Interference': 'دخالت خارجی',
+  'Sectarian Division': 'تفرقه فرقه‌ای',
+  'Terrorism Labeling': 'برچسب تروریستی',
+  'Human Rights Violations': 'نقض حقوق بشر',
+  'Corruption Allegations': 'اتهام فساد',
+  'Fearmongering': 'ترس‌آفرینی',
+  'Disinformation': 'اطلاعات نادرست',
+  'Character Assassination': 'ترور شخصیت',
+  'False Flag Operations': 'عملیات پرچم دروغین',
+  'Emotional Manipulation': 'دستکاری احساسی',
+  'Scapegoating': 'قربانی‌سازی',
+  'Demonization': 'شیطان‌سازی',
+};
+
+const narrativeTranslations: Record<string, string> = {
+  'Corruption': 'فساد',
+  'Terrorism': 'تروریسم',
+  'Foreign Agent': 'عامل خارجی',
+  'Weakness': 'ضعف',
+  'Illegitimacy': 'عدم مشروعیت',
+  'Sectarianism': 'فرقه‌گرایی',
+  'Violence': 'خشونت',
+  'Extremism': 'افراط‌گرایی',
+  'Destabilization': 'بی‌ثباتی',
+  'Human Rights Abuse': 'نقض حقوق بشر',
+};
 
 const OperationsHistory = () => {
   const { toast } = useToast();
@@ -242,6 +273,83 @@ const OperationsHistory = () => {
 
     setMonthlyStats(stats.reverse());
   };
+
+  // Aggregate Attack Vectors
+  const aggregatedVectors = useMemo(() => {
+    const grouped = attackVectors.reduce((acc: any, item: any) => {
+      const key = item.attack_vector;
+      if (!acc[key]) {
+        acc[key] = {
+          attack_vector: key,
+          usage_count: 0,
+          critical_count: 0,
+          high_count: 0,
+          effectiveness_score: 0,
+          effectiveness_scores: [],
+          dates: [],
+          trend: item.trend,
+        };
+      }
+      acc[key].usage_count += item.usage_count || 0;
+      acc[key].critical_count += item.critical_count || 0;
+      acc[key].high_count += item.high_count || 0;
+      if (item.effectiveness_score) {
+        acc[key].effectiveness_scores.push(item.effectiveness_score);
+      }
+      if (item.first_seen) acc[key].dates.push(item.first_seen);
+      if (item.last_seen) acc[key].dates.push(item.last_seen);
+      return acc;
+    }, {});
+
+    return Object.values(grouped)
+      .map((v: any) => ({
+        ...v,
+        effectiveness_score:
+          v.effectiveness_scores.length > 0
+            ? v.effectiveness_scores.reduce((a: number, b: number) => a + b, 0) /
+              v.effectiveness_scores.length
+            : 0,
+        first_seen: v.dates.length > 0 ? v.dates.sort()[0] : null,
+        last_seen: v.dates.length > 0 ? v.dates.sort()[v.dates.length - 1] : null,
+        vector_name_persian: vectorTranslations[v.attack_vector] || v.attack_vector,
+      }))
+      .sort((a: any, b: any) => b.usage_count - a.usage_count);
+  }, [attackVectors]);
+
+  // Aggregate Narratives
+  const aggregatedNarratives = useMemo(() => {
+    const grouped = narratives.reduce((acc: any, item: any) => {
+      const key = item.narrative;
+      if (!acc[key]) {
+        acc[key] = {
+          narrative: key,
+          usage_count: 0,
+          impact_score: 0,
+          impact_scores: [],
+          reach_estimate: 0,
+          category: item.category,
+          evolution_notes: item.evolution_notes,
+        };
+      }
+      acc[key].usage_count += item.usage_count || 0;
+      acc[key].reach_estimate += item.reach_estimate || 0;
+      if (item.impact_score) {
+        acc[key].impact_scores.push(item.impact_score);
+      }
+      return acc;
+    }, {});
+
+    return Object.values(grouped)
+      .map((n: any) => ({
+        ...n,
+        impact_score:
+          n.impact_scores.length > 0
+            ? n.impact_scores.reduce((a: number, b: number) => a + b, 0) / n.impact_scores.length
+            : 0,
+        narrative_persian: narrativeTranslations[n.narrative] || n.narrative,
+      }))
+      .sort((a: any, b: any) => b.usage_count - a.usage_count);
+  }, [narratives]);
 
   // Render helpers
   const getThreatBadge = (level: string) => {
@@ -922,7 +1030,7 @@ const OperationsHistory = () => {
         <TabsContent value="attack-vectors" className="space-y-6">
           {loading ? (
             <LoadingSkeleton />
-          ) : attackVectors.length === 0 ? (
+          ) : aggregatedVectors.length === 0 ? (
             <EmptyState message="هیچ بردار حمله‌ای یافت نشد" />
           ) : (
             <>
@@ -933,13 +1041,13 @@ const OperationsHistory = () => {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={400}>
-                    <BarChart data={attackVectors.slice(0, 15)}>
+                    <BarChart data={aggregatedVectors.slice(0, 15)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="attack_vector" angle={-45} textAnchor="end" height={100} />
+                      <XAxis dataKey="vector_name_persian" angle={-45} textAnchor="end" height={120} />
                       <YAxis />
                       <Tooltip contentStyle={{ direction: 'rtl' }} />
                       <Bar dataKey="usage_count" fill={COLORS.primary}>
-                        {attackVectors.slice(0, 15).map((entry, index) => (
+                        {aggregatedVectors.slice(0, 15).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Bar>
@@ -950,11 +1058,11 @@ const OperationsHistory = () => {
 
               {/* Attack Vectors List */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {attackVectors.map((vector) => (
-                  <Card key={vector.id}>
+                {aggregatedVectors.map((vector, idx) => (
+                  <Card key={idx}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">{vector.attack_vector}</CardTitle>
+                        <CardTitle className="text-lg">{vector.vector_name_persian}</CardTitle>
                         <Badge
                           className={cn(
                             vector.trend === 'rising' && 'bg-red-600',
@@ -977,15 +1085,19 @@ const OperationsHistory = () => {
                         </div>
                         <div>
                           <span className="text-muted-foreground">اثربخشی:</span>{' '}
-                          {vector.effectiveness_score}/10
+                          {vector.effectiveness_score.toFixed(1)}/10
                         </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        اولین رویت: {formatPersianDate(vector.first_seen)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        آخرین رویت: {formatPersianDate(vector.last_seen)}
-                      </div>
+                      {vector.first_seen && (
+                        <div className="text-xs text-muted-foreground">
+                          اولین رویت: {formatPersianDate(vector.first_seen)}
+                        </div>
+                      )}
+                      {vector.last_seen && (
+                        <div className="text-xs text-muted-foreground">
+                          آخرین رویت: {formatPersianDate(vector.last_seen)}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -998,7 +1110,7 @@ const OperationsHistory = () => {
         <TabsContent value="narratives" className="space-y-6">
           {loading ? (
             <LoadingSkeleton />
-          ) : narratives.length === 0 ? (
+          ) : aggregatedNarratives.length === 0 ? (
             <EmptyState message="هیچ روایتی یافت نشد" />
           ) : (
             <>
@@ -1011,8 +1123,8 @@ const OperationsHistory = () => {
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={narratives.slice(0, 10).map((n) => ({
-                          name: n.narrative,
+                        data={aggregatedNarratives.slice(0, 10).map((n) => ({
+                          name: n.narrative_persian,
                           value: n.usage_count,
                         }))}
                         cx="50%"
@@ -1023,7 +1135,7 @@ const OperationsHistory = () => {
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {narratives.slice(0, 10).map((entry, index) => (
+                        {aggregatedNarratives.slice(0, 10).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Pie>
@@ -1035,11 +1147,11 @@ const OperationsHistory = () => {
 
               {/* Narratives List */}
               <div className="space-y-4">
-                {narratives.map((narrative) => (
-                  <Card key={narrative.id}>
+                {aggregatedNarratives.map((narrative, idx) => (
+                  <Card key={idx}>
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between">
-                        <span>{narrative.narrative}</span>
+                        <span>{narrative.narrative_persian}</span>
                         <Badge variant="secondary">{narrative.category}</Badge>
                       </CardTitle>
                     </CardHeader>
@@ -1051,7 +1163,7 @@ const OperationsHistory = () => {
                         </div>
                         <div>
                           <span className="text-muted-foreground">امتیاز تأثیر:</span>{' '}
-                          {narrative.impact_score}/10
+                          {narrative.impact_score.toFixed(1)}/10
                         </div>
                         <div>
                           <span className="text-muted-foreground">تخمین دسترسی:</span>{' '}
