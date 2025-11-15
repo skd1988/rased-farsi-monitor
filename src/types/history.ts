@@ -49,19 +49,17 @@ export interface SignificantPost {
 
 // Attack Vector History
 export interface AttackVectorHistory {
-  id: string;
-  attack_vector: string;
+  id?: string;
+  vector_name: string;
+  date: string;
   usage_count: number;
-  first_seen: string;
-  last_seen: string;
-  peak_period: string;
-  associated_sources: string[];
-  associated_narratives: string[];
-  effectiveness_score: number;
-  trend: 'rising' | 'stable' | 'declining';
-  examples: string[];
-  created_at: string;
-  updated_at: string;
+  critical_count: number;
+  high_count: number;
+  sources: string[];
+  targets: string[];
+  avg_threat_level: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Narrative History
