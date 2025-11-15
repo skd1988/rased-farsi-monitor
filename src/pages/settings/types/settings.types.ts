@@ -70,3 +70,26 @@ export type LanguageType = 'fa' | 'en' | 'ar';
 export type ScheduleType = 'manual' | 'immediate' | 'delayed' | 'scheduled';
 export type BackupFrequency = 'never' | 'daily' | 'weekly' | 'monthly';
 export type SettingsUpdate = Partial<AppSettings>;
+
+/**
+ * User Management Types
+ */
+export type UserRole = 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest';
+export type UserStatus = 'active' | 'suspended' | 'inactive';
+
+export interface User {
+  id: string;
+  email: string;
+  full_name?: string;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
+  last_login?: string;
+}
+
+export interface RolePermissions {
+  role: UserRole;
+  label: string;
+  permissions: string[];
+  color: string;
+}
