@@ -19,7 +19,8 @@ import {
   ChevronUp,
   PanelLeftClose,
   PanelLeftOpen,
-  Rss
+  Rss,
+  Archive
 } from 'lucide-react';
 import logo from '@/assets/logo.svg';
 import { cn } from '@/lib/utils';
@@ -100,6 +101,12 @@ const menuStructure: MenuGroup[] = [
         icon: TrendingUp,
         route: '/intelligence',
         description: 'تحلیل روندها و الگوها'
+      },
+      {
+        label: 'تاریخچه عملیات',
+        icon: Archive,
+        route: '/operations-history',
+        description: 'آرشیو هوشمند عملیات روانی'
       }
     ]
   },

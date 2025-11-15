@@ -33,6 +33,7 @@ import ResponseManagement from "./pages/ResponseManagement";
 import SystemTest from "./pages/SystemTest";
 import Debug from "./pages/Debug";
 import GoogleSheetsSync from "./pages/GoogleSheetsSync";
+import OperationsHistory from "./pages/OperationsHistory";
 
 const queryClient = new QueryClient();
 
@@ -115,6 +116,7 @@ const App = () => (
                     } />
 
                     <Route path="/intelligence" element={<IntelligenceAndTrends />} />
+                    <Route path="/operations-history" element={<OperationsHistory />} />
                     <Route path="/system-test" element={<SystemTest />} />
                   </Route>
                   
