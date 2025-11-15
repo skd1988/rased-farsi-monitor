@@ -21,6 +21,12 @@ All colors MUST be HSL.
     --primary-foreground: 0 0% 100%;
     --primary-glow: 217 91% 70%;
 
+    /* Theme Color Variables */
+    --theme-blue-primary: 217 91% 60%;
+    --theme-green-primary: 142 71% 45%;
+    --theme-red-primary: 0 84% 60%;
+    --theme-purple-primary: 271 76% 53%;
+
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
@@ -132,6 +138,31 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* Theme Variations */
+  [data-theme="blue"] {
+    --primary: var(--theme-blue-primary);
+    --ring: var(--theme-blue-primary);
+    --primary-glow: 217 91% 70%;
+  }
+
+  [data-theme="green"] {
+    --primary: var(--theme-green-primary);
+    --ring: var(--theme-green-primary);
+    --primary-glow: 142 71% 55%;
+  }
+
+  [data-theme="red"] {
+    --primary: var(--theme-red-primary);
+    --ring: var(--theme-red-primary);
+    --primary-glow: 0 84% 70%;
+  }
+
+  [data-theme="purple"] {
+    --primary: var(--theme-purple-primary);
+    --ring: var(--theme-purple-primary);
+    --primary-glow: 271 76% 63%;
   }
 }
 
