@@ -873,7 +873,7 @@ const OperationsHistory = () => {
                   <CardContent>
                     <div className="space-y-3">
                       {targetHistory
-                        .filter((t) => t.target_type === 'person')
+                        .filter((t) => t.target_type === 'Person')
                         .slice(0, 10)
                         .map((target) => (
                           <div
@@ -899,7 +899,7 @@ const OperationsHistory = () => {
                   <CardContent>
                     <div className="space-y-3">
                       {targetHistory
-                        .filter((t) => t.target_type === 'organization')
+                        .filter((t) => t.target_type === 'Organization')
                         .slice(0, 10)
                         .map((target) => (
                           <div
@@ -1299,7 +1299,7 @@ const OperationsHistory = () => {
                   <CardContent>
                     <div className="text-4xl font-bold">{targetHistory.length}</div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      {targetHistory.filter((t) => t.target_type === 'person').length} فرد
+                      {targetHistory.filter((t) => t.target_type === 'Person').length} فرد
                     </p>
                   </CardContent>
                 </Card>
