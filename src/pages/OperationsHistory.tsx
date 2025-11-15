@@ -132,6 +132,7 @@ const OperationsHistory = () => {
   const [campaigns, setCampaigns] = useState<CampaignArchive[]>([]);
   const [sourceTimelines, setSourceTimelines] = useState<SourceTimeline[]>([]);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
+  const [highRiskSources, setHighRiskSources] = useState<any[]>([]);
 
   // Aggregate attack vectors by vector_name and add Persian translation
   const aggregatedAttackVectors = React.useMemo(() => {
@@ -209,6 +210,7 @@ const OperationsHistory = () => {
         fetchCampaigns(),
         fetchSourceTimelines(),
         fetchMonthlyStats(),
+        fetchHighRiskSources(),
       ]);
     } catch (error) {
       console.error('Error fetching history data:', error);
@@ -336,6 +338,42 @@ const OperationsHistory = () => {
     setMonthlyStats(stats.reverse());
   };
 
+  const fetchHighRiskSources = async () => {
+    const { data, error } = await supabase
+      .from('high_risk_sources')
+      .select(`
+        "منبع",
+        "تعداد مطالب",
+        "عملیات روانی",
+        "درصد PsyOp",
+        "بحرانی",
+        "تهدید بالا",
+        "سطح خطر",
+        "آخرین پست"
+      `)
+      .order('"درصد PsyOp"', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('Error fetching high risk sources:', error);
+      return;
+    }
+
+    // Map Persian column names to English for use in code
+    const mappedSources = data?.map((s: any) => ({
+      source: s['منبع'],
+      total_posts: s['تعداد مطالب'],
+      psyop_count: s['عملیات روانی'],
+      psyop_rate: s['درصد PsyOp'],
+      critical: s['بحرانی'],
+      high: s['تهدید بالا'],
+      risk_level: s['سطح خطر'],
+      last_post: s['آخرین پست'],
+    })) || [];
+
+    setHighRiskSources(mappedSources);
+  };
+
   // Render helpers
   const getThreatBadge = (level: string) => {
     const colors = {
@@ -345,6 +383,20 @@ const OperationsHistory = () => {
       Low: 'bg-blue-600',
     };
     return <Badge className={cn('text-white', colors[level as keyof typeof colors])}>{level}</Badge>;
+  };
+
+  const getRiskLevelEmoji = (level: string) => {
+    const emojiMap: Record<string, string> = {
+      'بحرانی': '🔴',
+      'بالا': '🟠',
+      'متوسط': '🟡',
+      'پایین': '🟢',
+      'Critical': '🔴',
+      'High': '🟠',
+      'Medium': '🟡',
+      'Low': '🟢',
+    };
+    return emojiMap[level] || '⚪';
   };
 
   const EmptyState = ({ message }: { message: string }) => (
@@ -1202,54 +1254,164 @@ const OperationsHistory = () => {
         <TabsContent value="risky-sources" className="space-y-6">
           {loading ? (
             <LoadingSkeleton />
-          ) : sourceTimelines.length === 0 ? (
+          ) : highRiskSources.length === 0 ? (
             <EmptyState message="هیچ منبع پرخطری یافت نشد" />
           ) : (
             <>
-              {/* High Risk Sources */}
+              {/* Stats Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      کل منابع پرخطر
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{highRiskSources.length}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      کل مطالب
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {highRiskSources.reduce((sum, s) => sum + (s.total_posts || 0), 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      کل عملیات روانی
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-red-600">
+                      {highRiskSources.reduce((sum, s) => sum + (s.psyop_count || 0), 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      میانگین نرخ PsyOp
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-orange-600">
+                      {highRiskSources.length > 0
+                        ? (
+                            (highRiskSources.reduce((sum, s) => sum + (s.psyop_rate || 0), 0) /
+                              highRiskSources.length) *
+                            100
+                          ).toFixed(1)
+                        : 0}
+                      %
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* High Risk Sources Table */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <AlertTriangle className="w-5 h-5 text-red-600" />
                     منابع با نرخ بالای عملیات روانی
                   </CardTitle>
-                  <CardDescription>منابعی که بیش از 50% محتوایشان PsyOp است</CardDescription>
+                  <CardDescription>
+                    20 منبع برتر با بالاترین نرخ عملیات روانی (مرتب شده بر اساس درصد PsyOp)
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {sourceTimelines
-                      .filter((s) => s.psyop_rate > 0.5)
-                      .slice(0, 20)
-                      .map((source) => (
-                        <div
-                          key={source.id}
-                          className="flex items-center justify-between p-4 rounded-lg border"
-                        >
-                          <div className="flex-1">
-                            <div className="font-semibold">{source.source_name}</div>
-                            <div className="text-sm text-muted-foreground">{source.source_type}</div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <div className="text-center">
-                              <div className="text-sm text-muted-foreground">نرخ PsyOp</div>
-                              <div className="text-lg font-bold text-red-600">
-                                {(source.psyop_rate * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-sm text-muted-foreground">تعداد پست</div>
-                              <div className="text-lg font-bold">{source.posts_count}</div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-sm text-muted-foreground">میانگین تهدید</div>
-                              <div className="text-lg font-bold">
-                                {source.avg_threat_score.toFixed(1)}
+                    {highRiskSources.map((source, index) => (
+                      <div
+                        key={`${source.source}-${index}`}
+                        className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted transition-colors"
+                      >
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{getRiskLevelEmoji(source.risk_level)}</span>
+                            <div>
+                              <div className="font-semibold text-lg">{source.source}</div>
+                              <div className="text-xs text-muted-foreground">
+                                سطح خطر: {source.risk_level}
                               </div>
                             </div>
                           </div>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-6">
+                          <div className="text-center">
+                            <div className="text-xs text-muted-foreground">نرخ PsyOp</div>
+                            <div className="text-2xl font-bold text-red-600">
+                              {(source.psyop_rate * 100).toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-muted-foreground">عملیات روانی</div>
+                            <div className="text-xl font-bold text-orange-600">
+                              {source.psyop_count}
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-muted-foreground">کل مطالب</div>
+                            <div className="text-xl font-bold">{source.total_posts}</div>
+                          </div>
+                          <div className="text-center min-w-[80px]">
+                            <div className="text-xs text-muted-foreground">بحرانی</div>
+                            <div className="text-xl font-bold text-red-700">{source.critical}</div>
+                          </div>
+                          <div className="text-center min-w-[80px]">
+                            <div className="text-xs text-muted-foreground">تهدید بالا</div>
+                            <div className="text-xl font-bold text-orange-700">{source.high}</div>
+                          </div>
+                          <div className="text-center min-w-[120px]">
+                            <div className="text-xs text-muted-foreground">آخرین پست</div>
+                            <div className="text-sm font-medium">
+                              {source.last_post ? formatPersianDate(source.last_post) : 'نامشخص'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* PsyOp Rate Distribution Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>توزیع نرخ عملیات روانی</CardTitle>
+                  <CardDescription>مقایسه نرخ PsyOp منابع مختلف</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={highRiskSources.slice(0, 15)} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" domain={[0, 100]} />
+                      <YAxis dataKey="source" type="category" width={150} />
+                      <Tooltip
+                        contentStyle={{ direction: 'rtl' }}
+                        formatter={(value: number) => `${value.toFixed(1)}%`}
+                      />
+                      <Bar
+                        dataKey={(d) => (d.psyop_rate * 100).toFixed(1)}
+                        fill={COLORS.critical}
+                        name="نرخ PsyOp (%)"
+                      >
+                        {highRiskSources.slice(0, 15).map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={entry.psyop_rate > 0.7 ? COLORS.critical : COLORS.high}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
             </>
