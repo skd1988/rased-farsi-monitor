@@ -133,6 +133,7 @@ const OperationsHistory = () => {
   const [sourceTimelines, setSourceTimelines] = useState<SourceTimeline[]>([]);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
   const [highRiskSources, setHighRiskSources] = useState<any[]>([]);
+  const [highRiskChannels, setHighRiskChannels] = useState<any[]>([]);
 
   // Aggregate attack vectors by vector_name and add Persian translation
   const aggregatedAttackVectors = React.useMemo(() => {
@@ -265,6 +266,7 @@ const OperationsHistory = () => {
         fetchSourceTimelines(),
         fetchMonthlyStats(),
         fetchHighRiskSources(),
+        fetchHighRiskChannels(),
       ]);
     } catch (error) {
       console.error('Error fetching history data:', error);
@@ -426,6 +428,46 @@ const OperationsHistory = () => {
     })) || [];
 
     setHighRiskSources(mappedSources);
+  };
+
+  const fetchHighRiskChannels = async () => {
+    const { data, error } = await supabase
+      .from('high_risk_sources')
+      .select(`
+        "منبع",
+        "تعداد مطالب",
+        "عملیات روانی",
+        "درصد PsyOp",
+        "بحرانی",
+        "تهدید بالا",
+        "سطح خطر",
+        "آخرین پست"
+      `)
+      .or('"منبع".ilike.%(Facebook)%,"منبع".ilike.%(Telegram)%,"منبع".ilike.%YouTube%')
+      .order('"درصد PsyOp"', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('Error fetching high risk channels:', error);
+      return;
+    }
+
+    // Map to English names with platform detection
+    const mappedChannels = data?.map((s: any) => ({
+      channel_name: s['منبع'],
+      platform: s['منبع'].includes('Facebook') ? 'Facebook' :
+                s['منبع'].includes('Telegram') ? 'Telegram' :
+                s['منبع'].includes('YouTube') ? 'YouTube' : 'Other',
+      total_posts: s['تعداد مطالب'],
+      psyop_count: s['عملیات روانی'],
+      psyop_rate: s['درصد PsyOp'],
+      critical: s['بحرانی'],
+      high: s['تهدید بالا'],
+      risk_level: s['سطح خطر'],
+      last_post: s['آخرین پست'],
+    })) || [];
+
+    setHighRiskChannels(mappedChannels);
   };
 
   // Render helpers
@@ -1482,57 +1524,184 @@ const OperationsHistory = () => {
         <TabsContent value="risky-channels" className="space-y-6">
           {loading ? (
             <LoadingSkeleton />
-          ) : sourceTimelines.length === 0 ? (
+          ) : highRiskChannels.length === 0 ? (
             <EmptyState message="هیچ کانال پرخطری یافت نشد" />
           ) : (
             <>
+              {/* Stats Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      کل کانال‌های پرخطر
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">{highRiskChannels.length}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      کل مطالب
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {highRiskChannels.reduce((sum, c) => sum + (c.total_posts || 0), 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      کل عملیات روانی
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-red-600">
+                      {highRiskChannels.reduce((sum, c) => sum + (c.psyop_count || 0), 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      میانگین نرخ PsyOp
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-orange-600">
+                      {highRiskChannels.length > 0
+                        ? (
+                            (highRiskChannels.reduce((sum, c) => sum + (c.psyop_rate || 0), 0) /
+                              highRiskChannels.length) *
+                            100
+                          ).toFixed(1)
+                        : 0}
+                      %
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* High Risk Channels Table */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Radio className="w-5 h-5 text-orange-600" />
-                    کانال‌های پرخطر تلگرام و شبکه‌های اجتماعی
+                    <Radio className="w-5 h-5 text-red-600" />
+                    کانال‌های پرخطر (Facebook, Telegram, YouTube)
                   </CardTitle>
+                  <CardDescription>
+                    کانال‌های شبکه‌های اجتماعی با بالاترین نرخ عملیات روانی (مرتب شده بر اساس درصد PsyOp)
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {sourceTimelines
-                      .filter(
-                        (s) =>
-                          (s.source_type === 'Telegram' || s.source_type === 'Social Media') &&
-                          s.psyop_rate > 0.4
-                      )
-                      .slice(0, 30)
-                      .map((channel) => (
-                        <div
-                          key={channel.id}
-                          className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted transition-colors"
-                        >
-                          <div className="flex-1">
-                            <div className="font-semibold flex items-center gap-2">
-                              {channel.source_name}
-                              {channel.anomaly_detected && (
-                                <Badge variant="destructive" className="text-xs">
-                                  ناهنجاری
+                    {highRiskChannels.map((channel, index) => (
+                      <div
+                        key={`${channel.channel_name}-${index}`}
+                        className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted transition-colors"
+                      >
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{getRiskLevelEmoji(channel.risk_level)}</span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="font-semibold text-lg">{channel.channel_name}</div>
+                                <Badge
+                                  className={cn(
+                                    channel.platform === 'Facebook' && 'bg-blue-600 text-white',
+                                    channel.platform === 'Telegram' && 'bg-cyan-600 text-white',
+                                    channel.platform === 'YouTube' && 'bg-red-600 text-white',
+                                    channel.platform === 'Other' && 'bg-gray-600 text-white'
+                                  )}
+                                >
+                                  {channel.platform}
                                 </Badge>
-                              )}
-                            </div>
-                            <div className="text-sm text-muted-foreground">{channel.source_type}</div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <div className="text-center">
-                              <div className="text-xs text-muted-foreground">نرخ PsyOp</div>
-                              <div className="text-lg font-bold text-orange-600">
-                                {(channel.psyop_rate * 100).toFixed(0)}%
                               </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-xs text-muted-foreground">PsyOps</div>
-                              <div className="text-lg font-bold">{channel.psyop_count}</div>
+                              <div className="text-xs text-muted-foreground">
+                                سطح خطر: {channel.risk_level}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-6">
+                          <div className="text-center">
+                            <div className="text-xs text-muted-foreground">نرخ PsyOp</div>
+                            <div className="text-2xl font-bold text-red-600">
+                              {(channel.psyop_rate * 100).toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-muted-foreground">عملیات روانی</div>
+                            <div className="text-xl font-bold text-orange-600">
+                              {channel.psyop_count}
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-xs text-muted-foreground">کل مطالب</div>
+                            <div className="text-xl font-bold">{channel.total_posts}</div>
+                          </div>
+                          <div className="text-center min-w-[80px]">
+                            <div className="text-xs text-muted-foreground">بحرانی</div>
+                            <div className="text-xl font-bold text-red-700">{channel.critical}</div>
+                          </div>
+                          <div className="text-center min-w-[80px]">
+                            <div className="text-xs text-muted-foreground">تهدید بالا</div>
+                            <div className="text-xl font-bold text-orange-700">{channel.high}</div>
+                          </div>
+                          <div className="text-center min-w-[120px]">
+                            <div className="text-xs text-muted-foreground">آخرین پست</div>
+                            <div className="text-sm font-medium">
+                              {channel.last_post ? formatPersianDate(channel.last_post) : 'نامشخص'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* PsyOp Rate Distribution Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>توزیع نرخ عملیات روانی کانال‌ها</CardTitle>
+                  <CardDescription>مقایسه نرخ PsyOp کانال‌های مختلف</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={highRiskChannels.slice(0, 15)} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" domain={[0, 100]} />
+                      <YAxis dataKey="channel_name" type="category" width={150} />
+                      <Tooltip
+                        contentStyle={{ direction: 'rtl' }}
+                        formatter={(value: number) => `${value.toFixed(1)}%`}
+                      />
+                      <Bar
+                        dataKey={(d) => (d.psyop_rate * 100).toFixed(1)}
+                        fill={COLORS.critical}
+                        name="نرخ PsyOp (%)"
+                      >
+                        {highRiskChannels.slice(0, 15).map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              entry.platform === 'Facebook'
+                                ? '#3b5998'
+                                : entry.platform === 'Telegram'
+                                ? '#0088cc'
+                                : entry.platform === 'YouTube'
+                                ? '#FF0000'
+                                : COLORS.critical
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
             </>
