@@ -136,59 +136,113 @@ const OperationsHistory = () => {
 
   // Aggregate attack vectors by vector_name and add Persian translation
   const aggregatedAttackVectors = React.useMemo(() => {
-    const aggregated = attackVectors.reduce((acc, item) => {
-      const existing = acc.find((v) => v.vector_name === item.vector_name);
-      if (existing) {
-        existing.usage_count += item.usage_count;
-        existing.critical_count += item.critical_count;
-        existing.high_count += item.high_count;
-      } else {
-        acc.push({ ...item });
-      }
-      return acc;
-    }, [] as AttackVectorHistory[]);
+    const grouped: Record<string, any> = {};
 
-    // Sort by usage_count descending
-    const sorted = aggregated.sort((a, b) => b.usage_count - a.usage_count);
+    attackVectors
+      .filter(t => t.vector_name) // فیلتر null ها
+      .forEach(item => {
+        const key = item.vector_name;
+        if (!grouped[key]) {
+          grouped[key] = {
+            vector_name: key,
+            usage_count: 0,
+            critical_count: 0,
+            high_count: 0,
+            sources: new Set(),
+            targets: new Set(),
+            dates: [],
+            avg_threat_level: 0,
+            threat_levels: []
+          };
+        }
+        grouped[key].usage_count += item.usage_count || 0;
+        grouped[key].critical_count += item.critical_count || 0;
+        grouped[key].high_count += item.high_count || 0;
+        if (item.sources) {
+          if (Array.isArray(item.sources)) {
+            item.sources.forEach(s => grouped[key].sources.add(s));
+          }
+        }
+        if (item.targets) {
+          if (Array.isArray(item.targets)) {
+            item.targets.forEach(t => grouped[key].targets.add(t));
+          }
+        }
+        if (item.date) {
+          grouped[key].dates.push(item.date);
+        }
+        if (item.avg_threat_level) {
+          grouped[key].threat_levels.push(item.avg_threat_level);
+        }
+      });
 
-    // Add Persian translation
-    return sorted.map((vector) => ({
-      ...vector,
-      vector_name_persian: VECTOR_NAME_TRANSLATIONS[vector.vector_name] || vector.vector_name,
-    }));
+    return Object.values(grouped)
+      .map((v: any) => {
+        const sortedDates = v.dates.sort();
+        return {
+          ...v,
+          sources: Array.from(v.sources),
+          targets: Array.from(v.targets),
+          first_seen: sortedDates.length > 0 ? sortedDates[0] : null,
+          last_seen: sortedDates.length > 0 ? sortedDates[sortedDates.length - 1] : null,
+          avg_threat_level: v.threat_levels.length > 0
+            ? v.threat_levels.reduce((a: number, b: number) => a + b, 0) / v.threat_levels.length
+            : 0,
+          vector_name_persian: VECTOR_NAME_TRANSLATIONS[v.vector_name] || v.vector_name,
+        };
+      })
+      .sort((a, b) => b.usage_count - a.usage_count);
   }, [attackVectors]);
 
-  // Aggregate Narratives by narrative and add Persian translation
+  // Aggregate Narratives by narrative_theme and add Persian translation
   const aggregatedNarratives = React.useMemo(() => {
-    const grouped = narratives.reduce((acc: any, item: any) => {
-      const key = item.narrative;
-      if (!acc[key]) {
-        acc[key] = {
-          narrative: key,
-          usage_count: 0,
-          impact_score: 0,
-          impact_scores: [],
-          reach_estimate: 0,
-          category: item.category,
-          evolution_notes: item.evolution_notes,
-        };
-      }
-      acc[key].usage_count += item.usage_count || 0;
-      acc[key].reach_estimate += item.reach_estimate || 0;
-      if (item.impact_score) {
-        acc[key].impact_scores.push(item.impact_score);
-      }
-      return acc;
-    }, {});
+    const grouped: Record<string, any> = {};
+
+    narratives
+      .filter(n => n.narrative_theme) // فیلتر null ها
+      .forEach(item => {
+        const key = item.narrative_theme;
+        if (!grouped[key]) {
+          grouped[key] = {
+            narrative_theme: key,
+            narrative: key, // keep for backward compatibility
+            usage_count: 0,
+            impact_score: 0,
+            impact_scores: [],
+            reach_estimate: 0,
+            sources: new Set(),
+            targets: new Set(),
+            category: item.category,
+            evolution_notes: item.evolution_notes,
+          };
+        }
+        grouped[key].usage_count += item.usage_count || 0;
+        grouped[key].reach_estimate += item.reach_estimate || 0;
+        if (item.impact_score) {
+          grouped[key].impact_scores.push(item.impact_score);
+        }
+        if (item.sources) {
+          if (Array.isArray(item.sources)) {
+            item.sources.forEach(s => grouped[key].sources.add(s));
+          }
+        }
+        if (item.targets) {
+          if (Array.isArray(item.targets)) {
+            item.targets.forEach(t => grouped[key].targets.add(t));
+          }
+        }
+      });
 
     return Object.values(grouped)
       .map((n: any) => ({
         ...n,
+        sources: Array.from(n.sources),
+        targets: Array.from(n.targets),
         impact_score:
           n.impact_scores.length > 0
             ? n.impact_scores.reduce((a: number, b: number) => a + b, 0) / n.impact_scores.length
             : 0,
-        narrative_persian: narrativeTranslations[n.narrative] || n.narrative,
+        narrative_persian: narrativeTranslations[n.narrative_theme] || n.narrative_theme,
       }))
       .sort((a: any, b: any) => b.usage_count - a.usage_count);
   }, [narratives]);
@@ -352,7 +406,7 @@ const OperationsHistory = () => {
         "آخرین پست"
       `)
       .order('"درصد PsyOp"', { ascending: false })
-      .limit(20);
+      .limit(50);
 
     if (error) {
       console.error('Error fetching high risk sources:', error);
@@ -1165,6 +1219,12 @@ const OperationsHistory = () => {
                           {vector.targets.length > 3 && ` و ${vector.targets.length - 3} مورد دیگر`}
                         </div>
                       )}
+                      {vector.first_seen && vector.last_seen && (
+                        <div className="text-xs text-muted-foreground pt-2 border-t">
+                          <div><strong>اولین رویت:</strong> {formatPersianDate(vector.first_seen)}</div>
+                          <div><strong>آخرین رویت:</strong> {formatPersianDate(vector.last_seen)}</div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -1323,7 +1383,7 @@ const OperationsHistory = () => {
                     منابع با نرخ بالای عملیات روانی
                   </CardTitle>
                   <CardDescription>
-                    20 منبع برتر با بالاترین نرخ عملیات روانی (مرتب شده بر اساس درصد PsyOp)
+                    50 منبع برتر با بالاترین نرخ عملیات روانی (مرتب شده بر اساس درصد PsyOp)
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
