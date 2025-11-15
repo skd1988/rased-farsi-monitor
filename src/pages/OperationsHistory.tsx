@@ -418,11 +418,11 @@ const OperationsHistory = () => {
     // Map Persian column names to English for use in code
     const mappedSources = data?.map((s: any) => ({
       source: s['منبع'],
-      total_posts: s['تعداد مطالب'],
-      psyop_count: s['عملیات روانی'],
-      psyop_rate: s['درصد PsyOp'],
-      critical: s['بحرانی'],
-      high: s['تهدید بالا'],
+      total_posts: Number(s['تعداد مطالب']) || 0,
+      psyop_count: Number(s['عملیات روانی']) || 0,
+      psyop_rate: Number(s['درصد PsyOp']) || 0,
+      critical: Number(s['بحرانی']) || 0,
+      high: Number(s['تهدید بالا']) || 0,
       risk_level: s['سطح خطر'],
       last_post: s['آخرین پست'],
     })) || [];
@@ -461,11 +461,11 @@ const OperationsHistory = () => {
       platform: s['منبع'].includes('Facebook') ? 'Facebook' :
                 s['منبع'].includes('Telegram') ? 'Telegram' :
                 s['منبع'].includes('YouTube') ? 'YouTube' : 'Other',
-      total_posts: s['تعداد مطالب'],
-      psyop_count: s['عملیات روانی'],
-      psyop_rate: s['درصد PsyOp'],
-      critical: s['بحرانی'],
-      high: s['تهدید بالا'],
+      total_posts: Number(s['تعداد مطالب']) || 0,
+      psyop_count: Number(s['عملیات روانی']) || 0,
+      psyop_rate: Number(s['درصد PsyOp']) || 0,
+      critical: Number(s['بحرانی']) || 0,
+      high: Number(s['تهدید بالا']) || 0,
       risk_level: s['سطح خطر'],
       last_post: s['آخرین پست'],
     })) || [];
