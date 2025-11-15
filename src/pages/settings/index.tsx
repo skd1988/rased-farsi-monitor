@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Database, Shield, Palette, Zap } from 'lucide-react';
 import AppearanceTab from './tabs/AppearanceTab';
 import DataSourcesTab from './tabs/DataSourcesTab';
+import AutomationTab from './tabs/AutomationTab';
 
 const SettingsPage = () => {
   return (
@@ -65,9 +66,7 @@ const SettingsPage = () => {
         </TabsContent>
 
         <TabsContent value="automation" className="space-y-6">
-          <div className="text-center py-12 text-muted-foreground">
-            بخش اتوماسیون (در حال توسعه)
-          </div>
+          <AutomationTab />
         </TabsContent>
       </Tabs>
     </div>
