@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -79,8 +79,8 @@ const COLORS = {
 
 const CHART_COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#06B6D4', '#F97316'];
 
-// Translation dictionaries
-const vectorTranslations: Record<string, string> = {
+// ترجمه عناوین بردارهای حمله به فارسی
+const VECTOR_NAME_TRANSLATIONS: Record<string, string> = {
   'Legitimacy Questioning': 'زیر سؤال بردن مشروعیت',
   'Weakness Portrayal': 'نمایش ضعف',
   'Foreign Interference': 'دخالت خارجی',
@@ -97,6 +97,7 @@ const vectorTranslations: Record<string, string> = {
   'Demonization': 'شیطان‌سازی',
 };
 
+// ترجمه عناوین روایت‌ها به فارسی
 const narrativeTranslations: Record<string, string> = {
   'Corruption': 'فساد',
   'Terrorism': 'تروریسم',
@@ -131,6 +132,65 @@ const OperationsHistory = () => {
   const [campaigns, setCampaigns] = useState<CampaignArchive[]>([]);
   const [sourceTimelines, setSourceTimelines] = useState<SourceTimeline[]>([]);
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats[]>([]);
+
+  // Aggregate attack vectors by vector_name and add Persian translation
+  const aggregatedAttackVectors = React.useMemo(() => {
+    const aggregated = attackVectors.reduce((acc, item) => {
+      const existing = acc.find((v) => v.vector_name === item.vector_name);
+      if (existing) {
+        existing.usage_count += item.usage_count;
+        existing.critical_count += item.critical_count;
+        existing.high_count += item.high_count;
+      } else {
+        acc.push({ ...item });
+      }
+      return acc;
+    }, [] as AttackVectorHistory[]);
+
+    // Sort by usage_count descending
+    const sorted = aggregated.sort((a, b) => b.usage_count - a.usage_count);
+
+    // Add Persian translation
+    return sorted.map((vector) => ({
+      ...vector,
+      vector_name_persian: VECTOR_NAME_TRANSLATIONS[vector.vector_name] || vector.vector_name,
+    }));
+  }, [attackVectors]);
+
+  // Aggregate Narratives by narrative and add Persian translation
+  const aggregatedNarratives = React.useMemo(() => {
+    const grouped = narratives.reduce((acc: any, item: any) => {
+      const key = item.narrative;
+      if (!acc[key]) {
+        acc[key] = {
+          narrative: key,
+          usage_count: 0,
+          impact_score: 0,
+          impact_scores: [],
+          reach_estimate: 0,
+          category: item.category,
+          evolution_notes: item.evolution_notes,
+        };
+      }
+      acc[key].usage_count += item.usage_count || 0;
+      acc[key].reach_estimate += item.reach_estimate || 0;
+      if (item.impact_score) {
+        acc[key].impact_scores.push(item.impact_score);
+      }
+      return acc;
+    }, {});
+
+    return Object.values(grouped)
+      .map((n: any) => ({
+        ...n,
+        impact_score:
+          n.impact_scores.length > 0
+            ? n.impact_scores.reduce((a: number, b: number) => a + b, 0) / n.impact_scores.length
+            : 0,
+        narrative_persian: narrativeTranslations[n.narrative] || n.narrative,
+      }))
+      .sort((a: any, b: any) => b.usage_count - a.usage_count);
+  }, [narratives]);
 
   // Fetch data on mount and filter change
   useEffect(() => {
@@ -193,7 +253,9 @@ const OperationsHistory = () => {
     const { data, error } = await supabase
       .from('attack_vector_history')
       .select('*')
-      .order('usage_count', { ascending: false });
+      .gte('date', filters.startDate!)
+      .lte('date', filters.endDate!)
+      .order('date', { ascending: false });
 
     if (!error && data) setAttackVectors(data);
   };
@@ -273,83 +335,6 @@ const OperationsHistory = () => {
 
     setMonthlyStats(stats.reverse());
   };
-
-  // Aggregate Attack Vectors
-  const aggregatedVectors = useMemo(() => {
-    const grouped = attackVectors.reduce((acc: any, item: any) => {
-      const key = item.attack_vector;
-      if (!acc[key]) {
-        acc[key] = {
-          attack_vector: key,
-          usage_count: 0,
-          critical_count: 0,
-          high_count: 0,
-          effectiveness_score: 0,
-          effectiveness_scores: [],
-          dates: [],
-          trend: item.trend,
-        };
-      }
-      acc[key].usage_count += item.usage_count || 0;
-      acc[key].critical_count += item.critical_count || 0;
-      acc[key].high_count += item.high_count || 0;
-      if (item.effectiveness_score) {
-        acc[key].effectiveness_scores.push(item.effectiveness_score);
-      }
-      if (item.first_seen) acc[key].dates.push(item.first_seen);
-      if (item.last_seen) acc[key].dates.push(item.last_seen);
-      return acc;
-    }, {});
-
-    return Object.values(grouped)
-      .map((v: any) => ({
-        ...v,
-        effectiveness_score:
-          v.effectiveness_scores.length > 0
-            ? v.effectiveness_scores.reduce((a: number, b: number) => a + b, 0) /
-              v.effectiveness_scores.length
-            : 0,
-        first_seen: v.dates.length > 0 ? v.dates.sort()[0] : null,
-        last_seen: v.dates.length > 0 ? v.dates.sort()[v.dates.length - 1] : null,
-        vector_name_persian: vectorTranslations[v.attack_vector] || v.attack_vector,
-      }))
-      .sort((a: any, b: any) => b.usage_count - a.usage_count);
-  }, [attackVectors]);
-
-  // Aggregate Narratives
-  const aggregatedNarratives = useMemo(() => {
-    const grouped = narratives.reduce((acc: any, item: any) => {
-      const key = item.narrative;
-      if (!acc[key]) {
-        acc[key] = {
-          narrative: key,
-          usage_count: 0,
-          impact_score: 0,
-          impact_scores: [],
-          reach_estimate: 0,
-          category: item.category,
-          evolution_notes: item.evolution_notes,
-        };
-      }
-      acc[key].usage_count += item.usage_count || 0;
-      acc[key].reach_estimate += item.reach_estimate || 0;
-      if (item.impact_score) {
-        acc[key].impact_scores.push(item.impact_score);
-      }
-      return acc;
-    }, {});
-
-    return Object.values(grouped)
-      .map((n: any) => ({
-        ...n,
-        impact_score:
-          n.impact_scores.length > 0
-            ? n.impact_scores.reduce((a: number, b: number) => a + b, 0) / n.impact_scores.length
-            : 0,
-        narrative_persian: narrativeTranslations[n.narrative] || n.narrative,
-      }))
-      .sort((a: any, b: any) => b.usage_count - a.usage_count);
-  }, [narratives]);
 
   // Render helpers
   const getThreatBadge = (level: string) => {
@@ -1030,7 +1015,7 @@ const OperationsHistory = () => {
         <TabsContent value="attack-vectors" className="space-y-6">
           {loading ? (
             <LoadingSkeleton />
-          ) : aggregatedVectors.length === 0 ? (
+          ) : aggregatedAttackVectors.length === 0 ? (
             <EmptyState message="هیچ بردار حمله‌ای یافت نشد" />
           ) : (
             <>
@@ -1038,19 +1023,46 @@ const OperationsHistory = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>فراوانی بردارهای حمله</CardTitle>
+                  <CardDescription>
+                    نمودار میزان استفاده از بردارهای مختلف حمله در بازه زمانی انتخاب شده
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={400}>
-                    <BarChart data={aggregatedVectors.slice(0, 15)}>
+                    <BarChart data={aggregatedAttackVectors.slice(0, 15)}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="vector_name_persian" angle={-45} textAnchor="end" height={120} />
+                      <XAxis
+                        dataKey="vector_name_persian"
+                        angle={-45}
+                        textAnchor="end"
+                        height={120}
+                        style={{ fontSize: '12px' }}
+                      />
                       <YAxis />
-                      <Tooltip contentStyle={{ direction: 'rtl' }} />
-                      <Bar dataKey="usage_count" fill={COLORS.primary}>
-                        {aggregatedVectors.slice(0, 15).map((entry, index) => (
+                      <Tooltip
+                        contentStyle={{ direction: 'rtl' }}
+                        formatter={(value: number, name: string) => {
+                          if (name === 'usage_count') return [value, 'تعداد استفاده'];
+                          if (name === 'critical_count') return [value, 'بحرانی'];
+                          if (name === 'high_count') return [value, 'بالا'];
+                          return [value, name];
+                        }}
+                      />
+                      <Legend
+                        formatter={(value) => {
+                          if (value === 'usage_count') return 'تعداد استفاده';
+                          if (value === 'critical_count') return 'بحرانی';
+                          if (value === 'high_count') return 'بالا';
+                          return value;
+                        }}
+                      />
+                      <Bar dataKey="usage_count" fill={COLORS.primary} name="تعداد استفاده">
+                        {aggregatedAttackVectors.slice(0, 15).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Bar>
+                      <Bar dataKey="critical_count" fill={COLORS.critical} name="بحرانی" />
+                      <Bar dataKey="high_count" fill={COLORS.high} name="بالا" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -1058,44 +1070,47 @@ const OperationsHistory = () => {
 
               {/* Attack Vectors List */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {aggregatedVectors.map((vector, idx) => (
-                  <Card key={idx}>
+                {aggregatedAttackVectors.map((vector, index) => (
+                  <Card key={`${vector.vector_name}-${index}`}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">{vector.vector_name_persian}</CardTitle>
-                        <Badge
-                          className={cn(
-                            vector.trend === 'rising' && 'bg-red-600',
-                            vector.trend === 'stable' && 'bg-blue-600',
-                            vector.trend === 'declining' && 'bg-green-600',
-                            'text-white'
-                          )}
-                        >
-                          {vector.trend === 'rising' && <TrendingUp className="w-3 h-3 mr-1" />}
-                          {vector.trend === 'declining' && <TrendingDown className="w-3 h-3 mr-1" />}
-                          {vector.trend}
+                        <Badge variant="secondary" className="text-xs">
+                          {vector.vector_name}
                         </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">تعداد استفاده:</span>{' '}
-                          {vector.usage_count}
+                    <CardContent className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                          <div className="text-xs text-muted-foreground">تعداد استفاده</div>
+                          <div className="text-xl font-bold text-blue-600">{vector.usage_count}</div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">اثربخشی:</span>{' '}
-                          {vector.effectiveness_score.toFixed(1)}/10
+                        <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20">
+                          <div className="text-xs text-muted-foreground">بحرانی</div>
+                          <div className="text-xl font-bold text-red-600">{vector.critical_count}</div>
+                        </div>
+                        <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+                          <div className="text-xs text-muted-foreground">بالا</div>
+                          <div className="text-xl font-bold text-orange-600">{vector.high_count}</div>
+                        </div>
+                        <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900/20">
+                          <div className="text-xs text-muted-foreground">میانگین تهدید</div>
+                          <div className="text-xl font-bold text-gray-600">
+                            {vector.avg_threat_level.toFixed(1)}
+                          </div>
                         </div>
                       </div>
-                      {vector.first_seen && (
+                      {vector.sources && vector.sources.length > 0 && (
                         <div className="text-xs text-muted-foreground">
-                          اولین رویت: {formatPersianDate(vector.first_seen)}
+                          <strong>منابع:</strong> {vector.sources.slice(0, 3).join('، ')}
+                          {vector.sources.length > 3 && ` و ${vector.sources.length - 3} مورد دیگر`}
                         </div>
                       )}
-                      {vector.last_seen && (
+                      {vector.targets && vector.targets.length > 0 && (
                         <div className="text-xs text-muted-foreground">
-                          آخرین رویت: {formatPersianDate(vector.last_seen)}
+                          <strong>اهداف:</strong> {vector.targets.slice(0, 3).join('، ')}
+                          {vector.targets.length > 3 && ` و ${vector.targets.length - 3} مورد دیگر`}
                         </div>
                       )}
                     </CardContent>
