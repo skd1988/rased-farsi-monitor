@@ -97,6 +97,20 @@ const VECTOR_NAME_TRANSLATIONS: Record<string, string> = {
   'Demonization': 'شیطان‌سازی',
 };
 
+// ترجمه عناوین روایت‌ها به فارسی
+const narrativeTranslations: Record<string, string> = {
+  'Corruption': 'فساد',
+  'Terrorism': 'تروریسم',
+  'Foreign Agent': 'عامل خارجی',
+  'Weakness': 'ضعف',
+  'Illegitimacy': 'عدم مشروعیت',
+  'Sectarianism': 'فرقه‌گرایی',
+  'Violence': 'خشونت',
+  'Extremism': 'افراط‌گرایی',
+  'Destabilization': 'بی‌ثباتی',
+  'Human Rights Abuse': 'نقض حقوق بشر',
+};
+
 const OperationsHistory = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('daily-digest');
@@ -142,6 +156,41 @@ const OperationsHistory = () => {
       vector_name_persian: VECTOR_NAME_TRANSLATIONS[vector.vector_name] || vector.vector_name,
     }));
   }, [attackVectors]);
+
+  // Aggregate Narratives by narrative and add Persian translation
+  const aggregatedNarratives = React.useMemo(() => {
+    const grouped = narratives.reduce((acc: any, item: any) => {
+      const key = item.narrative;
+      if (!acc[key]) {
+        acc[key] = {
+          narrative: key,
+          usage_count: 0,
+          impact_score: 0,
+          impact_scores: [],
+          reach_estimate: 0,
+          category: item.category,
+          evolution_notes: item.evolution_notes,
+        };
+      }
+      acc[key].usage_count += item.usage_count || 0;
+      acc[key].reach_estimate += item.reach_estimate || 0;
+      if (item.impact_score) {
+        acc[key].impact_scores.push(item.impact_score);
+      }
+      return acc;
+    }, {});
+
+    return Object.values(grouped)
+      .map((n: any) => ({
+        ...n,
+        impact_score:
+          n.impact_scores.length > 0
+            ? n.impact_scores.reduce((a: number, b: number) => a + b, 0) / n.impact_scores.length
+            : 0,
+        narrative_persian: narrativeTranslations[n.narrative] || n.narrative,
+      }))
+      .sort((a: any, b: any) => b.usage_count - a.usage_count);
+  }, [narratives]);
 
   // Fetch data on mount and filter change
   useEffect(() => {
@@ -1076,7 +1125,7 @@ const OperationsHistory = () => {
         <TabsContent value="narratives" className="space-y-6">
           {loading ? (
             <LoadingSkeleton />
-          ) : narratives.length === 0 ? (
+          ) : aggregatedNarratives.length === 0 ? (
             <EmptyState message="هیچ روایتی یافت نشد" />
           ) : (
             <>
@@ -1089,8 +1138,8 @@ const OperationsHistory = () => {
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={narratives.slice(0, 10).map((n) => ({
-                          name: n.narrative,
+                        data={aggregatedNarratives.slice(0, 10).map((n) => ({
+                          name: n.narrative_persian,
                           value: n.usage_count,
                         }))}
                         cx="50%"
@@ -1101,7 +1150,7 @@ const OperationsHistory = () => {
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {narratives.slice(0, 10).map((entry, index) => (
+                        {aggregatedNarratives.slice(0, 10).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Pie>
@@ -1113,11 +1162,11 @@ const OperationsHistory = () => {
 
               {/* Narratives List */}
               <div className="space-y-4">
-                {narratives.map((narrative) => (
-                  <Card key={narrative.id}>
+                {aggregatedNarratives.map((narrative, idx) => (
+                  <Card key={idx}>
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between">
-                        <span>{narrative.narrative}</span>
+                        <span>{narrative.narrative_persian}</span>
                         <Badge variant="secondary">{narrative.category}</Badge>
                       </CardTitle>
                     </CardHeader>
@@ -1129,7 +1178,7 @@ const OperationsHistory = () => {
                         </div>
                         <div>
                           <span className="text-muted-foreground">امتیاز تأثیر:</span>{' '}
-                          {narrative.impact_score}/10
+                          {narrative.impact_score.toFixed(1)}/10
                         </div>
                         <div>
                           <span className="text-muted-foreground">تخمین دسترسی:</span>{' '}
