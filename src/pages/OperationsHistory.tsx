@@ -146,9 +146,9 @@ const OperationsHistory = () => {
     let query = supabase
       .from('significant_posts_archive')
       .select('*')
-      .gte('archived_at', filters.startDate!)
-      .lte('archived_at', filters.endDate!)
-      .order('archived_at', { ascending: false });
+      .gte('archived_date', filters.startDate!)
+      .lte('archived_date', filters.endDate!)
+      .order('archived_date', { ascending: false });
 
     if (filters.threatLevel && filters.threatLevel !== 'all') {
       query = query.eq('threat_level', filters.threatLevel);
@@ -189,7 +189,7 @@ const OperationsHistory = () => {
     let query = supabase
       .from('psyop_campaigns_archive')
       .select('*')
-      .order('archived_at', { ascending: false });
+      .order('archived_date', { ascending: false });
 
     const { data, error } = await query;
     if (!error && data) setCampaigns(data);
