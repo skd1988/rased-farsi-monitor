@@ -58,6 +58,28 @@ export const useSettings = () => {
     console.log('[useSettings] Current settings:', settings);
   }, [settings]);
 
+  // ✅ FIX: اعمال تغییرات ظاهری به document
+  useEffect(() => {
+    // Dark Mode
+    if (settings.dark_mode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
+    // Font Size
+    document.documentElement.style.fontSize = `${settings.font_size}px`;
+
+    // Theme Color (اضافه کردن data attribute برای theme)
+    document.documentElement.setAttribute('data-theme', settings.theme);
+
+    console.log('[useSettings] Applied UI changes:', {
+      dark_mode: settings.dark_mode,
+      theme: settings.theme,
+      font_size: settings.font_size
+    });
+  }, [settings.dark_mode, settings.theme, settings.font_size]);
+
   return {
     settings,
     isSaving,
