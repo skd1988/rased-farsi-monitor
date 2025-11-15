@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Database, Shield, Palette, Zap } from 'lucide-react';
 import AppearanceTab from './tabs/AppearanceTab';
+import DataSourcesTab from './tabs/DataSourcesTab';
 
 const SettingsPage = () => {
   return (
@@ -50,9 +51,7 @@ const SettingsPage = () => {
         </TabsContent>
 
         <TabsContent value="data-sources" className="space-y-6">
-          <div className="text-center py-12 text-muted-foreground">
-            بخش منابع داده (در حال توسعه)
-          </div>
+          <DataSourcesTab />
         </TabsContent>
 
         <TabsContent value="monitoring" className="space-y-6">
