@@ -20,7 +20,7 @@ import ChannelAnalytics from "./pages/ChannelAnalytics";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
 import Chat from "./pages/Chat";
-import Settings from "./pages/Settings";
+import SettingsNew from '@/pages/settings';
 import IntelligenceAndTrends from "./pages/IntelligenceAndTrends";
 import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
@@ -103,7 +103,7 @@ const App = () => (
                     
                     <Route path="/settings" element={
                       <ProtectedRoute requiredPermission="MANAGE_SETTINGS" showUnauthorized>
-                        <Settings />
+                        <SettingsNew />
                       </ProtectedRoute>
                     } />
                     
