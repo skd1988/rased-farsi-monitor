@@ -443,7 +443,7 @@ const OperationsHistory = () => {
         "سطح خطر",
         "آخرین پست"
       `)
-      .or('"منبع".ilike.%(Facebook)%,"منبع".ilike.%(Telegram)%,"منبع".ilike.%YouTube%')
+      .or('"منبع".ilike.%Facebook%,"منبع".ilike.%Telegram%,"منبع".ilike.%YouTube%')
       .order('"درصد PsyOp"', { ascending: false })
       .limit(50);
 
@@ -451,6 +451,9 @@ const OperationsHistory = () => {
       console.error('Error fetching high risk channels:', error);
       return;
     }
+
+    console.log('🔴 High Risk Channels - Raw data:', data);
+    console.log('🔴 High Risk Channels - Count:', data?.length);
 
     // Map to English names with platform detection
     const mappedChannels = data?.map((s: any) => ({
@@ -467,6 +470,7 @@ const OperationsHistory = () => {
       last_post: s['آخرین پست'],
     })) || [];
 
+    console.log('🔴 High Risk Channels - Mapped:', mappedChannels);
     setHighRiskChannels(mappedChannels);
   };
 
