@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Play, Pause, RotateCcw, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { useSettings } from '@/pages/settings/hooks/useSettings';
+import { useAnalysisAutomation } from '@/hooks/useAnalysisAutomation';
 
 export default function BatchAnalysis() {
   const [unanalyzedCount, setUnanalyzedCount] = useState(0);
@@ -22,6 +24,9 @@ export default function BatchAnalysis() {
   const [startTime, setStartTime] = useState<number | null>(null);
   const { toast } = useToast();
 
+  // Settings Integration
+  const { settings } = useSettings();
+
   useEffect(() => {
     loadUnanalyzedCount();
   }, []);
@@ -34,6 +39,25 @@ export default function BatchAnalysis() {
       setEstimatedTime(Math.ceil((avgTimePerPost * remaining) / 1000));
     }
   }, [progress.current, progress.total, isAnalyzing, startTime]);
+
+  // Sync local state with settings
+  useEffect(() => {
+    if (settings.batch_size) {
+      setBatchSize(parseInt(settings.batch_size));
+    }
+    if (settings.analysis_delay) {
+      setDelaySeconds(settings.analysis_delay * 60); // تبدیل دقیقه به ثانیه
+    }
+  }, [settings.batch_size, settings.analysis_delay]);
+
+  // Analysis Automation
+  const { isAutomationActive, nextRunTime } = useAnalysisAutomation({
+    onAnalyze: async (limit: number) => {
+      setBatchSize(limit);
+      await startBatchAnalysis();
+    },
+    isAnalyzing,
+  });
 
   const loadUnanalyzedCount = async () => {
     const { count } = await supabase
@@ -235,6 +259,42 @@ export default function BatchAnalysis() {
           <h1 className="text-3xl font-bold mb-2">Batch Post Analysis</h1>
           <p className="text-muted-foreground">Analyze multiple posts using DeepSeek AI</p>
         </div>
+
+        {isAutomationActive && (
+          <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-200 dark:border-green-800">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                      تحلیل خودکار فعال است
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-300">
+                      {settings.analysis_schedule === 'immediate' && 'فوری - بلافاصله بعد از ورود مطالب'}
+                      {settings.analysis_schedule === 'delayed' && `تاخیری - هر ${settings.analysis_delay} دقیقه`}
+                      {settings.analysis_schedule === 'scheduled' && 'زمان‌بندی شده - در ساعات مشخص'}
+                    </p>
+                  </div>
+                </div>
+                {nextRunTime && settings.analysis_schedule === 'delayed' && (
+                  <div className="text-left">
+                    <p className="text-xs text-green-600 dark:text-green-400">اجرای بعدی:</p>
+                    <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                      {new Date(nextRunTime).toLocaleTimeString('fa-IR', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
