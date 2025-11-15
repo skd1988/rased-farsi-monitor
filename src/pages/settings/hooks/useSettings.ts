@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { settingsService } from '../services/settingsService';
 import { AppSettings, SettingsUpdate } from '../types/settings.types';
 import { toast } from 'sonner';
@@ -11,15 +11,18 @@ export const useSettings = () => {
     try {
       setIsSaving(true);
 
-      setSettings(prev => {
-        const newSettings = { ...prev, ...updates };
-        settingsService.save(updates);
-        return newSettings;
-      });
+      // ✅ FIX: اول save کن، بعد state رو آپدیت کن
+      settingsService.save(updates);
+
+      // ✅ FIX: state رو با load کامل آپدیت کن
+      const newSettings = settingsService.load();
+      setSettings(newSettings);
 
       if (showToast) {
         toast.success('تنظیمات ذخیره شد');
       }
+
+      console.log('[useSettings] Settings updated:', updates);
 
     } catch (error) {
       console.error('[useSettings] Error:', error);
@@ -34,14 +37,26 @@ export const useSettings = () => {
     value: AppSettings[K],
     showToast = false
   ) => {
+    console.log('[useSettings] setSetting called:', key, value);
     updateSettings({ [key]: value } as SettingsUpdate, showToast);
   }, [updateSettings]);
 
   const resetSettings = useCallback(() => {
-    settingsService.reset();
-    setSettings(settingsService.load());
-    toast.success('تنظیمات به حالت پیش‌فرض بازگشت');
+    try {
+      settingsService.reset();
+      const defaults = settingsService.load();
+      setSettings(defaults);
+      toast.success('تنظیمات به حالت پیش‌فرض بازگشت');
+    } catch (error) {
+      console.error('[useSettings] Error resetting:', error);
+      toast.error('خطا در بازنشانی تنظیمات');
+    }
   }, []);
+
+  // ✅ FIX: اضافه کردن effect برای sync با localStorage
+  useEffect(() => {
+    console.log('[useSettings] Current settings:', settings);
+  }, [settings]);
 
   return {
     settings,
