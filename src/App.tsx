@@ -32,6 +32,7 @@ import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
 import SystemTest from "./pages/SystemTest";
 import Debug from "./pages/Debug";
+import GoogleSheetsSync from "./pages/GoogleSheetsSync";
 
 const queryClient = new QueryClient();
 
@@ -106,7 +107,13 @@ const App = () => (
                         <SettingsNew />
                       </ProtectedRoute>
                     } />
-                    
+
+                    <Route path="/google-sheets-sync" element={
+                      <ProtectedRoute requiredPermission="MANAGE_SETTINGS" showUnauthorized>
+                        <GoogleSheetsSync />
+                      </ProtectedRoute>
+                    } />
+
                     <Route path="/intelligence" element={<IntelligenceAndTrends />} />
                     <Route path="/system-test" element={<SystemTest />} />
                   </Route>
