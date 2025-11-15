@@ -156,9 +156,9 @@ const OperationsHistory = () => {
             threat_levels: []
           };
         }
-        grouped[key].usage_count += item.usage_count || 0;
-        grouped[key].critical_count += item.critical_count || 0;
-        grouped[key].high_count += item.high_count || 0;
+        grouped[key].usage_count += Number(item.usage_count) || 0;
+        grouped[key].critical_count += Number(item.critical_count) || 0;
+        grouped[key].high_count += Number(item.high_count) || 0;
         if (item.sources) {
           if (Array.isArray(item.sources)) {
             item.sources.forEach(s => grouped[key].sources.add(s));
@@ -217,10 +217,10 @@ const OperationsHistory = () => {
             evolution_notes: item.evolution_notes,
           };
         }
-        grouped[key].usage_count += item.usage_count || 0;
-        grouped[key].reach_estimate += item.reach_estimate || 0;
+        grouped[key].usage_count += Number(item.usage_count) || 0;
+        grouped[key].reach_estimate += Number(item.reach_estimate) || 0;
         if (item.impact_score) {
-          grouped[key].impact_scores.push(item.impact_score);
+          grouped[key].impact_scores.push(Number(item.impact_score));
         }
         if (item.sources) {
           if (Array.isArray(item.sources)) {
@@ -1454,7 +1454,7 @@ const OperationsHistory = () => {
                           <div className="text-center">
                             <div className="text-xs text-muted-foreground">نرخ PsyOp</div>
                             <div className="text-2xl font-bold text-red-600">
-                              {(source.psyop_rate * 100).toFixed(1)}%
+                              {(Number(source.psyop_rate) * 100).toFixed(1)}%
                             </div>
                           </div>
                           <div className="text-center">
@@ -1502,17 +1502,17 @@ const OperationsHistory = () => {
                       <YAxis dataKey="source" type="category" width={150} />
                       <Tooltip
                         contentStyle={{ direction: 'rtl' }}
-                        formatter={(value: number) => `${value.toFixed(1)}%`}
+                        formatter={(value: number) => `${Number(value).toFixed(1)}%`}
                       />
                       <Bar
-                        dataKey={(d) => (d.psyop_rate * 100).toFixed(1)}
+                        dataKey={(d) => Number(d.psyop_rate) * 100}
                         fill={COLORS.critical}
                         name="نرخ PsyOp (%)"
                       >
                         {highRiskSources.slice(0, 15).map((entry, index) => (
                           <Cell
                             key={`cell-${index}`}
-                            fill={entry.psyop_rate > 0.7 ? COLORS.critical : COLORS.high}
+                            fill={Number(entry.psyop_rate) > 0.7 ? COLORS.critical : COLORS.high}
                           />
                         ))}
                       </Bar>
@@ -1634,7 +1634,7 @@ const OperationsHistory = () => {
                           <div className="text-center">
                             <div className="text-xs text-muted-foreground">نرخ PsyOp</div>
                             <div className="text-2xl font-bold text-red-600">
-                              {(channel.psyop_rate * 100).toFixed(1)}%
+                              {(Number(channel.psyop_rate) * 100).toFixed(1)}%
                             </div>
                           </div>
                           <div className="text-center">
@@ -1682,10 +1682,10 @@ const OperationsHistory = () => {
                       <YAxis dataKey="channel_name" type="category" width={150} />
                       <Tooltip
                         contentStyle={{ direction: 'rtl' }}
-                        formatter={(value: number) => `${value.toFixed(1)}%`}
+                        formatter={(value: number) => `${Number(value).toFixed(1)}%`}
                       />
                       <Bar
-                        dataKey={(d) => (d.psyop_rate * 100).toFixed(1)}
+                        dataKey={(d) => Number(d.psyop_rate) * 100}
                         fill={COLORS.critical}
                         name="نرخ PsyOp (%)"
                       >
