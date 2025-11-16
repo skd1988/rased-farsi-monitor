@@ -109,6 +109,13 @@ const narrativeTranslations: Record<string, string> = {
   'Extremism': 'افراط‌گرایی',
   'Destabilization': 'بی‌ثباتی',
   'Human Rights Abuse': 'نقض حقوق بشر',
+  'Delegitimization': 'بی‌اعتبارسازی',
+  'Divide & Conquer': 'تفرقه بینداز و حکومت کن',
+  'Demonization': 'شیطان‌سازی',
+  'Fear-Mongering': 'ترس‌افکنی',
+  'Victimization': 'قربانی‌سازی',
+  'Whitewashing': 'پاک‌سازی تصویر',
+  'False Flag': 'عملیات پرچم دروغین',
 };
 
 const OperationsHistory = () => {
