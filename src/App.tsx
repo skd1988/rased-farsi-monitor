@@ -34,6 +34,7 @@ import SystemTest from "./pages/SystemTest";
 import Debug from "./pages/Debug";
 import GoogleSheetsSync from "./pages/GoogleSheetsSync";
 import OperationsHistory from "./pages/OperationsHistory";
+import PerformanceDashboard from "./pages/PerformanceDashboard";
 
 const queryClient = new QueryClient();
 
@@ -79,6 +80,8 @@ const App = () => (
                       </ProtectedRoute>
                     } />
                     
+                    <Route path="/performance" element={<PerformanceDashboard />} />
+
                     <Route path="/api-usage" element={
                       <ProtectedRoute requiredPermission="VIEW_API_USAGE" showUnauthorized>
                         <APIUsage />
