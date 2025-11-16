@@ -1,6 +1,6 @@
 // src/utils/performanceMonitor.ts
 // Core utility for collecting and reporting performance metrics
-// Updated for web-vitals v5
+// Updated for web-vitals v5 and modern Navigation Timing API
 
 import { onCLS, onINP, onFCP, onLCP, onTTFB } from 'web-vitals';
 import type { Metric } from 'web-vitals';
@@ -66,25 +66,27 @@ export const initWebVitals = () => {
   });
 };
 
-// Collect Performance Timing metrics
+// Collect Performance Timing metrics using Navigation Timing API Level 2
 export const collectPerformanceTiming = () => {
-  if (!performance || !performance.timing) {
-    console.warn('[Performance] Performance API not supported');
+  const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+  
+  if (!navigation) {
+    console.warn('[Performance] Navigation Timing API not supported');
     return;
   }
 
-  const timing = performance.timing;
-  
-  metricsStore.page_load_time = timing.loadEventEnd - timing.navigationStart;
-  metricsStore.dom_content_loaded = timing.domContentLoadedEventEnd - timing.navigationStart;
-  metricsStore.dom_interactive = timing.domInteractive - timing.navigationStart;
-  metricsStore.connection_time = timing.responseEnd - timing.requestStart;
-  metricsStore.render_time = timing.domComplete - timing.domLoading;
+  // Use proper Navigation Timing API Level 2
+  metricsStore.page_load_time = Math.round(navigation.loadEventEnd - navigation.fetchStart);
+  metricsStore.dom_content_loaded = Math.round(navigation.domContentLoadedEventEnd - navigation.fetchStart);
+  metricsStore.dom_interactive = Math.round(navigation.domInteractive - navigation.fetchStart);
+  metricsStore.connection_time = Math.round(navigation.responseEnd - navigation.requestStart);
+  metricsStore.render_time = Math.round(navigation.domComplete - navigation.domLoading);
 
   console.log('[Performance] Timing metrics collected:', {
     pageLoadTime: metricsStore.page_load_time,
     domContentLoaded: metricsStore.dom_content_loaded,
-    ttfb: metricsStore.ttfb
+    connectionTime: metricsStore.connection_time,
+    renderTime: metricsStore.render_time
   });
 };
 
@@ -129,6 +131,12 @@ export const collectResourceMetrics = () => {
 // Send metrics to Supabase
 export const reportPerformanceMetrics = async () => {
   try {
+    // Validate data before sending
+    if (metricsStore.page_load_time && metricsStore.page_load_time < 0) {
+      console.warn('[Performance] Invalid page_load_time, skipping report');
+      return;
+    }
+
     // Get current user if logged in
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
