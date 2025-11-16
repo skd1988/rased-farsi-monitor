@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { translatePsyopTechnique } from '@/utils/psyopTranslations';
 import { translateSourceType } from '@/utils/sourceTypeTranslations';
 import { formatDistanceToNowIran, formatIranDate } from '@/lib/dateUtils';
-import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain } from 'lucide-react';
+import { Shield, AlertTriangle, Siren, Clock, Database, Rss, TrendingUp, Activity, Brain, Flame } from 'lucide-react';
 import KPICard from '@/components/dashboard/KPICard';
 import DataCollectionKPI from '@/components/dashboard/DataCollectionKPI';
 import SourceTypeChart from '@/components/dashboard/SourceTypeChart';
@@ -16,6 +16,7 @@ import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import TopTargetedPersonsChart from '@/components/dashboard/TopTargetedPersonsChart';
 import TopTargetedOrganizationsChart from '@/components/dashboard/TopTargetedOrganizationsChart';
+import { SourceThreatChart } from '@/components/dashboard/SourceThreatChart';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
@@ -23,6 +24,8 @@ import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const Dashboard = () => {
   console.log('[Dashboard] Component mounting...');
@@ -33,6 +36,8 @@ const Dashboard = () => {
   const [aiAnalysis, setAiAnalysis] = useState<any[]>([]);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
+  const [socialMediaChannels, setSocialMediaChannels] = useState<any[]>([]);
+  const [highThreatSourcesCount, setHighThreatSourcesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [postsTablePage, setPostsTablePage] = useState(1);
   const postsPerPage = 50;
@@ -86,13 +91,41 @@ const Dashboard = () => {
         const { data: profilesData, error: profilesError } = await supabase
           .from('target_profiles')
           .select('name_english, name_persian, name_arabic, photo_url');
-        
+
         if (profilesError) console.error('Error fetching profiles:', profilesError);
-        
+
+        // Fetch social media channels for platform mapping and threat analysis
+        console.log('📊 Fetching social media channels for platform mapping and threat analysis...');
+        const { data: channelsData, error: channelsError } = await supabase
+          .from('social_media_channels')
+          .select('*')
+          .limit(1000)
+          .order('threat_multiplier', { ascending: false });
+
+        if (channelsError) {
+          console.error('❌ Error fetching channels:', channelsError);
+        } else {
+          console.log('📊 Platform mapping loaded:', {
+            totalChannels: channelsData?.length || 0,
+            platforms: [...new Set(channelsData?.map(ch => ch.platform))]
+          });
+          setSocialMediaChannels(channelsData || []);
+        }
+
+        // Fetch high threat sources count
+        const { count: highThreatCount, error: sourcesError } = await supabase
+          .from('source_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('active', true)
+          .gte('threat_multiplier', 2.0);
+
+        if (sourcesError) console.error('Error fetching sources:', sourcesError);
+
         setPosts(allPosts);
         setAiAnalysis(analysisData || []);
         setCampaigns(campaignsData || []);
         setTargetProfiles(profilesData || []);
+        setHighThreatSourcesCount(highThreatCount || 0);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
@@ -365,6 +398,35 @@ const Dashboard = () => {
       .slice(0, 10);
   }, [posts, targetProfiles]);
 
+  // Top Risky Channels - SYNCED with ChannelAnalytics
+  const topRiskyChannelsData = useMemo(() => {
+    console.log('🔥 [Dashboard] Calculating Top Risky Channels (synced with ChannelAnalytics)...');
+    console.log('📊 [Dashboard] socialMediaChannels count:', socialMediaChannels.length);
+
+    if (socialMediaChannels.length === 0) {
+      console.warn('⚠️ [Dashboard] No social media channels loaded yet');
+      return [];
+    }
+
+    // ✅ EXACT same logic as ChannelAnalytics
+    const result = [...socialMediaChannels]
+      .sort((a, b) => b.threat_multiplier - a.threat_multiplier)
+      .slice(0, 10)
+      .map(c => ({
+        channel_name: c.channel_name,
+        threat_score: Math.round(c.threat_multiplier * c.reach_score * c.virality_coefficient),
+        threat_multiplier: c.threat_multiplier
+      }));
+
+    console.log('✅ [Dashboard] Top 10 Risky Channels:', result.map(c => ({
+      name: c.channel_name,
+      score: c.threat_score,
+      multiplier: c.threat_multiplier
+    })));
+
+    return result;
+  }, [socialMediaChannels]); // ⚠️ فقط به socialMediaChannels وابسته است
+
   // Campaign Heatmap (last 90 days)
   const heatmapData = useMemo(() => {
     const days = 90;
@@ -529,31 +591,38 @@ const Dashboard = () => {
 
   // Social Media Distribution
   const socialMediaData = useMemo(() => {
+    console.log('📈 Calculating social media distribution...');
+
     const platformCounts: Record<string, number> = {};
-    
+
     posts.forEach(post => {
-      const source = post.source?.toLowerCase() || 'نامشخص';
+      const source = post.source?.toLowerCase() || '';
       const sourceUrl = post.source_url?.toLowerCase() || '';
-      
-      // Map sources to social media platforms
-      let platform = 'سایر';
-      if (source.includes('telegram') || source.includes('تلگرام') || source.includes('t.me') || sourceUrl.includes('t.me')) {
+      const searchText = `${source} ${sourceUrl}`;
+
+      let platform = '';
+
+      if (searchText.includes('telegram') || searchText.includes('تلگرام') || searchText.includes('t.me')) {
         platform = 'تلگرام';
-      } else if (source.includes('twitter') || source.includes('x.com') || source.includes('توییتر') || sourceUrl.includes('x.com') || sourceUrl.includes('twitter.com')) {
+      } else if (searchText.includes('twitter') || searchText.includes('توییتر') || searchText.includes('x.com')) {
         platform = 'توییتر (X)';
-      } else if (source.includes('instagram') || source.includes('اینستاگرام') || sourceUrl.includes('instagram.com')) {
+      } else if (searchText.includes('instagram') || searchText.includes('اینستاگرام')) {
         platform = 'اینستاگرام';
-      } else if (source.includes('facebook') || source.includes('فیسبوک') || sourceUrl.includes('facebook.com')) {
+      } else if (searchText.includes('facebook') || searchText.includes('فیسبوک')) {
         platform = 'فیسبوک';
-      } else if (source.includes('youtube') || source.includes('یوتیوب') || sourceUrl.includes('youtube.com')) {
+      } else if (searchText.includes('youtube') || searchText.includes('یوتیوب')) {
         platform = 'یوتیوب';
-      } else if (source.includes('whatsapp') || source.includes('واتساپ') || sourceUrl.includes('whatsapp.com')) {
+      } else if (searchText.includes('whatsapp') || searchText.includes('واتساپ')) {
         platform = 'واتساپ';
       }
-      
-      platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+
+      if (platform) {
+        platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+      }
     });
-    
+
+    console.log('✅ Platform counts:', platformCounts);
+
     const colors = {
       'تلگرام': 'hsl(200, 98%, 39%)',
       'توییتر (X)': 'hsl(203, 89%, 53%)',
@@ -563,9 +632,8 @@ const Dashboard = () => {
       'واتساپ': 'hsl(142, 70%, 49%)',
       'سایر': 'hsl(215, 20%, 65%)'
     };
-    
+
     return Object.entries(platformCounts)
-      .filter(([name]) => name !== 'سایر')
       .map(([name, value]) => ({
         name,
         value,
@@ -573,7 +641,37 @@ const Dashboard = () => {
       }))
       .sort((a, b) => b.value - a.value);
   }, [posts]);
-  
+
+  // Calculate source threat data for chart
+  const sourceThreatData = useMemo(() => {
+    const sourceMap = new Map<string, { count: number; threat_multiplier: number }>();
+
+    posts.forEach(post => {
+      if (!post.source) return;
+
+      const current = sourceMap.get(post.source) || { count: 0, threat_multiplier: 1.0 };
+      current.count++;
+      // Get threat multiplier from post (if calculated) or use default
+      if (post.source_impact_score) {
+        // Estimate threat multiplier from impact score (reverse calculation)
+        current.threat_multiplier = Math.max(current.threat_multiplier,
+          post.source_impact_score > 600 ? 2.0 :
+          post.source_impact_score > 400 ? 1.5 : 1.0
+        );
+      }
+      sourceMap.set(post.source, current);
+    });
+
+    return Array.from(sourceMap.entries())
+      .map(([source, data]) => ({
+        source,
+        count: data.count,
+        threat_multiplier: data.threat_multiplier
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10); // Top 10 sources
+  }, [posts]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -596,7 +694,7 @@ const Dashboard = () => {
         </div>
 
         {/* Data Collection KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <DataCollectionKPI
             title="کل پست‌های جمع‌آوری شده"
             value={totalPosts.toLocaleString('fa-IR')}
@@ -625,6 +723,14 @@ const Dashboard = () => {
             }}
           />
           <DataCollectionKPI
+            title="منابع پرخطر"
+            value={highThreatSourcesCount}
+            subtitle={`ضریب تهدید بالا`}
+            icon={AlertTriangle}
+            colorScheme="red"
+            onClick={() => navigate('/source-intelligence')}
+          />
+          <DataCollectionKPI
             title="سلامت جمع‌آوری"
             value={`${collectionHealth}%`}
             subtitle={`انتظار: ~${expectedDailyVolume} پست/روز`}
@@ -636,15 +742,46 @@ const Dashboard = () => {
 
         {/* Charts */}
         <div className="grid md:grid-cols-3 gap-4">
-          <SourceTypeChart
-            data={sourceTypeData}
-            totalSources={totalSources}
-            onSegmentClick={(type) => navigate(`/posts?sourceType=${type}`)}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Flame className="w-5 h-5 text-red-600" />
+                Top 10 کانال پرخطر
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                بر اساس امتیاز تهدید
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={topRiskyChannelsData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis
+                    dataKey="channel_name"
+                    type="category"
+                    width={120}
+                    style={{ fontSize: '12px' }}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="threat_score" fill="#ef4444" radius={[0, 4, 4, 0]}>
+                    {topRiskyChannelsData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.threat_score >= 100 ? '#dc2626' : '#ef4444'}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
           <CollectionTimelineChart
             data={collectionTimelineData}
             onClick={() => navigate('/posts')}
           />
+
           <SocialMediaPieChart data={socialMediaData} />
         </div>
       </div>

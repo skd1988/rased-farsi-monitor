@@ -376,6 +376,7 @@ export type Database = {
           sentiment_score: number | null
           source: string
           source_country: string | null
+          source_impact_score: number | null
           source_type: string | null
           source_url: string | null
           status: string
@@ -384,6 +385,7 @@ export type Database = {
           threat_level: string | null
           title: string
           updated_at: string
+          weighted_threat_level: string | null
         }
         Insert: {
           analysis_model?: string | null
@@ -414,6 +416,7 @@ export type Database = {
           sentiment_score?: number | null
           source: string
           source_country?: string | null
+          source_impact_score?: number | null
           source_type?: string | null
           source_url?: string | null
           status?: string
@@ -422,6 +425,7 @@ export type Database = {
           threat_level?: string | null
           title: string
           updated_at?: string
+          weighted_threat_level?: string | null
         }
         Update: {
           analysis_model?: string | null
@@ -452,6 +456,7 @@ export type Database = {
           sentiment_score?: number | null
           source?: string
           source_country?: string | null
+          source_impact_score?: number | null
           source_type?: string | null
           source_url?: string | null
           status?: string
@@ -460,6 +465,7 @@ export type Database = {
           threat_level?: string | null
           title?: string
           updated_at?: string
+          weighted_threat_level?: string | null
         }
         Relationships: []
       }
@@ -612,6 +618,81 @@ export type Database = {
         }
         Relationships: []
       }
+      source_profiles: {
+        Row: {
+          id: string
+          source_name: string
+          source_url: string | null
+          source_type: string | null
+          political_alignment: string | null
+          reach_score: number
+          credibility_score: number
+          virality_coefficient: number
+          threat_multiplier: number
+          average_daily_posts: number
+          total_followers: number
+          engagement_rate: number
+          historical_psyop_count: number
+          last_30days_psyop_count: number
+          viral_content_count: number
+          country: string | null
+          language: string[]
+          active: boolean
+          last_analyzed_at: string | null
+          created_at: string
+          updated_at: string
+          notes: string | null
+        }
+        Insert: {
+          id?: string
+          source_name: string
+          source_url?: string | null
+          source_type?: string | null
+          political_alignment?: string | null
+          reach_score?: number
+          credibility_score?: number
+          virality_coefficient?: number
+          threat_multiplier?: number
+          average_daily_posts?: number
+          total_followers?: number
+          engagement_rate?: number
+          historical_psyop_count?: number
+          last_30days_psyop_count?: number
+          viral_content_count?: number
+          country?: string | null
+          language?: string[]
+          active?: boolean
+          last_analyzed_at?: string | null
+          created_at?: string
+          updated_at?: string
+          notes?: string | null
+        }
+        Update: {
+          id?: string
+          source_name?: string
+          source_url?: string | null
+          source_type?: string | null
+          political_alignment?: string | null
+          reach_score?: number
+          credibility_score?: number
+          virality_coefficient?: number
+          threat_multiplier?: number
+          average_daily_posts?: number
+          total_followers?: number
+          engagement_rate?: number
+          historical_psyop_count?: number
+          last_30days_psyop_count?: number
+          viral_content_count?: number
+          country?: string | null
+          language?: string[]
+          active?: boolean
+          last_analyzed_at?: string | null
+          created_at?: string
+          updated_at?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
       target_profiles: {
         Row: {
           bio_summary: string | null
@@ -620,11 +701,12 @@ export type Database = {
           id: string
           name_arabic: string | null
           name_english: string | null
-          name_persian: string
+          name_persian: string | null
           organization: string | null
           photo_source: string | null
           photo_url: string | null
           position: string | null
+          unique_identifier: string | null
           updated_at: string | null
         }
         Insert: {
@@ -634,11 +716,12 @@ export type Database = {
           id?: string
           name_arabic?: string | null
           name_english?: string | null
-          name_persian: string
+          name_persian?: string | null
           organization?: string | null
           photo_source?: string | null
           photo_url?: string | null
           position?: string | null
+          unique_identifier?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -648,11 +731,12 @@ export type Database = {
           id?: string
           name_arabic?: string | null
           name_english?: string | null
-          name_persian?: string
+          name_persian?: string | null
           organization?: string | null
           photo_source?: string | null
           photo_url?: string | null
           position?: string | null
+          unique_identifier?: string | null
           updated_at?: string | null
         }
         Relationships: []

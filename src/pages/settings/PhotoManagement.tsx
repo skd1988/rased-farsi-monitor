@@ -240,16 +240,22 @@ export default function PhotoManagement() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTargets.map((target, idx) => (
-              <Card key={idx} className="hover:shadow-lg transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <TargetAvatar 
-                      target={target}
-                      size="lg"
-                      showUpload={true}
-                      onPhotoUpdate={() => fetchTargets()}
-                    />
+            {filteredTargets.map((target) => {
+              // Generate unique key from target names
+              const uniqueKey = target.name_persian || target.name_english || target.name_arabic || Math.random().toString();
+
+              return (
+                <Card key={uniqueKey} className="hover:shadow-lg transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-4">
+                      <TargetAvatar
+                        target={target}
+                        size="lg"
+                        showUpload={true}
+                        onPhotoUpdate={async () => {
+                          await fetchTargets();
+                        }}
+                      />
                     
                     <div className="flex-1 min-w-0">
                       <div className="font-bold truncate text-foreground">
@@ -274,7 +280,8 @@ export default function PhotoManagement() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

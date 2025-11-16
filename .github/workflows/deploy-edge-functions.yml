@@ -1,0 +1,36 @@
+name: Deploy Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: chtsmcvncfabdogrffns
+        run: |
+          supabase functions deploy chat-assistant --project-ref $SUPABASE_PROJECT_ID
+          echo "✅ Edge Function deployed successfully!"
+
+      - name: Verify Deployment
+        run: |
+          echo "🎉 Deployment completed!"
+          echo "Function: chat-assistant"
+          echo "Project: chtsmcvncfabdogrffns"

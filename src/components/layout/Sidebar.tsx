@@ -1,23 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  Home, 
-  FileText, 
-  Brain, 
-  MessageSquare, 
-  AlertTriangle, 
-  TrendingUp, 
-  Settings, 
-  Newspaper, 
-  Wrench, 
-  Activity, 
-  Shield, 
-  Network, 
+import {
+  Home,
+  FileText,
+  Brain,
+  MessageSquare,
+  AlertTriangle,
+  TrendingUp,
+  Settings,
+  Newspaper,
+  Wrench,
+  Activity,
+  Shield,
+  Network,
   Target,
+  Radio,
   ChevronDown,
   ChevronUp,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Rss,
+  Archive,
+  Zap
 } from 'lucide-react';
 import logo from '@/assets/logo.svg';
 import { cn } from '@/lib/utils';
@@ -74,17 +78,36 @@ const menuStructure: MenuGroup[] = [
         badge: { type: 'count', source: 'activeCampaigns' },
         description: 'ردیابی کمپین‌ها'
       },
-      { 
-        label: 'تحلیل اهداف', 
-        icon: Target, 
+      {
+        label: 'تحلیل اهداف',
+        icon: Target,
         route: '/target-analysis',
         description: 'اهداف و الگوهای حملات'
       },
-      { 
-        label: 'هوش و روندها', 
-        icon: TrendingUp, 
+      {
+        label: 'تحلیل منابع',
+        icon: Newspaper,
+        route: '/source-intelligence',
+        badge: { type: 'count', source: 'highThreatSources' },
+        description: 'وزن‌دهی و اعتبارسنجی منابع'
+      },
+      {
+        label: 'تحلیل کانال‌ها',
+        icon: Radio,
+        route: '/channel-analytics',
+        description: 'رصد کانال‌های Social Media'
+      },
+      {
+        label: 'هوش و روندها',
+        icon: TrendingUp,
         route: '/intelligence',
         description: 'تحلیل روندها و الگوها'
+      },
+      {
+        label: 'تاریخچه عملیات',
+        icon: Archive,
+        route: '/operations-history',
+        description: 'آرشیو هوشمند عملیات روانی'
       }
     ]
   },
@@ -135,21 +158,33 @@ const menuStructure: MenuGroup[] = [
     color: 'gray',
     collapsible: true,
     items: [
-      { 
-        label: 'تنظیمات', 
-        icon: Settings, 
+      {
+        label: 'تنظیمات',
+        icon: Settings,
         route: '/settings',
         description: 'پیکربندی سیستم'
       },
-      { 
-        label: 'مصرف API', 
-        icon: Activity, 
+      {
+        label: 'Inoreader RSS',
+        icon: Rss,
+        route: '/settings/inoreader',
+        description: 'مدیریت Inoreader و RSS'
+      },
+      {
+        label: 'عملکرد سایت',
+        icon: Zap,
+        route: '/performance',
+        description: 'سرعت و بهینه‌سازی'
+      },
+      {
+        label: 'مصرف API',
+        icon: Activity,
         route: '/api-usage',
         description: 'آمار و هزینه API'
       },
-      { 
-        label: 'تست سیستم', 
-        icon: Wrench, 
+      {
+        label: 'تست سیستم',
+        icon: Wrench,
         route: '/system-test',
         badge: { type: 'label', label: 'Debug' },
         description: 'تست و دیباگ'
@@ -162,6 +197,7 @@ const Sidebar = () => {
   const [criticalCount, setCriticalCount] = useState(0);
   const [activeCampaigns, setActiveCampaigns] = useState(0);
   const [urgentResponses, setUrgentResponses] = useState(0);
+  const [highThreatSources, setHighThreatSources] = useState(0);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
     return saved ? JSON.parse(saved) : false;
@@ -203,9 +239,19 @@ const Sidebar = () => {
           .eq('threat_level', 'Critical')
           .neq('status', 'حل شده')
           .gte('published_at', twoHoursAgo);
-        
+
         if (urgentError) throw urgentError;
         setUrgentResponses(urgentCount || 0);
+
+        // Fetch high threat sources count
+        const { count: highThreatCount, error: sourcesError } = await supabase
+          .from('source_profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('active', true)
+          .gte('threat_multiplier', 2.0);
+
+        if (sourcesError) throw sourcesError;
+        setHighThreatSources(highThreatCount || 0);
       } catch (error) {
         console.error('Error fetching counts:', error);
       }
@@ -262,6 +308,7 @@ const Sidebar = () => {
       if (badge.source === 'criticalThreats') return criticalCount;
       if (badge.source === 'activeCampaigns') return activeCampaigns;
       if (badge.source === 'urgentResponses') return urgentResponses;
+      if (badge.source === 'highThreatSources') return highThreatSources;
     }
     
     return null;

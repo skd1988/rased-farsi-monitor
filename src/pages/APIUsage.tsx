@@ -7,7 +7,9 @@ import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDistanceToNowIran } from '@/lib/dateUtils';
+import InoreaderAPIUsageTab from '@/components/api-usage/InoreaderAPIUsageTab';
 
 interface UsageLog {
   id: string;
@@ -160,11 +162,19 @@ const APIUsage = () => {
       <div className="space-y-2">
         <h1 className="text-3xl font-bold">مصرف API</h1>
         <p className="text-muted-foreground">
-          رصد مصرف توکن و هزینه‌های API هوش مصنوعی DeepSeek
+          رصد مصرف و هزینه‌های APIهای هوش مصنوعی و Inoreader
         </p>
       </div>
 
-      {/* KPI Cards */}
+      {/* Tabs */}
+      <Tabs defaultValue="deepseek" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="deepseek">DeepSeek API</TabsTrigger>
+          <TabsTrigger value="inoreader">Inoreader API</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="deepseek" className="space-y-6 mt-6">
+          {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -389,6 +399,12 @@ const APIUsage = () => {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="inoreader" className="space-y-6 mt-6">
+          <InoreaderAPIUsageTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

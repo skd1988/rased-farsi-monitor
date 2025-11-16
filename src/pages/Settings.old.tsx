@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,6 +35,8 @@ import {
   Search,
   Languages,
   Activity,
+  Play,
+  Pause,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import Papa from "papaparse";
@@ -257,6 +260,11 @@ const Settings = () => {
   const [redetectProgress, setRedetectProgress] = useState(0);
   const [redetectStats, setRedetectStats] = useState({ updated: 0, total: 0, persian: 0, arabic: 0, mixed: 0 });
 
+  // Automation Control states
+  const [systemEnabled, setSystemEnabled] = useState(true);
+  const [cronJobs, setCronJobs] = useState<any[]>([]);
+  const [automationLoading, setAutomationLoading] = useState(false);
+
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem("appSettings");
     if (saved) {
@@ -329,6 +337,122 @@ const Settings = () => {
     if (updates.dark_mode !== undefined) {
       document.documentElement.classList.toggle("dark", updates.dark_mode);
     }
+  };
+
+  // Load automation status from Supabase
+  const loadAutomationStatus = async () => {
+    setAutomationLoading(true);
+    try {
+      // Load system config
+      const { data: config, error: configError } = await supabase
+        .from('auto_analysis_config')
+        .select('config_value')
+        .eq('config_key', 'enabled')
+        .single();
+
+      if (configError) {
+        console.error('Load config error:', configError);
+        throw configError;
+      }
+
+      if (config) {
+        const enabled = typeof config.config_value === 'boolean'
+          ? config.config_value
+          : config.config_value === true || config.config_value === 'true';
+
+        console.log('✅ Loaded automation status:', {
+          raw: config.config_value,
+          parsed: enabled
+        });
+
+        setSystemEnabled(enabled);
+      }
+
+      // Load REAL cron jobs status from Edge Function
+      console.log('📡 Fetching cron jobs from Edge Function...');
+
+      const { data: cronData, error: cronError } = await supabase.functions.invoke(
+        'get-cron-status',
+        {
+          method: 'POST',
+          body: {}
+        }
+      );
+
+      if (cronError) {
+        console.error('❌ Cron jobs fetch error:', cronError);
+        throw cronError;
+      }
+
+      if (cronData && cronData.success) {
+        console.log('✅ Loaded cron jobs:', cronData.jobs);
+        setCronJobs(cronData.jobs || []);
+      } else {
+        console.warn('⚠️ No cron jobs returned');
+        setCronJobs([]);
+      }
+
+    } catch (error: any) {
+      console.error('Load automation status error:', error);
+      toast({
+        title: 'خطا در بارگذاری',
+        description: error.message,
+        variant: 'destructive',
+      });
+
+      // Fallback to empty array on error
+      setCronJobs([]);
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  // Toggle system enabled/disabled
+  const toggleSystemEnabled = async () => {
+    setAutomationLoading(true);
+    try {
+      const newValue = !systemEnabled;
+
+      // Update in Supabase
+      const { error } = await supabase
+        .from('auto_analysis_config')
+        .update({ config_value: newValue })
+        .eq('config_key', 'enabled');
+
+      if (error) throw error;
+
+      setSystemEnabled(newValue);
+
+      toast({
+        title: newValue ? "سیستم فعال شد" : "سیستم غیرفعال شد",
+        description: newValue ? "تحلیل خودکار فعال است" : "تحلیل خودکار متوقف شد",
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "خطا",
+        description: "مشکل در تغییر وضعیت سیستم",
+        variant: "destructive",
+      });
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  // Pause all cron jobs (placeholder)
+  const handlePauseAll = () => {
+    toast({
+      title: "در حال توسعه",
+      description: "این قابلیت به زودی اضافه می‌شود",
+    });
+  };
+
+  // Resume all cron jobs (placeholder)
+  const handleResumeAll = () => {
+    toast({
+      title: "در حال توسعه",
+      description: "این قابلیت به زودی اضافه می‌شود",
+    });
   };
 
   const handleSaveApiKey = () => {
@@ -725,7 +849,28 @@ const Settings = () => {
   };
 
   const deleteAllPosts = async () => {
-    const confirmMsg = `آیا مطمئن هستید که می‌خواهید همه ${syncStats.dbPosts} مطلب را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.`;
+    // Get counts for all tables first
+    const { count: postsCount } = await supabase
+      .from("posts")
+      .select("*", { count: "exact", head: true });
+
+    const { count: channelsCount } = await supabase
+      .from("social_media_channels")
+      .select("*", { count: "exact", head: true });
+
+    const { count: sourcesCount } = await supabase
+      .from("source_profiles")
+      .select("*", { count: "exact", head: true });
+
+    const totalCount = (postsCount || 0) + (channelsCount || 0) + (sourcesCount || 0);
+
+    const confirmMsg = `⚠️ هشدار: حذف کامل تمام داده‌ها\n\n` +
+      `📊 آمار داده‌های قابل حذف:\n` +
+      `• ${postsCount || 0} پست\n` +
+      `• ${channelsCount || 0} کانال Social Media\n` +
+      `• ${sourcesCount || 0} پروفایل منبع\n\n` +
+      `⚠️ جمع کل: ${totalCount} رکورد\n\n` +
+      `آیا مطمئن هستید؟ این عملیات قابل بازگشت نیست.`;
 
     if (!confirm(confirmMsg)) return;
 
@@ -733,33 +878,82 @@ const Settings = () => {
       setCleaning(true);
 
       toast({
-        title: "شروع حذف...",
-        description: "لطفاً صبر کنید",
+        title: "شروع حذف همه داده‌ها...",
+        description: "لطفاً صبر کنید، ممکن است چند لحظه طول بکشد",
       });
 
-      let deletedTotal = 0;
-      let hasMore = true;
+      let deletedPosts = 0;
+      let deletedChannels = 0;
+      let deletedSources = 0;
 
-      while (hasMore) {
+      // Step 1: Delete all posts
+      console.log("🗑️ Step 1: Deleting posts...");
+      let hasMorePosts = true;
+      while (hasMorePosts) {
         const { data: batch } = await supabase.from("posts").select("id").limit(100);
-
         if (!batch || batch.length === 0) {
-          hasMore = false;
+          hasMorePosts = false;
           break;
         }
-
         const ids = batch.map((p) => p.id);
         await supabase.from("posts").delete().in("id", ids);
-
-        deletedTotal += batch.length;
-        console.log(`🗑️ Deleted ${deletedTotal}...`);
+        deletedPosts += batch.length;
+        console.log(`  ✅ Deleted ${deletedPosts} posts...`);
       }
 
+      // Step 2: Delete all social media channels
+      console.log("🗑️ Step 2: Deleting social media channels...");
+      let hasMoreChannels = true;
+      while (hasMoreChannels) {
+        const { data: batch } = await supabase
+          .from("social_media_channels")
+          .select("id")
+          .limit(100);
+        if (!batch || batch.length === 0) {
+          hasMoreChannels = false;
+          break;
+        }
+        const ids = batch.map((c) => c.id);
+        await supabase.from("social_media_channels").delete().in("id", ids);
+        deletedChannels += batch.length;
+        console.log(`  ✅ Deleted ${deletedChannels} channels...`);
+      }
+
+      // Step 3: Delete all source profiles
+      console.log("🗑️ Step 3: Deleting source profiles...");
+      let hasMoreSources = true;
+      while (hasMoreSources) {
+        const { data: batch } = await supabase
+          .from("source_profiles")
+          .select("id")
+          .limit(100);
+        if (!batch || batch.length === 0) {
+          hasMoreSources = false;
+          break;
+        }
+        const ids = batch.map((s) => s.id);
+        await supabase.from("source_profiles").delete().in("id", ids);
+        deletedSources += batch.length;
+        console.log(`  ✅ Deleted ${deletedSources} sources...`);
+      }
+
+      // Reset localStorage
+      const sheetSpecificKey = `lastSyncedRow_${settings.google_sheet_id}`;
+      localStorage.setItem(sheetSpecificKey, "0");
       localStorage.setItem("lastSyncedRow", "0");
+
+      const totalDeleted = deletedPosts + deletedChannels + deletedSources;
 
       toast({
         title: "✅ حذف کامل شد",
-        description: `${deletedTotal} مطلب حذف شد`,
+        description: `${totalDeleted} رکورد حذف شد:\n• ${deletedPosts} پست\n• ${deletedChannels} کانال\n• ${deletedSources} منبع`,
+      });
+
+      console.log("🎉 Deletion complete:", {
+        posts: deletedPosts,
+        channels: deletedChannels,
+        sources: deletedSources,
+        total: totalDeleted,
       });
 
       await checkSyncStatus();
@@ -820,6 +1014,366 @@ const Settings = () => {
         title: "خطا در پیش‌نمایش",
         description: error.message,
         variant: "destructive",
+      });
+    }
+  };
+
+  // Helper function to detect political alignment from source
+  const detectPoliticalAlignment = (source: string, url: string): string => {
+    const checkText = `${source} ${url}`.toLowerCase();
+
+    // Known enemy sources
+    const enemyPatterns = [
+      { pattern: /saudi|سعود|العربية/i, alignment: 'Saudi-Aligned' },
+      { pattern: /israel|יהודי|يديعوت|القدس|جيروزاليم/i, alignment: 'Israeli-Affiliated' },
+      { pattern: /معارض|المعارض|اندپندنت عربية|اندبندنت عربية|العربي الجديد/i, alignment: 'Anti-Resistance' },
+      { pattern: /bbc|cnn|france24|dw/i, alignment: 'Western-Aligned' },
+    ];
+
+    for (const { pattern, alignment } of enemyPatterns) {
+      if (pattern.test(checkText)) {
+        return alignment;
+      }
+    }
+
+    // Pro-resistance sources
+    const proResistancePatterns = [
+      /almayadeen|الميادين|almanar|المنار|قناة المسيرة|الأخبار/i,
+      /parstoday|presstv|الوفاق|al-wefaq/i,
+    ];
+
+    for (const pattern of proResistancePatterns) {
+      if (pattern.test(checkText)) {
+        return 'Pro-Resistance';
+      }
+    }
+
+    return 'Neutral';
+  };
+
+  // Helper function to normalize source_type to valid database values
+  const normalizeSourceType = (sourceType: string): string => {
+    // Valid values from database constraint
+    const validTypes = [
+      'RSS Feed',
+      'News Website',
+      'Social Media',
+      'Blog',
+      'Aggregator',
+      'Government',
+      'Unknown'
+    ];
+
+    // If already valid, return as-is
+    if (validTypes.includes(sourceType)) {
+      return sourceType;
+    }
+
+    // Map common variations to valid values
+    const typeMap: Record<string, string> = {
+      // Social Media variations
+      'social_media': 'Social Media',
+      'social': 'Social Media',
+      'sm': 'Social Media',
+
+      // News Website variations
+      'website': 'News Website',
+      'news_agency': 'News Website',
+      'news': 'News Website',
+      'news_website': 'News Website',
+      'media': 'News Website',
+      'agency': 'News Website',
+
+      // Blog variations
+      'blog': 'Blog',
+      'weblog': 'Blog',
+
+      // Forum/Discussion variations
+      'forum': 'News Website', // Map forum to News Website
+
+      // RSS variations
+      'rss': 'RSS Feed',
+      'feed': 'RSS Feed',
+      'rss_feed': 'RSS Feed',
+
+      // Government variations
+      'government': 'Government',
+      'gov': 'Government',
+      'official': 'Government',
+
+      // Aggregator variations
+      'aggregator': 'Aggregator',
+      'aggregate': 'Aggregator',
+    };
+
+    // Try to match with map
+    const normalized = typeMap[sourceType.toLowerCase().trim()];
+    if (normalized) {
+      return normalized;
+    }
+
+    // Default fallback
+    return 'News Website';
+  };
+
+  // Helper function to upsert source profile
+  const upsertSourceProfile = async (source: string, sourceUrl: string, sourceType: string, country: string, isPsyop: boolean) => {
+    try {
+      // Validate inputs - skip if source name is empty or invalid
+      if (!source || source.trim().length === 0) {
+        console.warn('⚠️ Skipping source profile: empty source name');
+        return;
+      }
+
+      // Skip if source name is too short or looks invalid
+      if (source.trim().length < 3) {
+        console.warn(`⚠️ Skipping source profile: source name too short: "${source}"`);
+        return;
+      }
+
+      // Clean the source name
+      const cleanSourceName = source.trim();
+
+      // CRITICAL: Validate and clean country field
+      // Convert invalid values to NULL which database accepts
+      const invalidCountries = ['نامشخص', 'نامعین', 'Unknown', 'نامشخص', '', 'null', 'undefined'];
+      const cleanCountry = (!country || invalidCountries.includes(country.trim())) ? null : country.trim();
+
+      // Check if source profile already exists
+      const { data: existing, error: selectError } = await supabase
+        .from('source_profiles')
+        .select('*')
+        .eq('source_name', cleanSourceName)
+        .maybeSingle();
+
+      if (selectError) {
+        console.error(`❌ Error checking existing source: ${selectError.message}`);
+        return;
+      }
+
+      if (existing) {
+        // Update existing: increment PsyOp counts if this is a PsyOp
+        if (isPsyop) {
+          const { error: updateError } = await supabase
+            .from('source_profiles')
+            .update({
+              historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
+              last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
+            })
+            .eq('id', existing.id);
+
+          if (updateError) {
+            console.error(`❌ Error updating source PsyOp count: ${updateError.message}`);
+          } else {
+            console.log(`✅ Updated source profile PsyOp count: ${cleanSourceName}`);
+          }
+        }
+      } else {
+        // Create new source profile with intelligent defaults
+        const politicalAlignment = detectPoliticalAlignment(cleanSourceName, sourceUrl);
+
+        // Validate all fields before insert
+        const newProfile = {
+          source_name: cleanSourceName,
+          source_type: normalizeSourceType(sourceType),
+          political_alignment: politicalAlignment || 'Neutral',
+          reach_score: 50,
+          credibility_score: 50,
+          virality_coefficient: 1.0,
+          threat_multiplier: (politicalAlignment && (politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli'))) ? 1.5 : 1.0,
+          historical_psyop_count: isPsyop ? 1 : 0,
+          last_30days_psyop_count: isPsyop ? 1 : 0,
+          country: cleanCountry, // NULL if invalid
+          active: true,
+        };
+
+        console.log(`🔍 Attempting to insert source profile:`, {
+          name: newProfile.source_name,
+          type: newProfile.source_type,
+          country: newProfile.country,
+          alignment: newProfile.political_alignment
+        });
+
+        const { error: insertError } = await supabase
+          .from('source_profiles')
+          .insert([newProfile]);
+
+        if (insertError) {
+          console.error(`❌ Error creating source profile for "${cleanSourceName}":`, {
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            code: insertError.code
+          });
+        } else {
+          console.log(`✨ Created source profile: ${cleanSourceName}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Exception in upsertSourceProfile:', {
+        message: error.message,
+        source: source
+      });
+    }
+  };
+
+  // Helper function to normalize platform to valid database values
+  const normalizePlatform = (platform: string): string => {
+    const validPlatforms = [
+      'Telegram', 'Twitter', 'Facebook', 'Instagram',
+      'YouTube', 'TikTok', 'LinkedIn', 'WhatsApp', 'Snapchat'
+    ];
+
+    // If already valid, return as-is
+    if (validPlatforms.includes(platform)) {
+      return platform;
+    }
+
+    // Map common variations
+    const platformMap: Record<string, string> = {
+      'telegram': 'Telegram',
+      'twitter': 'Twitter',
+      'x': 'Twitter',
+      'x.com': 'Twitter',
+      'facebook': 'Facebook',
+      'fb': 'Facebook',
+      'instagram': 'Instagram',
+      'ig': 'Instagram',
+      'youtube': 'YouTube',
+      'yt': 'YouTube',
+      'tiktok': 'TikTok',
+      'linkedin': 'LinkedIn',
+      'whatsapp': 'WhatsApp',
+      'snapchat': 'Snapchat',
+      'snap': 'Snapchat',
+    };
+
+    const normalized = platformMap[platform.toLowerCase()];
+    if (normalized) {
+      return normalized;
+    }
+
+    // Default fallback - use first valid platform
+    return 'Telegram';
+  };
+
+  // Helper function to upsert social media channel
+  const upsertSocialMediaChannel = async (channelName: string, platform: string, sourceUrl: string, country: string, isPsyop: boolean) => {
+    try {
+      // Validate inputs - skip if channel name is empty or invalid
+      if (!channelName || channelName.trim().length === 0) {
+        console.warn('⚠️ Skipping channel: empty channel name');
+        return;
+      }
+
+      // Skip if channel name is too short
+      if (channelName.trim().length < 3) {
+        console.warn(`⚠️ Skipping channel: name too short: "${channelName}"`);
+        return;
+      }
+
+      // Clean the channel name
+      const cleanChannelName = channelName.trim();
+
+      // CRITICAL: Validate and clean country field
+      const invalidCountries = ['نامشخص', 'نامعین', 'Unknown', '', 'null', 'undefined'];
+      const cleanCountry = (!country || invalidCountries.includes(country.trim())) ? null : country.trim();
+
+      // Extract channel ID from URL
+      let channelId = null;
+      if (platform === 'Telegram' && sourceUrl && sourceUrl.includes('t.me/')) {
+        channelId = sourceUrl.split('t.me/')[1]?.split('/')[0];
+      }
+
+      // Check if channel already exists
+      const { data: existing, error: selectError } = await supabase
+        .from('social_media_channels')
+        .select('*')
+        .eq('channel_name', cleanChannelName)
+        .maybeSingle();
+
+      if (selectError) {
+        console.error(`❌ Error checking existing channel: ${selectError.message}`);
+        return;
+      }
+
+      if (existing) {
+        // Update existing: increment PsyOp counts if this is a PsyOp
+        if (isPsyop) {
+          const { error: updateError } = await supabase
+            .from('social_media_channels')
+            .update({
+              historical_psyop_count: (existing.historical_psyop_count || 0) + 1,
+              last_30days_psyop_count: (existing.last_30days_psyop_count || 0) + 1,
+            })
+            .eq('id', existing.id);
+
+          if (updateError) {
+            console.error(`❌ Error updating channel PsyOp count: ${updateError.message}`);
+          } else {
+            console.log(`✅ Updated channel PsyOp count: ${cleanChannelName}`);
+          }
+        }
+      } else {
+        // Create new channel with intelligent defaults
+        const politicalAlignment = detectPoliticalAlignment(cleanChannelName, sourceUrl);
+
+        // CRITICAL: Properly set language array based on country
+        let languageArray: string[];
+        if (cleanCountry === 'Iran' || cleanCountry === 'ایران') {
+          languageArray = ['فارسی'];
+        } else if (['Lebanon', 'Iraq', 'Syria', 'Yemen', 'لبنان', 'عراق', 'سوریه', 'یمن'].includes(cleanCountry || '')) {
+          languageArray = ['عربی'];
+        } else if (cleanCountry && cleanCountry.length > 0) {
+          languageArray = ['انگلیسی'];
+        } else {
+          // If no country, try to detect from channel name
+          const hasArabic = /[\u0600-\u06FF]/.test(cleanChannelName);
+          const hasPersian = /[پچژگ]/.test(cleanChannelName);
+          languageArray = hasPersian ? ['فارسی'] : hasArabic ? ['عربی'] : ['انگلیسی'];
+        }
+
+        const newChannel = {
+          channel_name: cleanChannelName,
+          channel_id: channelId,
+          platform: normalizePlatform(platform),
+          political_alignment: politicalAlignment || 'Neutral',
+          reach_score: 50,
+          credibility_score: 50,
+          virality_coefficient: platform === 'Telegram' ? 1.3 : 1.0,
+          threat_multiplier: (politicalAlignment && (politicalAlignment.includes('Anti') || politicalAlignment.includes('Israeli'))) ? 2.0 : 1.0,
+          historical_psyop_count: isPsyop ? 1 : 0,
+          last_30days_psyop_count: isPsyop ? 1 : 0,
+          language: languageArray, // Validated array
+          country: cleanCountry, // NULL if invalid
+        };
+
+        console.log(`🔍 Attempting to insert channel:`, {
+          name: newChannel.channel_name,
+          platform: newChannel.platform,
+          country: newChannel.country,
+          language: newChannel.language
+        });
+
+        const { error: insertError } = await supabase
+          .from('social_media_channels')
+          .insert([newChannel]);
+
+        if (insertError) {
+          console.error(`❌ Error creating channel for "${cleanChannelName}":`, {
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            code: insertError.code
+          });
+        } else {
+          console.log(`✨ Created channel: ${cleanChannelName}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Exception in upsertSocialMediaChannel:', {
+        message: error.message,
+        channel: channelName
       });
     }
   };
@@ -1028,6 +1582,7 @@ const Settings = () => {
         noTitle: 0,
         placeholderTitle: 0,
         duplicate: 0,
+        oldPost: 0,
       };
 
       for (let i = 0; i < rowsToSync.length; i++) {
@@ -1761,7 +2316,7 @@ const Settings = () => {
                 row['Publication Date'],
                 row.timestamp,
               ];
-              
+
               for (const field of dateFields) {
                 if (field && typeof field === 'string' && field.trim().length > 0) {
                   const parsed = parseDate(field);
@@ -1771,7 +2326,7 @@ const Settings = () => {
                   return parsed;
                 }
               }
-              
+
               // Try extracting from content
               const dateFromText = extractDateFromText(title + " " + contents);
               if (dateFromText) {
@@ -1780,7 +2335,7 @@ const Settings = () => {
                 }
                 return dateFromText;
               }
-              
+
               // Fallback to today
               if (i < 3) {
                 console.log(`⚠️ No date found, using today`);
@@ -1791,6 +2346,21 @@ const Settings = () => {
             language: detectedLanguage,
             status: "جدید",
           };
+
+          // ✅ قانون 24 ساعت: رد کردن پست‌های قدیمی‌تر از 24 ساعت
+          const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+          const publishedTime = new Date(post.published_at).getTime();
+
+          if (publishedTime < oneDayAgo) {
+            const hoursOld = Math.round((Date.now() - publishedTime) / (1000 * 60 * 60));
+            console.log(`⏭️ [Row ${lastSyncedRow + i + 1}] Skipping old post (${hoursOld}h old): "${title.substring(0, 50)}..."`);
+            validationSkips.oldPost++;
+            continue;
+          }
+
+          if (i < 3) {
+            console.log(`✅ [Row ${lastSyncedRow + i + 1}] Post is within 24h, proceeding...`);
+          }
 
           // Check duplicates only by title
           const { data: existingPost } = await supabase
@@ -1813,6 +2383,33 @@ const Settings = () => {
             if (errorCount <= 3) console.error("Failed post:", post);
           } else {
             importedCount++;
+
+            // ✨ NEW: Update source profiles and channels
+            await upsertSourceProfile(
+              cleanSource,
+              finalUrl,
+              post.source_type,
+              post.source_country || 'نامشخص',
+              false // We don't know if it's PsyOp yet during initial import
+            );
+
+            // If it's social media, also update channels table
+            if (post.source_type === 'social_media') {
+              const platform = finalUrl.includes('t.me') || finalUrl.includes('telegram') ? 'Telegram' :
+                               finalUrl.includes('twitter.com') || finalUrl.includes('x.com') ? 'Twitter' :
+                               finalUrl.includes('facebook.com') ? 'Facebook' :
+                               finalUrl.includes('instagram.com') ? 'Instagram' :
+                               finalUrl.includes('youtube.com') ? 'YouTube' : 'Other';
+
+              await upsertSocialMediaChannel(
+                cleanSource,
+                platform,
+                finalUrl,
+                post.source_country || 'نامشخص',
+                false
+              );
+            }
+
             if (importedCount % 10 === 0) {
               console.log(`✅ Imported ${importedCount}/${rowsToSync.length}`);
             }
@@ -1825,7 +2422,7 @@ const Settings = () => {
 
       setSyncProgress(90);
 
-      const totalSkipped = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate;
+      const totalSkipped = validationSkips.noTitle + validationSkips.placeholderTitle + validationSkips.duplicate + validationSkips.oldPost;
 
       console.log("📊 Validation Summary:", {
         totalRows: rowsToSync.length,
@@ -1866,7 +2463,7 @@ const Settings = () => {
 
       toast({
         title: "✅ همگام‌سازی کامل شد",
-        description: `✅ ${importedCount} مطلب وارد شد${totalSkipped > 0 ? `\n⚠️ ${totalSkipped} ردیف رد شد` : ""}${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ""}`,
+        description: `✅ ${importedCount} مطلب وارد شد${totalSkipped > 0 ? `\n⚠️ ${totalSkipped} ردیف رد شد (${validationSkips.duplicate} تکراری، ${validationSkips.oldPost} قدیمی‌تر از 24 ساعت)` : ""}${errorCount > 0 ? `\n❌ ${errorCount} خطا` : ""}`,
       });
 
       console.log("✅ Sync completed:", {
@@ -1984,8 +2581,12 @@ const Settings = () => {
               <Zap className="h-4 w-4" />
               <span className="hidden sm:inline">اتوماسیون</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="api-usage" 
+            <TabsTrigger value="automation-control" className="gap-2">
+              <SettingsIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">کنترل اتوماسیون</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="api-usage"
               className="gap-2"
               onClick={() => window.location.href = '/settings/api-usage'}
             >
@@ -2716,6 +3317,163 @@ const Settings = () => {
                 </div>
 
                 <Button onClick={handleSaveApiKey}>ذخیره تنظیمات</Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="automation-control" className="space-y-6">
+            {/* Master Control Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>کنترل سیستم خودکار</CardTitle>
+                <CardDescription>مدیریت وضعیت کلی سیستم تحلیل خودکار</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <div className="font-medium">وضعیت سیستم</div>
+                    <p className="text-sm text-muted-foreground">
+                      {systemEnabled ? "سیستم فعال و در حال اجرا است" : "سیستم غیرفعال است"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={systemEnabled ? "default" : "secondary"}>
+                      {systemEnabled ? "✅ فعال" : "⏸️ غیرفعال"}
+                    </Badge>
+                    <Switch
+                      checked={systemEnabled}
+                      onCheckedChange={toggleSystemEnabled}
+                      disabled={automationLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={loadAutomationStatus}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={automationLoading}
+                  >
+                    {automationLoading ? (
+                      <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 me-2" />
+                    )}
+                    بارگذاری وضعیت
+                  </Button>
+                  <Button
+                    onClick={handlePauseAll}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={automationLoading || !systemEnabled}
+                  >
+                    <Pause className="h-4 w-4 me-2" />
+                    توقف همه
+                  </Button>
+                  <Button
+                    onClick={handleResumeAll}
+                    variant="outline"
+                    className="flex-1"
+                    disabled={automationLoading || systemEnabled}
+                  >
+                    <Play className="h-4 w-4 me-2" />
+                    راه‌اندازی همه
+                  </Button>
+                </div>
+
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>توجه</AlertTitle>
+                  <AlertDescription>
+                    غیرفعال کردن سیستم باعث توقف تحلیل خودکار می‌شود. پست‌های جدید در صف تحلیل قرار می‌گیرند اما پردازش نمی‌شوند.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
+            {/* Cron Jobs Status Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>وضعیت Cron Jobs</CardTitle>
+                <CardDescription>نمایش وضعیت وظایف زمان‌بندی شده</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {cronJobs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+                    <p>در حال بارگذاری وضعیت...</p>
+                  </div>
+                ) : (
+                  cronJobs.map((job, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <div className="font-medium">{job.jobname}</div>
+                        <p className="text-xs text-muted-foreground font-mono">{job.schedule}</p>
+                      </div>
+                      <Badge variant={job.active ? "default" : "secondary"}>
+                        {job.active ? "✅ فعال" : "⏸️ غیرفعال"}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            {/* SQL Commands Helper Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>دستورات SQL برای مدیریت</CardTitle>
+                <CardDescription>دستورات مفید برای مدیریت دستی سیستم</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">غیرفعال کردن سیستم:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`UPDATE auto_analysis_config
+SET config_value = false
+WHERE config_key = 'enabled';`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">فعال کردن سیستم:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`UPDATE auto_analysis_config
+SET config_value = true
+WHERE config_key = 'enabled';`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">مشاهده Cron Jobs:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`SELECT * FROM cron.job
+ORDER BY jobid;`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">غیرفعال کردن یک Job:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`SELECT cron.unschedule('job-name-here');`}
+                  </pre>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">مشاهده تنظیمات:</Label>
+                  <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
+{`SELECT * FROM auto_analysis_config;`}
+                  </pre>
+                </div>
+
+                <Alert>
+                  <Database className="h-4 w-4" />
+                  <AlertTitle>نکته</AlertTitle>
+                  <AlertDescription>
+                    این دستورات را می‌توانید در SQL Editor سوپابیس اجرا کنید. برای دسترسی به Dashboard Supabase مراجعه کنید.
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           </TabsContent>

@@ -29,6 +29,7 @@ const TargetAnalysis = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [entities, setEntities] = useState<any[]>([]);
   const [persons, setPersons] = useState<any[]>([]);
+  const [targetProfiles, setTargetProfiles] = useState<any[]>([]);
   
   // Filters
   const [timeRange, setTimeRange] = useState('30d');
@@ -65,12 +66,20 @@ const TargetAnalysis = () => {
           .from('resistance_persons')
           .select('*')
           .eq('active', true);
-        
+
         if (personsError) throw personsError;
+
+        // Fetch target profiles (for photos)
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('target_profiles')
+          .select('name_persian, name_english, name_arabic, photo_url, photo_source');
+
+        if (profilesError) throw profilesError;
 
         setPosts(postsData || []);
         setEntities(entitiesData || []);
         setPersons(personsData || []);
+        setTargetProfiles(profilesData || []);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
@@ -105,8 +114,8 @@ const TargetAnalysis = () => {
         description: `${data.updated} پست به‌روز شد. ${data.alreadyCategorized} هدف قبلاً دسته‌بندی شده بود.`,
       });
       
-      // Refresh all data (posts, persons, entities)
-      const [postsResult, personsResult, entitiesResult] = await Promise.all([
+      // Refresh all data (posts, persons, entities, profiles)
+      const [postsResult, personsResult, entitiesResult, profilesResult] = await Promise.all([
         supabase
           .from('posts')
           .select('*')
@@ -119,12 +128,16 @@ const TargetAnalysis = () => {
         supabase
           .from('resistance_entities')
           .select('*')
-          .eq('active', true)
+          .eq('active', true),
+        supabase
+          .from('target_profiles')
+          .select('name_persian, name_english, name_arabic, photo_url, photo_source')
       ]);
-      
+
       setPosts(postsResult.data || []);
       setPersons(personsResult.data || []);
       setEntities(entitiesResult.data || []);
+      setTargetProfiles(profilesResult.data || []);
       
     } catch (error) {
       console.error('Categorization failed:', error);
@@ -138,28 +151,50 @@ const TargetAnalysis = () => {
     }
   };
 
-  // Process entity data - SIMPLIFIED: now expects plain string array
+  // Process entity data - handles both string and object formats
   const entityStats = useMemo(() => {
     const stats = new Map();
 
     posts.forEach(post => {
       if (post.target_entity && Array.isArray(post.target_entity)) {
         post.target_entity.forEach((entityName: any) => {
-          // Extract name - should be plain string now after cleanup
-          const namePersian = typeof entityName === 'string' ? entityName.trim() : '';
-          
+          // Parse entity - handle both string and object formats
+          let parsedEntity = entityName;
+          if (typeof entityName === 'string') {
+            try {
+              parsedEntity = JSON.parse(entityName);
+            } catch {
+              parsedEntity = { name_persian: entityName };
+            }
+          }
+
+          // Extract names from parsed entity
+          const namePersian = parsedEntity.name_persian?.trim() || '';
+          const nameEnglish = parsedEntity.name_english?.trim() || '';
+          const nameArabic = parsedEntity.name_arabic?.trim() || '';
+
           // Skip invalid names
-          if (!namePersian || namePersian === 'نامشخص' || namePersian === 'Unknown' || namePersian.includes('{')) {
+          if (!namePersian && !nameEnglish && !nameArabic) {
+            return;
+          }
+
+          if (namePersian === 'نامشخص' || namePersian === 'Unknown' ||
+              nameEnglish === 'Unknown' || namePersian.includes('{')) {
             return;
           }
 
           // Find entity in resistance_entities table
-          const entity = entities.find(e => e.name_persian === namePersian);
-          
-          const entityKey = namePersian;
+          const entity = entities.find(e =>
+            e.name_persian === namePersian ||
+            e.name_english === nameEnglish
+          );
+
+          // Use the first available name as key
+          const entityKey = namePersian || nameEnglish || nameArabic;
           const entityInfo = {
-            name_persian: namePersian,
-            name_english: entity?.name_english || '',
+            name_persian: namePersian || entity?.name_persian || '',
+            name_english: nameEnglish || entity?.name_english || '',
+            name_arabic: nameArabic || entity?.name_arabic || '',
             entity_type: entity?.entity_type || 'Organization',
             location: entity?.location || 'نامشخص'
           };
@@ -206,19 +241,30 @@ const TargetAnalysis = () => {
     });
 
     // Convert to array and process
-    return Array.from(stats.values()).map(stat => ({
-      ...stat,
-      topVectors: Array.from(stat.topVectors.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([vector]) => translatePsyopTechnique(vector)),
-      weekTrend: stat.weekAttacks > 0 
-        ? Math.round(((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) / stat.weekAttacks) * 100)
-        : 0,
-    })).sort((a, b) => b.totalAttacks - a.totalAttacks);
-  }, [posts, entities]);
+    return Array.from(stats.values()).map(stat => {
+      // Find matching photo from target_profiles
+      const profile = targetProfiles.find(p =>
+        (p.name_persian && stat.name_persian && p.name_persian === stat.name_persian) ||
+        (p.name_english && stat.name_english && p.name_english === stat.name_english) ||
+        (p.name_arabic && stat.name_arabic && p.name_arabic === stat.name_arabic)
+      );
 
-  // Process person data - SIMPLIFIED: now expects plain string array
+      return {
+        ...stat,
+        photo_url: profile?.photo_url,
+        photo_source: profile?.photo_source,
+        topVectors: Array.from(stat.topVectors.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([vector]) => translatePsyopTechnique(vector)),
+        weekTrend: stat.weekAttacks > 0
+          ? Math.round(((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) / stat.weekAttacks) * 100)
+          : 0,
+      };
+    }).sort((a, b) => b.totalAttacks - a.totalAttacks);
+  }, [posts, entities, targetProfiles]);
+
+  // Process person data - handles both string and object formats
   const personStats = useMemo(() => {
     const stats = new Map();
     
@@ -255,36 +301,58 @@ const TargetAnalysis = () => {
     posts.forEach(post => {
       if (post.target_persons && Array.isArray(post.target_persons)) {
         post.target_persons.forEach((personName: any) => {
-          // Extract name - should be plain string now after cleanup
-          const namePersian = typeof personName === 'string' ? personName.trim() : '';
-          
+          // Parse person - handle both string and object formats
+          let parsedPerson = personName;
+          if (typeof personName === 'string') {
+            try {
+              parsedPerson = JSON.parse(personName);
+            } catch {
+              parsedPerson = { name_persian: personName };
+            }
+          }
+
+          // Extract names from parsed person
+          const namePersian = parsedPerson.name_persian?.trim() || '';
+          const nameEnglish = parsedPerson.name_english?.trim() || '';
+          const nameArabic = parsedPerson.name_arabic?.trim() || '';
+
           // Skip invalid names
-          if (!namePersian || namePersian === 'نامشخص' || namePersian === 'Unknown' || namePersian.includes('{')) {
+          if (!namePersian && !nameEnglish && !nameArabic) {
             return;
           }
-          
+
+          if (namePersian === 'نامشخص' || namePersian === 'Unknown' ||
+              nameEnglish === 'Unknown' || namePersian.includes('{')) {
+            return;
+          }
+
           // Filter out organization/entity names (not persons)
-          const lowerName = namePersian.toLowerCase();
-          const isOrganization = organizationKeywords.some(keyword => 
-            lowerName.includes(keyword.toLowerCase())
+          const checkName = (namePersian || nameEnglish || nameArabic).toLowerCase();
+          const isOrganization = organizationKeywords.some(keyword =>
+            checkName.includes(keyword.toLowerCase())
           );
-          
+
           if (isOrganization) {
             return; // Skip organizations
           }
 
           // Find person in resistance_persons table
-          const person = persons.find(p => p.name_persian === namePersian);
-          
-          const personKey = namePersian;
+          const person = persons.find(p =>
+            p.name_persian === namePersian ||
+            p.name_english === nameEnglish ||
+            p.name_arabic === nameArabic
+          );
+
+          // Use the first available name as key
+          const personKey = namePersian || nameEnglish || nameArabic;
           const personInfo = {
-            name_persian: namePersian,
-            name_english: person?.name_english || '',
-            name_arabic: person?.name_arabic || '',
+            name_persian: namePersian || person?.name_persian || '',
+            name_english: nameEnglish || person?.name_english || '',
+            name_arabic: nameArabic || person?.name_arabic || '',
             entity_type: 'Individual',
             position: person?.role || 'نامشخص',
             organization: person?.entity_id || 'نامشخص',
-            category: person?.role || 'همه',
+            category: person?.role || 'نامشخص',
             country: 'نامشخص',
             attack_nature: 'Personal'
           };
@@ -360,8 +428,17 @@ const TargetAnalysis = () => {
       if (daysSinceLastAttack < 7) riskScore += 30;
       else if (daysSinceLastAttack < 30) riskScore += 15;
 
+      // Find matching photo from target_profiles
+      const profile = targetProfiles.find(p =>
+        (p.name_persian && stat.name_persian && p.name_persian === stat.name_persian) ||
+        (p.name_english && stat.name_english && p.name_english === stat.name_english) ||
+        (p.name_arabic && stat.name_arabic && p.name_arabic === stat.name_arabic)
+      );
+
       return {
         ...stat,
+        photo_url: profile?.photo_url,
+        photo_source: profile?.photo_source,
         topAccusations: Array.from(stat.topAccusations.entries())
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
@@ -375,7 +452,7 @@ const TargetAnalysis = () => {
                   riskScore >= 30 ? 'Medium' : 'Low',
       };
     }).sort((a, b) => b.riskScore - a.riskScore);
-  }, [posts, persons]);
+  }, [posts, persons, targetProfiles]);
 
   // Attack vector data
   const attackVectorData = useMemo(() => {
@@ -406,6 +483,7 @@ const TargetAnalysis = () => {
       'مرجع دینی': personStats.filter(p => p.category === 'مرجع دینی').length,
       'سخنگو': personStats.filter(p => p.category === 'سخنگو').length,
       'فعال': personStats.filter(p => p.category === 'فعال').length,
+      'نامشخص': personStats.filter(p => p.category === 'نامشخص').length,
     };
   }, [personStats]);
 
@@ -560,7 +638,7 @@ const TargetAnalysis = () => {
             {/* Tab 2: Persons */}
             <TabsContent value="persons" className="space-y-6">
               {/* Category Statistics */}
-              <div className="grid grid-cols-6 gap-3">
+              <div className="grid grid-cols-7 gap-3">
                 {Object.entries(categoryStats).map(([category, count]) => (
                   <button
                     key={category}

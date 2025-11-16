@@ -15,20 +15,26 @@ import Dashboard from "./pages/Dashboard";
 import PsyOpDetection from "./pages/PsyOpDetection";
 import CampaignTracking from "./pages/CampaignTracking";
 import TargetAnalysis from "./pages/TargetAnalysis";
+import SourceIntelligence from "./pages/SourceIntelligence";
+import ChannelAnalytics from "./pages/ChannelAnalytics";
 import PostsExplorer from "./pages/PostsExplorer";
 import AIAnalysis from "./pages/AIAnalysis";
 import Chat from "./pages/Chat";
-import Settings from "./pages/Settings";
+import SettingsNew from '@/pages/settings';
 import IntelligenceAndTrends from "./pages/IntelligenceAndTrends";
 import APIUsage from "./pages/APIUsage";
 import SettingsAPIUsage from "./pages/settings/APIUsage";
 import PhotoManagement from "./pages/settings/PhotoManagement";
 import UserManagement from "./pages/settings/UserManagement";
+import InoreaderSettings from "./pages/InoreaderSettings";
 import ComingSoon from "./pages/ComingSoon";
 import NotFound from "./pages/NotFound";
 import ResponseManagement from "./pages/ResponseManagement";
 import SystemTest from "./pages/SystemTest";
 import Debug from "./pages/Debug";
+import GoogleSheetsSync from "./pages/GoogleSheetsSync";
+import OperationsHistory from "./pages/OperationsHistory";
+import PerformanceDashboard from "./pages/PerformanceDashboard";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +64,8 @@ const App = () => (
                     <Route path="/psyop-detection" element={<PsyOpDetection />} />
                     <Route path="/campaign-tracking" element={<CampaignTracking />} />
                     <Route path="/target-analysis" element={<TargetAnalysis />} />
+                    <Route path="/source-intelligence" element={<SourceIntelligence />} />
+                    <Route path="/channel-analytics" element={<ChannelAnalytics />} />
                     <Route path="/posts" element={<PostsExplorer />} />
                     
                     <Route path="/ai-analysis" element={
@@ -72,6 +80,8 @@ const App = () => (
                       </ProtectedRoute>
                     } />
                     
+                    <Route path="/performance" element={<PerformanceDashboard />} />
+
                     <Route path="/api-usage" element={
                       <ProtectedRoute requiredPermission="VIEW_API_USAGE" showUnauthorized>
                         <APIUsage />
@@ -91,16 +101,25 @@ const App = () => (
                         <UserManagement />
                       </ProtectedRoute>
                     } />
-                    
+
+                    <Route path="/settings/inoreader" element={<InoreaderSettings />} />
+
                     <Route path="/response-management" element={<ResponseManagement />} />
                     
                     <Route path="/settings" element={
                       <ProtectedRoute requiredPermission="MANAGE_SETTINGS" showUnauthorized>
-                        <Settings />
+                        <SettingsNew />
                       </ProtectedRoute>
                     } />
-                    
+
+                    <Route path="/google-sheets-sync" element={
+                      <ProtectedRoute requiredPermission="MANAGE_SETTINGS" showUnauthorized>
+                        <GoogleSheetsSync />
+                      </ProtectedRoute>
+                    } />
+
                     <Route path="/intelligence" element={<IntelligenceAndTrends />} />
+                    <Route path="/operations-history" element={<OperationsHistory />} />
                     <Route path="/system-test" element={<SystemTest />} />
                   </Route>
                   
