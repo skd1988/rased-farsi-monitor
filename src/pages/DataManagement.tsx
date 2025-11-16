@@ -92,45 +92,56 @@ const DataManagement = () => {
   };
 
   const loadStats = async () => {
-    // Get all posts
-    const { data: allPosts } = await supabase
-      .from('posts')
-      .select('status, is_psyop, threat_level, created_at');
-
-    if (!allPosts) return;
-
     const now = new Date();
-    const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // استفاده از count برای سرعت بیشتر و دقت کامل
+    const [
+      { count: total_posts },
+      { count: new_posts },
+      { count: analyzed_posts },
+      { count: archived_posts },
+      { count: psyop_count },
+      { count: non_psyop_count },
+      { count: high_critical_count },
+      { count: low_medium_count },
+      { count: old_posts },
+      { count: deletable_posts },
+      { count: posts_24h_ago },
+      { count: posts_7d_ago },
+    ] = await Promise.all([
+      supabase.from('posts').select('*', { count: 'exact', head: true }),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'New'),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Analyzed'),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Archived'),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', true),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).lt('created_at', cutoff24h),
+      supabase.from('posts').select('*', { count: 'exact', head: true })
+        .lt('created_at', cutoff24h)
+        .neq('status', 'Archived')
+        .in('threat_level', ['Low', 'Medium'])
+        .eq('is_psyop', false),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff24h),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff7d),
+    ]);
 
     const stats: DataStats = {
-      total_posts: allPosts.length,
-      new_posts: allPosts.filter(p => p.status === 'New').length,
-      analyzed_posts: allPosts.filter(p => p.status === 'Analyzed').length,
-      archived_posts: allPosts.filter(p => p.status === 'Archived').length,
-      psyop_count: allPosts.filter(p => p.is_psyop === true).length,
-      non_psyop_count: allPosts.filter(p => p.is_psyop === false).length,
-      high_critical_count: allPosts.filter(p => 
-        p.threat_level === 'High' || p.threat_level === 'Critical'
-      ).length,
-      low_medium_count: allPosts.filter(p => 
-        p.threat_level === 'Low' || p.threat_level === 'Medium'
-      ).length,
-      old_posts: allPosts.filter(p => 
-        new Date(p.created_at) < cutoff24h
-      ).length,
-      deletable_posts: allPosts.filter(p => 
-        new Date(p.created_at) < cutoff24h &&
-        p.status !== 'Archived' &&
-        (p.threat_level === 'Low' || p.threat_level === 'Medium') &&
-        p.is_psyop === false
-      ).length,
-      posts_24h_ago: allPosts.filter(p => 
-        new Date(p.created_at) > cutoff24h
-      ).length,
-      posts_7d_ago: allPosts.filter(p => 
-        new Date(p.created_at) > cutoff7d
-      ).length,
+      total_posts: total_posts || 0,
+      new_posts: new_posts || 0,
+      analyzed_posts: analyzed_posts || 0,
+      archived_posts: archived_posts || 0,
+      psyop_count: psyop_count || 0,
+      non_psyop_count: non_psyop_count || 0,
+      high_critical_count: high_critical_count || 0,
+      low_medium_count: low_medium_count || 0,
+      old_posts: old_posts || 0,
+      deletable_posts: deletable_posts || 0,
+      posts_24h_ago: posts_24h_ago || 0,
+      posts_7d_ago: posts_7d_ago || 0,
     };
 
     setStats(stats);
