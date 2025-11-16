@@ -1,7 +1,9 @@
 // src/utils/performanceMonitor.ts
 // Core utility for collecting and reporting performance metrics
+// Updated for web-vitals v5
 
-import { getCLS, getFID, getFCP, getLCP, getTTFB, Metric } from 'web-vitals';
+import { onCLS, onINP, onFCP, onLCP, onTTFB } from 'web-vitals';
+import type { Metric } from 'web-vitals';
 import { supabase } from '@/integrations/supabase/client';
 import type { PerformanceMetric } from '@/types/performance';
 
@@ -37,27 +39,28 @@ const metricsStore: Partial<PerformanceMetric> = {
 
 // Collect Web Vitals
 export const initWebVitals = () => {
-  getCLS((metric: Metric) => {
+  onCLS((metric) => {
     metricsStore.cls = metric.value;
     console.log('[Performance] CLS:', metric.value);
   });
 
-  getFID((metric: Metric) => {
-    metricsStore.fid = metric.value;
-    console.log('[Performance] FID:', metric.value);
+  // INP replaced FID in web-vitals v4+
+  onINP((metric) => {
+    metricsStore.fid = metric.value; // Store as fid for backward compatibility
+    console.log('[Performance] INP (replacing FID):', metric.value);
   });
 
-  getFCP((metric: Metric) => {
+  onFCP((metric) => {
     metricsStore.fcp = metric.value;
     console.log('[Performance] FCP:', metric.value);
   });
 
-  getLCP((metric: Metric) => {
+  onLCP((metric) => {
     metricsStore.lcp = metric.value;
     console.log('[Performance] LCP:', metric.value);
   });
 
-  getTTFB((metric: Metric) => {
+  onTTFB((metric) => {
     metricsStore.ttfb = metric.value;
     console.log('[Performance] TTFB:', metric.value);
   });
@@ -71,7 +74,7 @@ export const collectPerformanceTiming = () => {
   }
 
   const timing = performance.timing;
-
+  
   metricsStore.page_load_time = timing.loadEventEnd - timing.navigationStart;
   metricsStore.dom_content_loaded = timing.domContentLoadedEventEnd - timing.navigationStart;
   metricsStore.dom_interactive = timing.domInteractive - timing.navigationStart;
@@ -93,21 +96,21 @@ export const collectResourceMetrics = () => {
   }
 
   const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
-
+  
   metricsStore.total_resources = resources.length;
-  metricsStore.js_count = resources.filter(r =>
+  metricsStore.js_count = resources.filter(r => 
     r.initiatorType === 'script' || r.name.endsWith('.js')
   ).length;
-  metricsStore.css_count = resources.filter(r =>
+  metricsStore.css_count = resources.filter(r => 
     r.initiatorType === 'css' || r.initiatorType === 'link' || r.name.endsWith('.css')
   ).length;
-  metricsStore.image_count = resources.filter(r =>
+  metricsStore.image_count = resources.filter(r => 
     r.initiatorType === 'img' || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(r.name)
   ).length;
-  metricsStore.font_count = resources.filter(r =>
+  metricsStore.font_count = resources.filter(r => 
     /\.(woff|woff2|ttf|otf|eot)$/i.test(r.name)
   ).length;
-
+  
   // Calculate total transfer size
   metricsStore.total_size = resources.reduce((sum, r) => {
     return sum + (r.transferSize || 0);
@@ -149,15 +152,15 @@ export const reportPerformanceMetrics = async () => {
 // Main monitoring function
 export const startPerformanceMonitoring = () => {
   console.log('[Performance] 🚀 Starting performance monitoring...');
-
+  
   // Initialize Web Vitals collection
   initWebVitals();
-
+  
   // Wait for page to fully load
   if (document.readyState === 'complete') {
     collectPerformanceTiming();
     collectResourceMetrics();
-
+    
     // Report after a short delay to ensure all metrics are collected
     setTimeout(reportPerformanceMetrics, 2000);
   } else {
@@ -167,7 +170,7 @@ export const startPerformanceMonitoring = () => {
       setTimeout(reportPerformanceMetrics, 2000);
     });
   }
-
+  
   // Report Web Vitals when user leaves the page
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
