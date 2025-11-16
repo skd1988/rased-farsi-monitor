@@ -21,7 +21,8 @@ import {
   PanelLeftOpen,
   Rss,
   Archive,
-  Zap
+  Zap,
+  Database
 } from 'lucide-react';
 import logo from '@/assets/logo.svg';
 import { cn } from '@/lib/utils';
@@ -138,17 +139,23 @@ const menuStructure: MenuGroup[] = [
     color: 'purple',
     collapsible: true,
     items: [
-      { 
-        label: 'مطالب', 
-        icon: FileText, 
+      {
+        label: 'مطالب',
+        icon: FileText,
         route: '/posts',
         description: 'جستجو و مرور مطالب'
       },
-      { 
-        label: 'تحلیل هوشمند', 
-        icon: Brain, 
+      {
+        label: 'تحلیل هوشمند',
+        icon: Brain,
         route: '/ai-analysis',
         description: 'نتایج تحلیل AI'
+      },
+      {
+        label: 'مدیریت داده‌ها',
+        icon: Database,
+        route: '/data-management',
+        description: 'نظارت و مدیریت داده‌های سیستم'
       }
     ]
   },
