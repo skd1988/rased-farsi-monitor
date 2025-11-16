@@ -35,6 +35,7 @@ import Debug from "./pages/Debug";
 import GoogleSheetsSync from "./pages/GoogleSheetsSync";
 import OperationsHistory from "./pages/OperationsHistory";
 import PerformanceDashboard from "./pages/PerformanceDashboard";
+import DataManagement from "./pages/DataManagement";
 
 const queryClient = new QueryClient();
 
@@ -87,7 +88,9 @@ const App = () => (
                         <APIUsage />
                       </ProtectedRoute>
                     } />
-                    
+
+                    <Route path="/data-management" element={<DataManagement />} />
+
                     <Route path="/settings/api-usage" element={
                       <ProtectedRoute requiredPermission="VIEW_API_USAGE" showUnauthorized>
                         <SettingsAPIUsage />
