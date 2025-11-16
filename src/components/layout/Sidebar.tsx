@@ -20,7 +20,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Rss,
-  Archive
+  Archive,
+  Zap
 } from 'lucide-react';
 import logo from '@/assets/logo.svg';
 import { cn } from '@/lib/utils';
@@ -168,6 +169,12 @@ const menuStructure: MenuGroup[] = [
         icon: Rss,
         route: '/settings/inoreader',
         description: 'مدیریت Inoreader و RSS'
+      },
+      {
+        label: 'عملکرد سایت',
+        icon: Zap,
+        route: '/performance',
+        description: 'سرعت و بهینه‌سازی'
       },
       {
         label: 'مصرف API',
