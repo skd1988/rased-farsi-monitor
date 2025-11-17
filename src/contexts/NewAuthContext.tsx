@@ -646,12 +646,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Only fetch user data for SIGNED_IN events when user is not already loaded
         if (session?.user && event === 'SIGNED_IN') {
           try {
+            // 🔥 Set fetching flag to prevent duplicate SIGNED_IN events
+            isFetchingRef.current = true;
+            console.log('[AuthContext] 🔄 Fetching user data for SIGNED_IN event...');
+            debugHelper.log('AuthContext', 'SIGNED_IN - Fetching user data');
+
             const userData = await fetchUserData(session.user);
             if (mounted && userData) {
               setUser(userData);
+              console.log('[AuthContext] ✅ User data set for SIGNED_IN event');
+              debugHelper.log('AuthContext', 'SIGNED_IN - User data loaded', { email: userData.email });
             }
           } catch (error) {
             console.error('[AuthContext] Error in auth state change handler:', error);
+            debugHelper.log('AuthContext', 'SIGNED_IN - Error', { error });
+          } finally {
+            // 🔥 Clear fetching flag
+            isFetchingRef.current = false;
+            console.log('[AuthContext] 🏁 Fetching complete for SIGNED_IN event');
           }
         }
       }
