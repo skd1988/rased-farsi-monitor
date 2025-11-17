@@ -109,6 +109,7 @@ const APIUsage = () => {
   });
   const [inoreaderLineChartData, setInoreaderLineChartData] = useState<any[]>([]);
   const [inoreaderBarChartData, setInoreaderBarChartData] = useState<any[]>([]);
+  const [inoreaderFolderDistribution, setInoreaderFolderDistribution] = useState<any[]>([]);
   const [inoreaderRecentLogs, setInoreaderRecentLogs] = useState<InoreaderUsageLog[]>([]);
   
   const { toast } = useToast();
@@ -268,6 +269,27 @@ const APIUsage = () => {
       setInoreaderBarChartData(barData);
 
       setInoreaderRecentLogs(logs.slice(0, 20));
+
+      // Fetch folder distribution (posts count per folder)
+      const { data: folders, error: foldersError } = await supabase
+        .from('inoreader_folders')
+        .select(`
+          id,
+          folder_name,
+          posts:posts(count)
+        `);
+
+      if (!foldersError && folders) {
+        const folderData = folders
+          .map(f => ({
+            name: f.folder_name,
+            value: f.posts?.[0]?.count || 0
+          }))
+          .filter(f => f.value > 0)
+          .sort((a, b) => b.value - a.value);
+        
+        setInoreaderFolderDistribution(folderData);
+      }
 
     } catch (error) {
       console.error('Error fetching Inoreader data:', error);
@@ -523,7 +545,7 @@ const APIUsage = () => {
           </div>
 
           {/* Charts */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">روند استفاده (7 روز اخیر)</h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -551,6 +573,45 @@ const APIUsage = () => {
                   <Bar dataKey="count" fill="hsl(var(--primary))" />
                 </BarChart>
               </ResponsiveContainer>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4">توزیع محتوا به تفکیک Folder</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={inoreaderFolderDistribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {inoreaderFolderDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              
+              {/* Stats below chart */}
+              <div className="mt-4 space-y-2 text-sm">
+                {inoreaderFolderDistribution.slice(0, 5).map((folder, index) => (
+                  <div key={index} className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      />
+                      <span>{folder.name}</span>
+                    </div>
+                    <span className="font-mono font-semibold">{folder.value.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
 
