@@ -78,10 +78,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
-  // Refs to track loading state and prevent infinite loops
+  // 🔥 FIX: Refs to prevent infinite loops
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializedRef = useRef(false);
   const retryCountRef = useRef(0);
+  const isFetchingRef = useRef(false); // ✅ NEW: Prevent concurrent fetches
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null); // ✅ NEW: Manual interval control
 
   // Clear any corrupted auth state from localStorage - REMOVED
   // This function was too aggressive and was clearing valid sessions
@@ -106,18 +108,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     retryCount = 0,
     skipSessionCheck = false
   ): Promise<User | null> => {
-    console.log('[AuthContext] 🚀 fetchUserData START', {
-      email: authUser.email,
-      id: authUser.id,
-      retry: retryCount,
-      skipSessionCheck
-    });
+    // 🔥 FIX: Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      console.log('[AuthContext] ⏸️ Already fetching user data, skipping...');
+      return null;
+    }
 
-    // Maximum retries and timeout
-    const MAX_RETRIES = 3;
-    const RPC_TIMEOUT = 5000; // 5 seconds
+    isFetchingRef.current = true;
 
     try {
+      console.log('[AuthContext] 🚀 fetchUserData START', {
+        email: authUser.email,
+        id: authUser.id,
+        retry: retryCount,
+        skipSessionCheck
+      });
+
+      // Maximum retries and timeout
+      const MAX_RETRIES = 3;
+      const RPC_TIMEOUT = 5000; // 5 seconds
+
       // Only delay on retries (optimized delays)
       if (retryCount > 0) {
         const OPTIMIZED_DELAYS = [200, 500, 1000];
@@ -180,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error.message.includes('permission') && retryCount < 2) {
           console.log('[AuthContext] Retrying due to permissions error...');
+          isFetchingRef.current = false; // Reset before retry
           return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
         }
 
@@ -329,6 +340,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
            error?.message?.includes('RPC timeout') ||
            error?.code === 'PGRST301')) {
         console.log(`[AuthContext] Will retry fetchUserData (${retryCount + 1}/3)...`);
+        isFetchingRef.current = false; // Reset before retry
         return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
       }
 
@@ -336,16 +348,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('[AuthContext] Max retries reached, giving up');
       toast.error('خطا در بارگذاری اطلاعات کاربر. لطفاً صفحه را رفرش کنید.');
       return null;
+    } finally {
+      isFetchingRef.current = false;
     }
-  }, []);
+  }, []); // ✅ Empty dependency array - stable function
 
+  // 🔥 FIX: Stable refreshUser with proper dependencies
   const refreshUser = useCallback(async () => {
-    if (!session?.user) return;
-    const userData = await fetchUserData(session.user);
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    
+    if (!currentSession?.user) {
+      console.log('[AuthContext] No session, skipping refresh');
+      return;
+    }
+
+    console.log('[AuthContext] 🔄 Refreshing user data...');
+    const userData = await fetchUserData(currentSession.user);
+    
     if (userData) {
       setUser(userData);
+      console.log('[AuthContext] ✅ User refreshed successfully');
     }
-  }, [session, fetchUserData]);
+  }, [fetchUserData]); // Only depends on fetchUserData which is stable
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -437,6 +461,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
+      }
+
+      // 🔥 FIX: Clear refresh interval
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
       
       await supabase.auth.signOut();
@@ -605,16 +635,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(checkTimeout);
   }, [user, lastActivity, sessionWarningShown]);
 
-  // Auto-refresh user data every 5 minutes
+  // 🔥 FIX: Manual interval control to prevent dependency issues
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // Clear interval if user logged out
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      return;
+    }
 
-    const interval = setInterval(() => {
+    console.log('[AuthContext] ⏰ Setting up user refresh interval');
+
+    // Clear any existing interval
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current);
+    }
+
+    // Create new interval
+    refreshIntervalRef.current = setInterval(() => {
+      console.log('[AuthContext] ⏰ Auto-refresh triggered');
       refreshUser();
     }, REFRESH_INTERVAL);
 
-    return () => clearInterval(interval);
-  }, [user, refreshUser]);
+    return () => {
+      if (refreshIntervalRef.current) {
+        console.log('[AuthContext] ⏰ Clearing refresh interval');
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [user?.id]); // ✅ Only depend on user ID, not the whole user object
 
   // Set up auth state listener with improved error handling
   useEffect(() => {
@@ -672,41 +724,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[AuthContext] Initial session check:', session?.user?.email || 'No session');
         setSession(session);
         
-      if (session?.user && mounted) {
-        try {
-          const userData = await fetchUserData(session.user);
+        if (session?.user && mounted) {
+          try {
+            const userData = await fetchUserData(session.user);
 
-          if (mounted) {
-            if (userData) {
-              setUser(userData);
-              console.log('[AuthContext] User loaded successfully');
-            } else {
-              console.error('[AuthContext] Failed to load user data - will retry on next action');
-              // Don't sign out! Just set loading to false
-              // User will be prompted to login again only if they try to do something
+            if (mounted) {
+              if (userData) {
+                setUser(userData);
+                console.log('[AuthContext] User loaded successfully');
+              } else {
+                console.error('[AuthContext] Failed to load user data - will retry on next action');
+                // Don't sign out! Just set loading to false
+                // User will be prompted to login again only if they try to do something
+                setUser(null);
+              }
+            }
+          } catch (error) {
+            console.error('[AuthContext] Error fetching user data:', error);
+            if (mounted) {
+              // Don't sign out on error during session restoration
+              // Keep the session, just set user to null
+              // This allows retry on next user action
+              console.log('[AuthContext] Keeping session for retry, user will be null');
               setUser(null);
             }
           }
-        } catch (error) {
-          console.error('[AuthContext] Error fetching user data:', error);
-          if (mounted) {
-            // Don't sign out on error during session restoration
-            // Keep the session, just set user to null
-            // This allows retry on next user action
-            console.log('[AuthContext] Keeping session for retry, user will be null');
-            setUser(null);
-          }
         }
-      }
-    } catch (error) {
-      console.error('[AuthContext] Init auth error:', error);
-      if (mounted) {
-        // Don't clear corrupted state aggressively
-        // Just ensure we're signed out
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-      }
+      } catch (error) {
+        console.error('[AuthContext] Init auth error:', error);
+        if (mounted) {
+          // Don't clear corrupted state aggressively
+          // Just ensure we're signed out
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+        }
       } finally {
         if (mounted) {
           setLoading(false);
@@ -733,11 +785,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        // 🔥 FIX: Skip events during initialization to prevent double fetch
+        if (!isInitializedRef.current) {
+          console.log('[AuthContext] ⏸️ Skipping event during initialization:', event);
+          return;
+        }
+
         console.log('[AuthContext] Processing auth event:', event);
 
-        // Skip all events during initialization
-        if (event === 'INITIAL_SESSION' || !isInitializedRef.current) {
-          console.log('[AuthContext] Skipping event during initialization:', event);
+        // Skip INITIAL_SESSION event - it's handled by initAuth
+        if (event === 'INITIAL_SESSION') {
+          console.log('[AuthContext] Skipping INITIAL_SESSION event');
           return;
         }
         
@@ -771,6 +829,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
         loadingTimeoutRef.current = null;
+      }
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
     };
   }, []); // Empty deps - only run once
