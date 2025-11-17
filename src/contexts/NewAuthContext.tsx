@@ -811,9 +811,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        // 🔥 FIX: Skip events during initialization to prevent double fetch
+        // 🔥 FIX: Skip ALL events during initialization
         if (!isInitializedRef.current) {
           console.log('[AuthContext] ⏸️ Skipping event during initialization:', event);
+          return;
+        }
+
+        // 🔥 FIX: Skip duplicate SIGNED_IN events if user already loaded
+        if (event === 'SIGNED_IN' && user !== null) {
+          console.log('[AuthContext] ⏸️ User already loaded, ignoring duplicate SIGNED_IN');
           return;
         }
 
@@ -824,16 +830,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('[AuthContext] Skipping INITIAL_SESSION event');
           return;
         }
-        
+
         setSession(session);
-        
+
         if (event === 'SIGNED_OUT') {
           setUser(null);
           retryCountRef.current = 0;
           return;
         }
-        
-        if (session?.user) {
+
+        // Only fetch user data for SIGNED_IN events when user is not already loaded
+        if (session?.user && event === 'SIGNED_IN') {
           try {
             const userData = await fetchUserData(session.user);
             if (mounted && userData) {
@@ -842,8 +849,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (error) {
             console.error('[AuthContext] Error in auth state change handler:', error);
           }
-        } else {
-          setUser(null);
         }
       }
     );
