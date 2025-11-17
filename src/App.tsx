@@ -7,6 +7,9 @@ import { AuthProvider } from "./contexts/NewAuthContext";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { useEffect } from "react";
+import { debugHelper } from "./utils/debugHelper";
+import { useRenderTracker } from "./hooks/useRenderTracker";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import DashboardLayout from "./pages/DashboardLayout";
@@ -40,16 +43,45 @@ import TestPage from "./pages/TestPage";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <ErrorBoundary>
-            <div dir="rtl" className="min-h-screen">
-              <Toaster />
-              <Sonner position="top-center" />
-              <HashRouter>
+const App = () => {
+  // Track component renders
+  useRenderTracker('App');
+
+  // Memory monitoring
+  useEffect(() => {
+    debugHelper.log('App', 'Application started with debugging enabled');
+
+    // Memory monitor - runs every 10 seconds
+    const checkMemory = setInterval(() => {
+      if ('memory' in performance) {
+        const mem = (performance as any).memory;
+        const usedMB = Math.round(mem.usedJSHeapSize / 1048576);
+        const totalMB = Math.round(mem.jsHeapSizeLimit / 1048576);
+
+        console.log(`💾 [Memory] ${usedMB}MB / ${totalMB}MB`);
+
+        if (usedMB > 200) {
+          console.warn(`⚠️ [Memory] HIGH USAGE: ${usedMB}MB`);
+        }
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => {
+      clearInterval(checkMemory);
+      debugHelper.log('App', 'Application unmounted');
+    };
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <ErrorBoundary>
+              <div dir="rtl" className="min-h-screen">
+                <Toaster />
+                <Sonner position="top-center" />
+                <HashRouter>
                 <Routes>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/login" element={<Login />} />
@@ -138,6 +170,7 @@ const App = () => (
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;
