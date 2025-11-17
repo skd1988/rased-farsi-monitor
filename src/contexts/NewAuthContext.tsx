@@ -426,6 +426,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       console.log('[AuthContext] Starting signIn for email:', email);
+      debugHelper.log('AuthContext', 'signIn START', { email });
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -447,6 +448,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: error.status,
           name: error.name
         });
+        debugHelper.log('AuthContext', 'signIn ERROR', { error: error.message });
         throw error;
       }
 
@@ -454,38 +456,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('[AuthContext] Session created, user ID:', data.user.id);
         setSession(data.session);
 
-        // Skip session check since we just logged in
-        console.log('[AuthContext] Fetching user data...');
-        const userData = await fetchUserData(data.user, 0, true);
-
-        if (userData) {
-          console.log('[AuthContext] User data fetched successfully:', {
-            email: userData.email,
-            role: userData.role,
-            status: userData.status
+        // ✅ Only update last_login here
+        // fetchUserData will be called by the SIGNED_IN event handler
+        console.log('[AuthContext] Updating last login...');
+        await supabase
+          .from('users')
+          .update({ last_login: new Date().toISOString() })
+          .eq('id', data.user.id)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[AuthContext] Last login update error:', error);
+            } else {
+              console.log('[AuthContext] Last login updated');
+            }
           });
-          setUser(userData);
 
-          // Update last login in background (non-blocking)
-          void supabase
-            .from('users')
-            .update({ last_login: new Date().toISOString() })
-            .eq('id', data.user.id)
-            .then(({ error }) => {
-              if (error) {
-                console.error('[AuthContext] Last login update error:', error);
-              } else {
-                console.log('[AuthContext] Last login updated');
-              }
-            });
+        setLastActivity(Date.now());
+        retryCountRef.current = 0;
 
-          setLastActivity(Date.now());
-          retryCountRef.current = 0;
-          toast.success('خوش آمدید!');
-        } else {
-          console.error('[AuthContext] Failed to fetch user data');
-          throw new Error('خطا در بارگذاری اطلاعات کاربر');
-        }
+        // ✅ SIGNED_IN event will handle fetchUserData and setUser
+        debugHelper.log('AuthContext', 'signIn SUCCESS - waiting for SIGNED_IN event');
+        toast.success('خوش آمدید!');
       } else {
         console.error('[AuthContext] No session returned from Supabase');
         throw new Error('خطا در ایجاد نشست');
@@ -498,6 +489,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: error?.name,
         stack: error?.stack
       });
+      debugHelper.log('AuthContext', 'signIn ERROR', { error: error?.message });
 
       // Don't show toast here - let the Login component handle user-facing messages
       throw error;

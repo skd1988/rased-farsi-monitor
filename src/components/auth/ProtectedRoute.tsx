@@ -22,14 +22,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, loading, hasPermission } = useNewAuth();
   const location = useLocation();
 
-  console.log('[ProtectedRoute]', {
-    loading,
-    user: user?.email,
-    role: user?.role,
-    status: user?.status,
-    requiredPermission,
-    pathname: location.pathname
-  });
+  // ✅ Only log when these values actually change
+  useEffect(() => {
+    console.log('[ProtectedRoute] Mount/Update', {
+      loading,
+      user: user?.email,
+      role: user?.role,
+      pathname: location.pathname
+    });
+  }, [loading, user?.email, user?.role, location.pathname]);
 
   // Show loading spinner while checking auth
   if (loading) {

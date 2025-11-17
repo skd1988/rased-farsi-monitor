@@ -136,15 +136,29 @@ class NetworkMonitor {
 // Singleton instance
 export const networkMonitor = new NetworkMonitor();
 
-// Add to window for console access
+// Expose to window for console access
 if (typeof window !== 'undefined') {
   (window as any).networkMonitor = networkMonitor;
 
-  // Helper function to show stats
+  // Helper function to show formatted stats
   (window as any).showNetworkStats = () => {
     const stats = networkMonitor.getStats();
-    console.table(stats);
-    console.log('Pending Requests:', stats.pendingRequests);
+
+    console.log('📊 Network Statistics:');
+    console.table({
+      'Pending Requests': stats.pending,
+      'Completed': stats.completed,
+      'Average Duration': `${stats.avgDuration}ms`,
+      'Success': stats.success,
+      'Failed': stats.failed
+    });
+
+    if (stats.pendingRequests && stats.pendingRequests.length > 0) {
+      console.log('⏳ Pending Requests:');
+      console.table(stats.pendingRequests);
+    }
+
+    return stats;
   };
 }
 
