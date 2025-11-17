@@ -645,6 +645,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Only fetch user data for SIGNED_IN events when user is not already loaded
         if (session?.user && event === 'SIGNED_IN') {
+          // 🔥 Skip if already fetching
+          if (isFetchingRef.current) {
+            console.log('[AuthContext] ⏸️ Already fetching, skipping SIGNED_IN');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Already fetching');
+            return;
+          }
+
+          // 🔥 Skip if user already loaded
+          if (user !== null) {
+            console.log('[AuthContext] ⏸️ User already loaded, skipping SIGNED_IN');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - User loaded', { email: user.email });
+            return;
+          }
+
           try {
             // 🔥 Set fetching flag to prevent duplicate SIGNED_IN events
             isFetchingRef.current = true;
