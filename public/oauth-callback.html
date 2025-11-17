@@ -43,120 +43,55 @@
             opacity: 0.9;
             font-size: 0.95rem;
         }
-        .error {
-            background: #ef4444;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-            display: none;
-        }
-        .debug {
-            background: rgba(0,0,0,0.3);
-            padding: 1rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-            font-size: 0.85rem;
-            text-align: left;
-            direction: ltr;
-            max-height: 200px;
-            overflow-y: auto;
-            display: none;
-        }
-        .success {
-            color: #4ade80;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="spinner" id="spinner"></div>
-        <h1 id="title">در حال اتصال به Inoreader</h1>
-        <p id="message">لطفاً صبر کنید...</p>
-        <div id="error" class="error"></div>
-        <div id="debug" class="debug"></div>
+        <div class="spinner"></div>
+        <h1>در حال اتصال به Inoreader</h1>
+        <p>لطفاً صبر کنید...</p>
     </div>
     
     <script>
         (function() {
-            const debugDiv = document.getElementById('debug');
-            const errorDiv = document.getElementById('error');
-            const spinner = document.getElementById('spinner');
-            const title = document.getElementById('title');
-            const message = document.getElementById('message');
-            
-            function log(msg, data = null) {
-                console.log('[OAuth Callback]', msg, data || '');
-                debugDiv.style.display = 'block';
-                const line = document.createElement('div');
-                line.textContent = msg + (data ? ': ' + JSON.stringify(data) : '');
-                debugDiv.appendChild(line);
-            }
-            
-            function showError(msg) {
-                console.error('[OAuth Callback] ERROR:', msg);
-                spinner.style.display = 'none';
-                title.textContent = 'خطا';
-                message.textContent = '';
-                errorDiv.textContent = msg;
-                errorDiv.style.display = 'block';
-            }
-            
-            function showSuccess(msg) {
-                spinner.style.borderTopColor = '#4ade80';
-                title.textContent = '✓ موفق';
-                title.className = 'success';
-                message.textContent = msg;
-            }
-            
             try {
-                log('OAuth callback page loaded');
-                log('Current URL', window.location.href);
+                console.log('[OAuth Callback] Page loaded');
                 
                 // دریافت code از URL
                 const urlParams = new URLSearchParams(window.location.search);
-                log('URL params', Object.fromEntries(urlParams.entries()));
-                
                 const code = urlParams.get('code');
                 const error = urlParams.get('error');
-                const errorDescription = urlParams.get('error_description');
                 
                 if (error) {
-                    showError('خطا در OAuth: ' + error + (errorDescription ? ' - ' + errorDescription : ''));
+                    alert('خطا در OAuth: ' + error);
                     return;
                 }
                 
                 if (!code) {
-                    showError('کد OAuth یافت نشد! لطفاً دوباره تلاش کنید.');
-                    log('No code found in URL params');
+                    alert('کد OAuth یافت نشد!');
                     return;
                 }
                 
-                log('OAuth code received', code.substring(0, 10) + '...');
+                console.log('[OAuth Callback] Code received:', code.substring(0, 10) + '...');
                 
                 // تشخیص base URL
-                const protocol = window.location.protocol;
-                const hostname = window.location.hostname;
-                const port = window.location.port;
-                const baseUrl = protocol + '//' + hostname + (port ? ':' + port : '');
+                const origin = window.location.origin;
+                const pathname = window.location.pathname.replace('/oauth-callback.html', '');
+                const baseUrl = origin + pathname;
                 
-                log('Base URL', baseUrl);
+                console.log('[OAuth Callback] Base URL:', baseUrl);
                 
-                // ساخت redirect URL با hash routing
-                const redirectUrl = baseUrl + '/#/settings/inoreader?code=' + encodeURIComponent(code);
+                // Redirect مستقیم به hash route
+                const redirectUrl = baseUrl + '#/settings/inoreader?code=' + encodeURIComponent(code);
                 
-                log('Redirect URL', redirectUrl);
-                showSuccess('در حال انتقال به صفحه تنظیمات...');
+                console.log('[OAuth Callback] Redirecting to:', redirectUrl);
                 
-                // تاخیر 1 ثانیه برای نمایش پیام
-                setTimeout(function() {
-                    log('Redirecting now...');
-                    window.location.href = redirectUrl;
-                }, 1000);
+                // Redirect فوری (بدون delay)
+                window.location.replace(redirectUrl);
                 
             } catch (err) {
-                showError('خطای داخلی: ' + err.message);
-                log('Exception caught', err.toString());
-                console.error('[OAuth Callback] Exception:', err);
+                console.error('[OAuth Callback] Error:', err);
+                alert('خطای داخلی: ' + err.message);
             }
         })();
     </script>
