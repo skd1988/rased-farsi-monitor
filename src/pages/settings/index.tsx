@@ -7,6 +7,7 @@ import DataSourcesTab from './tabs/DataSourcesTab';
 import AutomationTab from './tabs/AutomationTab';
 import UsersTab from './tabs/UsersTab';
 import PhotoManagement from './PhotoManagement';
+import UserManagement from './UserManagement';
 
 const SettingsPage = () => {
   return (
@@ -21,10 +22,20 @@ const SettingsPage = () => {
 
       {/* Tabs */}
       <Tabs defaultValue="appearance" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 mb-8">
-          <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" />
+        <TabsList className="grid w-full grid-cols-7 mb-8">
+          <TabsTrigger value="automation" className="gap-2">
+            <Zap className="h-4 w-4" />
+            <span className="hidden sm:inline">اتوماسیون</span>
+          </TabsTrigger>
+
+          <TabsTrigger value="user-management" className="gap-2">
+            <Users className="w-4 h-4" />
             <span className="hidden sm:inline">کاربران</span>
+          </TabsTrigger>
+
+          <TabsTrigger value="photos" className="gap-2">
+            <ImageIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">تصاویر اهداف</span>
           </TabsTrigger>
 
           <TabsTrigger value="data-sources" className="gap-2">
@@ -37,21 +48,24 @@ const SettingsPage = () => {
             <span className="hidden sm:inline">رصد</span>
           </TabsTrigger>
 
-          <TabsTrigger value="photos" className="gap-2">
-            <ImageIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">تصاویر اهداف</span>
-          </TabsTrigger>
-
           <TabsTrigger value="appearance" className="gap-2">
             <Palette className="h-4 w-4" />
             <span className="hidden sm:inline">ظاهر</span>
           </TabsTrigger>
 
-          <TabsTrigger value="automation" className="gap-2">
-            <Zap className="h-4 w-4" />
-            <span className="hidden sm:inline">اتوماسیون</span>
+          <TabsTrigger value="users" className="gap-2">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">کاربران (ساده)</span>
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="automation" className="space-y-6">
+          <AutomationTab />
+        </TabsContent>
+
+        <TabsContent value="user-management" className="space-y-6">
+          <UserManagement />
+        </TabsContent>
 
         <TabsContent value="users" className="space-y-6">
           <UsersTab />
@@ -83,10 +97,6 @@ const SettingsPage = () => {
 
         <TabsContent value="appearance" className="space-y-6">
           <AppearanceTab />
-        </TabsContent>
-
-        <TabsContent value="automation" className="space-y-6">
-          <AutomationTab />
         </TabsContent>
       </Tabs>
     </div>
