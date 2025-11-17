@@ -27,7 +27,10 @@ import { DateRange } from 'react-day-picker';
 import { DataPagination } from '@/components/common/DataPagination';
 import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
 
+console.log('🔴 [PsyOpDetection] FILE LOADED');
+
 const PsyOpDetection = () => {
+  console.log('🟡 [PsyOpDetection] FUNCTION CALLED');
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,13 +58,30 @@ const PsyOpDetection = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<string>('threat');
 
+  // Mount effect
+  useEffect(() => {
+    console.log('🟢 [PsyOpDetection] COMPONENT MOUNTED!');
+    console.log('🟢 [PsyOpDetection] Location:', window.location.href);
+
+    return () => {
+      console.log('🔵 [PsyOpDetection] COMPONENT UNMOUNTING');
+    };
+  }, []);
+
   // Fetch posts with pagination
   useEffect(() => {
+    console.log('📊 [PsyOpDetection] Fetching posts with filters:', {
+      currentPage,
+      threatLevelFilter,
+      psyopTypeFilter,
+      dateRange
+    });
     fetchPosts();
   }, [currentPage, threatLevelFilter, psyopTypeFilter, dateRange]);
 
   const fetchPosts = async () => {
     try {
+      console.log('⏳ [PsyOpDetection] fetchPosts started, setting loading=true');
       setLoading(true);
       
       // Build query with filters
@@ -96,14 +116,16 @@ const PsyOpDetection = () => {
 
       setPosts(postsData || []);
       setTotalCount(count || 0);
-      
+      console.log('✅ [PsyOpDetection] Posts fetched successfully:', postsData?.length || 0, 'posts');
+
     } catch (error) {
-      console.error('Error fetching posts:', error);
+      console.error('❌ [PsyOpDetection] Error fetching posts:', error);
       toast({
         title: "خطا در دریافت داده‌ها",
         variant: "destructive",
       });
     } finally {
+      console.log('🏁 [PsyOpDetection] fetchPosts completed, setting loading=false');
       setLoading(false);
     }
   };
@@ -209,14 +231,24 @@ const PsyOpDetection = () => {
     };
   }, [posts]);
 
+  console.log('🟠 [PsyOpDetection] RENDERING... loading=', loading, 'posts=', posts.length);
+
   if (loading) {
+    console.log('⏳ [PsyOpDetection] Rendering LOADING screen');
     return (
       <div className="flex items-center justify-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <div className="text-lg font-semibold">در حال بارگذاری...</div>
+          <div className="text-sm text-muted-foreground">
+            اگر این پیام برای مدت طولانی نمایش داده می‌شود، ممکن است مشکلی وجود داشته باشد.
+          </div>
+        </div>
       </div>
     );
   }
 
+  console.log('✨ [PsyOpDetection] Rendering MAIN content');
   return (
     <div className="p-6 space-y-6" dir="rtl">
       {/* Header */}

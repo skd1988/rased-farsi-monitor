@@ -37,6 +37,8 @@ import { formatPersianDate, getRelativeTime } from '@/lib/dateUtils';
 import { cn } from '@/lib/utils';
 import { DataPagination } from '@/components/common/DataPagination';
 
+console.log('🔴 [PostsExplorer] FILE LOADED');
+
 interface Post {
   id: string;
   title: string;
@@ -74,6 +76,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const PostsExplorer = () => {
+  console.log('🟡 [PostsExplorer] FUNCTION CALLED');
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
@@ -112,12 +115,24 @@ const PostsExplorer = () => {
     return Array.from(keywords).sort((a, b) => a.localeCompare(b, 'fa'));
   }, [posts]);
 
+  // Mount effect
   useEffect(() => {
+    console.log('🟢 [PostsExplorer] COMPONENT MOUNTED!');
+    console.log('🟢 [PostsExplorer] Location:', window.location.href);
+
+    return () => {
+      console.log('🔵 [PostsExplorer] COMPONENT UNMOUNTING');
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('📊 [PostsExplorer] Fetching posts with filters');
     fetchPosts();
   }, [currentPage, selectedSources, selectedLanguages, selectedStatuses, selectedKeywords, dateFrom, dateTo, sortBy, hideEmptyPosts]);
 
   // Fetch unique sources for filters
   useEffect(() => {
+    console.log('📊 [PostsExplorer] Fetching filter options');
     fetchFilterOptions();
   }, []);
 
