@@ -38,6 +38,7 @@ import {
   Shield,
   LineChart,
   Eye,
+  EyeOff,
   UserCog,
   Send,
   CheckCircle,
@@ -51,6 +52,7 @@ import { useNewAuth } from '@/contexts/NewAuthContext';
 const inviteUserSchema = z.object({
   fullName: z.string().min(3, 'نام کامل حداقل 3 کاراکتر باشد'),
   email: z.string().email('لطفاً ایمیل معتبر وارد کنید'),
+  password: z.string().min(6, 'رمز عبور حداقل 6 کاراکتر باشد').optional(),
   phone: z.string().optional(),
   role: z.enum(['super_admin', 'admin', 'analyst', 'viewer', 'guest']),
   guestDuration: z.number().optional(),
@@ -82,6 +84,7 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [emailExists, setEmailExists] = useState(false);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<InviteUserFormData>({
     resolver: zodResolver(inviteUserSchema),
@@ -207,8 +210,10 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
 
     try {
       // Step 1: Create user in Supabase Auth using Admin API
-      const tempPassword = Math.random().toString(36).slice(-12) + 'A1!';
+      // استفاده از password وارد شده یا ایجاد خودکار
+      const tempPassword = data.password || (Math.random().toString(36).slice(-12) + 'A1!');
 
+      console.log('Password mode:', data.password ? 'Custom' : 'Auto-generated');
       console.log('[InviteUserModal] Creating user with Admin API...');
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: data.email,
@@ -327,6 +332,10 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
       }
 
       toast.success(`کاربر ${data.fullName} با موفقیت ساخته شد`, {
+        description: data.password
+          ? 'رمز عبور تعیین شده توسط شما ذخیره شد'
+          : `رمز عبور خودکار: ${tempPassword}`,
+        duration: data.password ? 3000 : 10000,  // اگر خودکار بود، بیشتر نمایش بده
         action: {
           label: 'مشاهده کاربر',
           onClick: () => {
@@ -422,6 +431,67 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
                         )}
                       </div>
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Password Field */}
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        رمز عبور
+                        <span className="text-xs font-normal text-muted-foreground">
+                          (اختیاری - اگر خالی باشد، خودکار ایجاد می‌شود)
+                        </span>
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={() => {
+                          const randomPassword = Math.random().toString(36).slice(-12) + 'A1!';
+                          form.setValue('password', randomPassword);
+                          toast.info('رمز عبور تصادفی ایجاد شد');
+                        }}
+                      >
+                        ایجاد تصادفی
+                      </Button>
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="حداقل 6 کاراکتر"
+                          {...field}
+                          className="pr-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      {field.value
+                        ? `✓ رمز عبور تعیین شد (${field.value.length} کاراکتر)`
+                        : 'اگر خالی بگذارید، یک رمز عبور تصادفی ایجاد خواهد شد'
+                      }
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
