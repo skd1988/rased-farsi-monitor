@@ -10,6 +10,7 @@
  * ✅ نمایش countdown تا expire
  * ✅ Warning هنگام نزدیک شدن به expire
  * ✅ بهبود Error Handling
+ * ✅ Fix OAuth callback handling
  */
 
 import React, { useState, useEffect } from 'react';
@@ -151,36 +152,38 @@ const InoreaderSettings: React.FC = () => {
   }, [isConnected]);
 
   /**
-   * بررسی OAuth callback
+   * بررسی OAuth callback - FIX APPLIED
    */
   useEffect(() => {
-  console.log('[InoreaderSettings] Checking for OAuth code...');
-  
-  // بررسی code در hash (چون از HashRouter استفاده می‌کنیم)
-  const hashParts = window.location.hash.split('?');
-  
-  if (hashParts.length > 1) {
-    const urlParams = new URLSearchParams(hashParts[1]);
-    const code = urlParams.get('code');
+    console.log('[InoreaderSettings] Checking for OAuth code...');
+    console.log('[InoreaderSettings] Full URL:', window.location.href);
+    console.log('[InoreaderSettings] Hash:', window.location.hash);
     
-    if (code) {
-      console.log('[InoreaderSettings] OAuth code found! Processing...');
+    // بررسی code در hash (چون از HashRouter استفاده می‌کنیم)
+    const hashParts = window.location.hash.split('?');
+    
+    if (hashParts.length > 1) {
+      const urlParams = new URLSearchParams(hashParts[1]);
+      const code = urlParams.get('code');
       
-      toast({
-        title: '🔄 در حال اتصال...',
-        description: 'لطفاً صبر کنید',
-      });
+      console.log('[InoreaderSettings] OAuth code found:', code ? 'YES' : 'NO');
       
-      handleCallback(code);
-      
-      // پاک کردن code از URL
-      const cleanHash = hashParts[0];
-      window.history.replaceState({}, document.title, cleanHash);
-    }
-  }
-}, [handleCallback]);
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
+      if (code) {
+        console.log('[InoreaderSettings] Processing OAuth code...');
+        
+        toast({
+          title: '🔄 در حال اتصال...',
+          description: 'لطفاً صبر کنید',
+        });
+        
+        handleCallback(code);
+        
+        // پاک کردن code از URL
+        const cleanHash = hashParts[0];
+        window.history.replaceState({}, document.title, cleanHash);
+      }
+    } else {
+      console.log('[InoreaderSettings] No OAuth code in URL');
     }
   }, [handleCallback]);
 
