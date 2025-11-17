@@ -79,6 +79,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
+  // Refs for internal state management
+  const isInitializedRef = useRef(false);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const isFetchingRef = useRef(false);
+
   const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
     const maxRetries = 3;
     const retryDelay = 1000; // 1 second between retries
@@ -213,36 +220,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.error('[fetchUserData] All retry attempts exhausted');
     return null;
   }, []);
-
-      const duration = endPerf('fetchUserData');
-      debugHelper.log('AuthContext', 'fetchUserData ERROR', {
-        error: error?.message,
-        code: error?.code,
-        retry: retryCount,
-        duration: `${duration}ms`
-      });
-
-      // Retry logic با حداکثر تعداد
-      if (retryCount < 3 &&
-          (error?.message?.includes('permission') ||
-           error?.message?.includes('timeout') ||
-           error?.message?.includes('RPC timeout') ||
-           error?.code === 'PGRST301')) {
-        console.log(`[AuthContext] Will retry fetchUserData (${retryCount + 1}/3)...`);
-        debugHelper.log('AuthContext', 'fetchUserData RETRY', { attempt: retryCount + 1 });
-        isFetchingRef.current = false; // Reset before retry
-        return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
-      }
-
-      // بعد از MAX_RETRIES، فقط error بده (نه signOut)
-      console.error('[AuthContext] Max retries reached, giving up');
-      debugHelper.log('AuthContext', 'fetchUserData FAILED - Max retries reached');
-      toast.error('خطا در بارگذاری اطلاعات کاربر. لطفاً صفحه را رفرش کنید.');
-      return null;
-    } finally {
-      isFetchingRef.current = false;
-    }
-  }, []); // ✅ Empty dependency array - stable function
 
   // 🔥 FIX: Stable refreshUser with proper dependencies
   const refreshUser = useCallback(async () => {
@@ -575,30 +552,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, MAX_LOADING_TIME);
 
-    // Then set up listener for future auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[NewAuthContext] Auth state changed:', event, session?.user?.email);
+    // Initialize auth: check current session
+    const initAuth = async () => {
+      try {
+        console.log('[AuthContext] Checking initial session...');
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
 
-        // Skip INITIAL_SESSION event as we already handled it above
-        if (event === 'INITIAL_SESSION') return;
-
-        setSession(session);
-
-        if (session?.user) {
-          // CRITICAL FIX: Add delay for SIGNED_IN to allow auth.uid() to propagate to RLS
-          if (event === 'SIGNED_IN') {
-            console.log('[NewAuthContext] SIGNED_IN detected - waiting 500ms for auth.uid() to propagate to RLS...');
-            await new Promise(resolve => setTimeout(resolve, 500));
+        if (currentSession?.user) {
+          console.log('[AuthContext] Initial session found:', currentSession.user.email);
+          setSession(currentSession);
+          const userData = await fetchUserData(currentSession.user);
+          if (mounted && userData) {
+            setUser(userData);
           }
-
-          const userData = await fetchUserData(session.user);
-          console.log('[NewAuthContext] User data fetched:', userData);
-          setUser(userData);
         } else {
-          console.log('[NewAuthContext] No session, clearing user');
-          setUser(null);
+          console.log('[AuthContext] No initial session');
         }
+      } catch (error) {
+        console.error('[AuthContext] Error checking initial session:', error);
       } finally {
         if (mounted) {
           setLoading(false);
@@ -606,7 +577,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             clearTimeout(loadingTimeoutRef.current);
             loadingTimeoutRef.current = null;
           }
-          // Mark as initialized AFTER initAuth completes
           isInitializedRef.current = true;
           console.log('[AuthContext] ✅ Initialization complete');
         }
