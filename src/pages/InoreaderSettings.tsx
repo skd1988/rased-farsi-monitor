@@ -1,14 +1,15 @@
 /**
  * =====================================================
- * INOREADER SETTINGS - UI Component
- * سیستم AFTAB Intelligence System
+ * INOREADER SETTINGS - Enhanced with Auto-Refresh
+ * سیستم AFTAB Intelligence System v2.1
  * =====================================================
- *
- * صفحه تنظیمات Inoreader شامل:
- * 1. اتصال OAuth
- * 2. مدیریت Folders
- * 3. پیکربندی Sync
- * 4. آمار و لاگ‌ها
+ * 
+ * تغییرات نسبت به نسخه قبل:
+ * ✅ Auto-refresh token قبل از expire
+ * ✅ بررسی خودکار هر 5 دقیقه
+ * ✅ نمایش countdown تا expire
+ * ✅ Warning هنگام نزدیک شدن به expire
+ * ✅ بهبود Error Handling
  */
 
 import React, { useState, useEffect } from 'react';
@@ -19,6 +20,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -41,13 +43,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useInoreaderAuth } from '@/hooks/useInoreaderAuth';
 import {
   Rss,
   RefreshCw,
@@ -61,15 +62,10 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  Loader2
+  Loader2,
+  Zap
 } from 'lucide-react';
 import { formatDistanceToNowIran } from '@/lib/dateUtils';
-
-interface InoreaderSettings {
-  isConnected: boolean;
-  expiresAt?: string;
-  needsRefresh?: boolean;
-}
 
 interface InoreaderFolder {
   id: string;
@@ -96,9 +92,20 @@ interface SyncLog {
 }
 
 const InoreaderSettings: React.FC = () => {
-  const [connectionStatus, setConnectionStatus] = useState<InoreaderSettings>({
-    isConnected: false
-  });
+  // استفاده از Custom Hook برای مدیریت خودکار Token
+  const {
+    isConnected,
+    isChecking,
+    needsRefresh,
+    expiresAt,
+    lastChecked,
+    checkStatus,
+    refreshToken,
+    disconnect,
+    connect,
+    handleCallback
+  } = useInoreaderAuth();
+
   const [folders, setFolders] = useState<InoreaderFolder[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<InoreaderFolder | null>(null);
@@ -106,172 +113,56 @@ const InoreaderSettings: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState(false);
   const [stats, setStats] = useState<any>(null);
-
-  // Load initial data
-  useEffect(() => {
-    checkConnectionStatus();
-    loadFolders();
-    loadStats();
-  }, []);
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
 
   /**
-   * بررسی وضعیت اتصال
-   */
-  const checkConnectionStatus = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'validate' }
-      });
-
-      if (error) throw error;
-
-      setConnectionStatus({
-        isConnected: data.isValid,
-        expiresAt: data.expiresAt,
-        needsRefresh: data.needsRefresh
-      });
-    } catch (error: any) {
-      console.error('Error checking connection:', error);
-      setConnectionStatus({ isConnected: false });
-    }
-  };
-
-  /**
-   * اتصال به Inoreader
-   */
-  const handleConnect = async () => {
-    setIsLoading(true);
-    try {
-      const REDIRECT_URI = window.location.hostname === 'localhost'
-        ? 'http://localhost:5173/oauth-callback.html'
-        : 'https://skd1988.github.io/rased-farsi-monitor/oauth-callback';
-
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'authorize', redirectUri: REDIRECT_URI }
-      });
-
-      if (error) throw error;
-
-      // Redirect to Inoreader auth page
-      window.location.href = data.authUrl;
-    } catch (error: any) {
-      toast({
-        title: 'خطا',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * تکمیل اتصال بعد از redirect
+   * محاسبه زمان باقی‌مانده
    */
   useEffect(() => {
-    // Extract code from hash (after #) since we use hash routing
-    const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
-    const code = hashParams.get('code');
+    if (!expiresAt) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const expires = new Date(expiresAt);
+      const diff = expires.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeRemaining('منقضی شده');
+        return;
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+      setTimeRemaining(`${hours} ساعت و ${minutes} دقیقه`);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  /**
+   * Load initial data
+   */
+  useEffect(() => {
+    if (isConnected) {
+      loadFolders();
+      loadStats();
+    }
+  }, [isConnected]);
+
+  /**
+   * بررسی OAuth callback
+   */
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
 
     if (code) {
-      handleOAuthCallback(code);
-      // Clean URL - remove the code from hash
-      const cleanHash = window.location.hash.split('?')[0];
-      window.history.replaceState({}, document.title, cleanHash);
+      handleCallback(code);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
     }
-  }, []);
-
-  const handleOAuthCallback = async (code: string) => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'exchange', code }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'موفق',
-        description: data.message
-      });
-
-      // Sync folders automatically
-      await handleSyncFolders();
-
-      checkConnectionStatus();
-    } catch (error: any) {
-      toast({
-        title: 'خطا در اتصال',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * قطع اتصال
-   */
-  const handleDisconnect = async () => {
-    if (!confirm('آیا مطمئن هستید؟ اتصال به Inoreader قطع خواهد شد.')) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const { error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'disconnect' }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'موفق',
-        description: 'اتصال قطع شد'
-      });
-
-      setConnectionStatus({ isConnected: false });
-      setFolders([]);
-    } catch (error: any) {
-      toast({
-        title: 'خطا',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * همگام‌سازی folders
-   */
-  const handleSyncFolders = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('inoreader-folders-manager', {
-        body: { action: 'sync' }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'موفق',
-        description: data.message
-      });
-
-      await loadFolders();
-    } catch (error: any) {
-      toast({
-        title: 'خطا',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [handleCallback]);
 
   /**
    * بارگذاری folders
@@ -285,7 +176,6 @@ const InoreaderSettings: React.FC = () => {
 
       if (error) throw error;
 
-      // Get post counts
       const foldersWithCounts = await Promise.all(
         (data || []).map(async (folder) => {
           const { count } = await supabase
@@ -316,7 +206,6 @@ const InoreaderSettings: React.FC = () => {
 
       setSyncLogs(logs || []);
 
-      // Calculate stats
       if (logs && logs.length > 0) {
         const lastDay = logs.filter(log =>
           new Date(log.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -332,6 +221,35 @@ const InoreaderSettings: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error loading stats:', error);
+    }
+  };
+
+  /**
+   * همگام‌سازی folders
+   */
+  const handleSyncFolders = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('inoreader-folders-manager', {
+        body: { action: 'sync' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'موفق',
+        description: data.message
+      });
+
+      await loadFolders();
+    } catch (error: any) {
+      toast({
+        title: 'خطا',
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -395,7 +313,7 @@ const InoreaderSettings: React.FC = () => {
   };
 
   /**
-   * رنگ بر اساس priority
+   * رنگ و label بر اساس priority
    */
   const getPriorityColor = (priority: number) => {
     switch (priority) {
@@ -415,6 +333,20 @@ const InoreaderSettings: React.FC = () => {
     }
   };
 
+  /**
+   * محاسبه درصد زمان باقی‌مانده
+   */
+  const getTimeRemainingPercent = () => {
+    if (!expiresAt) return 100;
+    
+    const now = new Date();
+    const expires = new Date(expiresAt);
+    const total = 60 * 60 * 1000; // 1 hour (فرض می‌کنیم token 1 ساعت اعتبار داره)
+    const remaining = expires.getTime() - now.getTime();
+    
+    return Math.max(0, Math.min(100, (remaining / total) * 100));
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
@@ -426,6 +358,28 @@ const InoreaderSettings: React.FC = () => {
         </div>
         <Rss className="h-12 w-12 text-primary" />
       </div>
+
+      {/* نمایش Warning اگر نیاز به Refresh داره */}
+      {needsRefresh && (
+        <Alert className="border-yellow-500">
+          <AlertTriangle className="h-4 w-4 text-yellow-500" />
+          <AlertDescription className="flex items-center justify-between">
+            <div>
+              <strong>⚠️ توکن به زودی منقضی می‌شود</strong>
+              <p className="text-sm mt-1">زمان باقی‌مانده: {timeRemaining}</p>
+            </div>
+            <Button
+              onClick={refreshToken}
+              variant="outline"
+              size="sm"
+              className="border-yellow-500"
+            >
+              <Zap className="h-4 w-4 ms-2" />
+              تمدید فوری
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="connection" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
@@ -446,58 +400,98 @@ const InoreaderSettings: React.FC = () => {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Connection Status */}
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-4">
-                  {connectionStatus.isConnected ? (
-                    <>
-                      <CheckCircle2 className="h-6 w-6 text-green-500" />
-                      <div>
-                        <p className="font-semibold">متصل به Inoreader</p>
-                        {connectionStatus.expiresAt && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-4">
+                    {isChecking ? (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                        <div>
+                          <p className="font-semibold">در حال بررسی...</p>
                           <p className="text-sm text-muted-foreground">
-                            انقضا: {formatDistanceToNowIran(new Date(connectionStatus.expiresAt))}
+                            صبر کنید
                           </p>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="h-6 w-6 text-red-500" />
-                      <div>
-                        <p className="font-semibold">عدم اتصال</p>
-                        <p className="text-sm text-muted-foreground">
-                          لطفاً حساب Inoreader خود را متصل کنید
-                        </p>
-                      </div>
-                    </>
+                        </div>
+                      </>
+                    ) : isConnected ? (
+                      <>
+                        <CheckCircle2 className="h-6 w-6 text-green-500" />
+                        <div>
+                          <p className="font-semibold">متصل به Inoreader</p>
+                          {expiresAt && (
+                            <p className="text-sm text-muted-foreground">
+                              زمان باقی‌مانده: {timeRemaining}
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-6 w-6 text-red-500" />
+                        <div>
+                          <p className="font-semibold">عدم اتصال</p>
+                          <p className="text-sm text-muted-foreground">
+                            لطفاً حساب Inoreader خود را متصل کنید
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {!isChecking && (
+                    <div className="flex gap-2">
+                      {isConnected ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            onClick={checkStatus}
+                            size="sm"
+                          >
+                            <RefreshCw className="h-4 w-4 ms-2" />
+                            بررسی مجدد
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={disconnect}
+                            disabled={isLoading}
+                          >
+                            {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                            قطع اتصال
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={connect}
+                          disabled={isLoading}
+                        >
+                          {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                          <Link2 className="h-4 w-4 ms-2" />
+                          اتصال به Inoreader
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                {connectionStatus.isConnected ? (
-                  <div className="flex gap-2">
-                    {connectionStatus.needsRefresh && (
-                      <Badge variant="outline" className="text-yellow-600">
-                        نیاز به تمدید
-                      </Badge>
+                {/* Token Expiry Progress */}
+                {isConnected && expiresAt && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">اعتبار Token:</span>
+                      <span className={needsRefresh ? 'text-yellow-600 font-medium' : 'text-green-600'}>
+                        {Math.round(getTimeRemainingPercent())}%
+                      </span>
+                    </div>
+                    <Progress 
+                      value={getTimeRemainingPercent()} 
+                      className={needsRefresh ? '[&>*]:bg-yellow-500' : '[&>*]:bg-green-500'}
+                    />
+                    {lastChecked && (
+                      <p className="text-xs text-muted-foreground text-left">
+                        آخرین بررسی: {formatDistanceToNowIran(lastChecked)}
+                      </p>
                     )}
-                    <Button
-                      variant="destructive"
-                      onClick={handleDisconnect}
-                      disabled={isLoading}
-                    >
-                      {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
-                      قطع اتصال
-                    </Button>
                   </div>
-                ) : (
-                  <Button
-                    onClick={handleConnect}
-                    disabled={isLoading}
-                  >
-                    {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
-                    <Link2 className="h-4 w-4 ms-2" />
-                    اتصال به Inoreader
-                  </Button>
                 )}
               </div>
 
@@ -509,6 +503,20 @@ const InoreaderSettings: React.FC = () => {
                   بدون اشتراک Pro، امکان اتصال وجود ندارد.
                 </AlertDescription>
               </Alert>
+
+              {/* Auto-Refresh Info */}
+              {isConnected && (
+                <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
+                  <Zap className="h-4 w-4 text-blue-500" />
+                  <AlertDescription>
+                    <strong>✨ تمدید خودکار فعال است</strong>
+                    <p className="text-sm mt-1">
+                      سیستم به طور خودکار Token شما را 5 دقیقه قبل از expire شدن تمدید می‌کند.
+                      همچنین هر 5 دقیقه یکبار وضعیت اتصال بررسی می‌شود.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Benefits */}
               <div className="grid gap-4">
@@ -532,14 +540,14 @@ const InoreaderSettings: React.FC = () => {
                     <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="font-medium">همگام‌سازی خودکار</p>
-                      <p className="text-sm text-muted-foreground">هر 30 دقیقه یک بار</p>
+                      <p className="text-sm text-muted-foreground">بر اساس Priority folders</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 border rounded">
                     <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-medium">Folders و Tags</p>
-                      <p className="text-sm text-muted-foreground">سازماندهی بهتر منابع</p>
+                      <p className="font-medium">Auto-Refresh Token</p>
+                      <p className="text-sm text-muted-foreground">نیازی به login مجدد نیست</p>
                     </div>
                   </div>
                 </div>
@@ -550,7 +558,7 @@ const InoreaderSettings: React.FC = () => {
 
         {/* TAB 2: Folders */}
         <TabsContent value="folders" className="space-y-4">
-          {!connectionStatus.isConnected ? (
+          {!isConnected ? (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
@@ -744,7 +752,7 @@ const InoreaderSettings: React.FC = () => {
             <CardContent className="space-y-4">
               <Button
                 onClick={() => handleManualSync()}
-                disabled={isSyncing || !connectionStatus.isConnected}
+                disabled={isSyncing || !isConnected}
                 size="lg"
                 className="w-full"
               >
