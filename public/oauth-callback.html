@@ -19,6 +19,7 @@
         .container {
             text-align: center;
             padding: 2rem;
+            max-width: 500px;
         }
         .spinner {
             width: 50px;
@@ -47,50 +48,115 @@
             padding: 1rem;
             border-radius: 8px;
             margin-top: 1rem;
+            display: none;
+        }
+        .debug {
+            background: rgba(0,0,0,0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            text-align: left;
+            direction: ltr;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        .success {
+            color: #4ade80;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="spinner"></div>
-        <h1>در حال اتصال به Inoreader</h1>
-        <p>لطفاً صبر کنید...</p>
-        <div id="error" class="error" style="display: none;"></div>
+        <div class="spinner" id="spinner"></div>
+        <h1 id="title">در حال اتصال به Inoreader</h1>
+        <p id="message">لطفاً صبر کنید...</p>
+        <div id="error" class="error"></div>
+        <div id="debug" class="debug"></div>
     </div>
-
+    
     <script>
         (function() {
+            const debugDiv = document.getElementById('debug');
+            const errorDiv = document.getElementById('error');
+            const spinner = document.getElementById('spinner');
+            const title = document.getElementById('title');
+            const message = document.getElementById('message');
+            
+            function log(msg, data = null) {
+                console.log('[OAuth Callback]', msg, data || '');
+                debugDiv.style.display = 'block';
+                const line = document.createElement('div');
+                line.textContent = msg + (data ? ': ' + JSON.stringify(data) : '');
+                debugDiv.appendChild(line);
+            }
+            
+            function showError(msg) {
+                console.error('[OAuth Callback] ERROR:', msg);
+                spinner.style.display = 'none';
+                title.textContent = 'خطا';
+                message.textContent = '';
+                errorDiv.textContent = msg;
+                errorDiv.style.display = 'block';
+            }
+            
+            function showSuccess(msg) {
+                spinner.style.borderTopColor = '#4ade80';
+                title.textContent = '✓ موفق';
+                title.className = 'success';
+                message.textContent = msg;
+            }
+            
             try {
+                log('OAuth callback page loaded');
+                log('Current URL', window.location.href);
+                
                 // دریافت code از URL
                 const urlParams = new URLSearchParams(window.location.search);
+                log('URL params', Object.fromEntries(urlParams.entries()));
+                
                 const code = urlParams.get('code');
                 const error = urlParams.get('error');
-
+                const errorDescription = urlParams.get('error_description');
+                
                 if (error) {
-                    showError('خطا در OAuth: ' + error);
+                    showError('خطا در OAuth: ' + error + (errorDescription ? ' - ' + errorDescription : ''));
                     return;
                 }
-
+                
                 if (!code) {
-                    showError('کد OAuth یافت نشد!');
+                    showError('کد OAuth یافت نشد! لطفاً دوباره تلاش کنید.');
+                    log('No code found in URL params');
                     return;
                 }
-
-                // هدایت به صفحه تنظیمات با hash routing
-                const baseUrl = window.location.origin + window.location.pathname.replace('/oauth-callback.html', '');
+                
+                log('OAuth code received', code.substring(0, 10) + '...');
+                
+                // تشخیص base URL
+                const protocol = window.location.protocol;
+                const hostname = window.location.hostname;
+                const port = window.location.port;
+                const baseUrl = protocol + '//' + hostname + (port ? ':' + port : '');
+                
+                log('Base URL', baseUrl);
+                
+                // ساخت redirect URL با hash routing
                 const redirectUrl = baseUrl + '/#/settings/inoreader?code=' + encodeURIComponent(code);
-
-                console.log('Redirecting to:', redirectUrl);
-                window.location.href = redirectUrl;
-
+                
+                log('Redirect URL', redirectUrl);
+                showSuccess('در حال انتقال به صفحه تنظیمات...');
+                
+                // تاخیر 1 ثانیه برای نمایش پیام
+                setTimeout(function() {
+                    log('Redirecting now...');
+                    window.location.href = redirectUrl;
+                }, 1000);
+                
             } catch (err) {
                 showError('خطای داخلی: ' + err.message);
-            }
-
-            function showError(message) {
-                document.getElementById('error').textContent = message;
-                document.getElementById('error').style.display = 'block';
-                document.querySelector('.spinner').style.display = 'none';
+                log('Exception caught', err.toString());
+                console.error('[OAuth Callback] Exception:', err);
             }
         })();
     </script>
