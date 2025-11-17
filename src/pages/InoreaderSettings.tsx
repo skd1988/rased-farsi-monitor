@@ -154,11 +154,31 @@ const InoreaderSettings: React.FC = () => {
    * بررسی OAuth callback
    */
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
+  console.log('[InoreaderSettings] Checking for OAuth code...');
+  
+  // بررسی code در hash (چون از HashRouter استفاده می‌کنیم)
+  const hashParts = window.location.hash.split('?');
+  
+  if (hashParts.length > 1) {
+    const urlParams = new URLSearchParams(hashParts[1]);
     const code = urlParams.get('code');
-
+    
     if (code) {
+      console.log('[InoreaderSettings] OAuth code found! Processing...');
+      
+      toast({
+        title: '🔄 در حال اتصال...',
+        description: 'لطفاً صبر کنید',
+      });
+      
       handleCallback(code);
+      
+      // پاک کردن code از URL
+      const cleanHash = hashParts[0];
+      window.history.replaceState({}, document.title, cleanHash);
+    }
+  }
+}, [handleCallback]);
       // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
     }
