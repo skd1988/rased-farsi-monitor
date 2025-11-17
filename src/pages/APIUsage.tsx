@@ -176,12 +176,17 @@ const APIUsage = () => {
 
       const chartData = last7Days.map(date => {
         const dayLogs = logs.filter(log => log.created_at.split('T')[0] === date);
+        const requests = dayLogs.length;
+        const tokens = dayLogs.reduce((sum, log) => sum + (log.total_tokens || 0), 0);
+        
         return {
           date: new Date(date).toLocaleDateString('fa-IR', { month: 'numeric', day: 'numeric' }),
-          requests: dayLogs.length,
-          tokens: dayLogs.reduce((sum, log) => sum + log.total_tokens, 0)
+          requests: requests,
+          tokens: tokens
         };
       });
+      
+      console.log('📊 DeepSeek Chart Data:', chartData);
       setDeepseekLineChartData(chartData);
 
       // Pie chart
@@ -455,17 +460,27 @@ const APIUsage = () => {
           <div className="grid gap-4 md:grid-cols-2">
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">روند استفاده (7 روز اخیر)</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={deepseekLineChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="requests" stroke="hsl(var(--primary))" name="درخواست‌ها" />
-                  <Line type="monotone" dataKey="tokens" stroke="hsl(var(--chart-2))" name="توکن‌ها" />
-                </LineChart>
-              </ResponsiveContainer>
+              {deepseekLineChartData.length > 0 && deepseekLineChartData.some(d => d.requests > 0) ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={deepseekLineChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="requests" stroke="hsl(var(--primary))" name="درخواست‌ها" strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" dataKey="tokens" stroke="hsl(var(--chart-2))" name="توکن‌ها" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  <div className="text-center">
+                    <Activity className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                    <p>هیچ داده‌ای برای نمایش وجود ندارد</p>
+                  </div>
+                </div>
+              )}
             </Card>
 
             <Card className="p-6">
