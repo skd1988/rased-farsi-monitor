@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '@/integrations/supabase/client';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { toast } from 'sonner';
+import { debugHelper, startPerf, endPerf } from '@/utils/debugHelper';
 
 type UserRole = 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest';
 type UserStatus = 'active' | 'suspended' | 'inactive';
@@ -111,15 +112,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 🔥 FIX: Prevent concurrent fetches
     if (isFetchingRef.current) {
       console.log('[AuthContext] ⏸️ Already fetching user data, skipping...');
+      debugHelper.log('AuthContext', 'fetchUserData SKIPPED - Already fetching');
       return null;
     }
 
     isFetchingRef.current = true;
+    startPerf('fetchUserData');
 
     try {
       console.log('[AuthContext] 🚀 fetchUserData START', {
         email: authUser.email,
         id: authUser.id,
+        retry: retryCount,
+        skipSessionCheck
+      });
+      debugHelper.log('AuthContext', 'fetchUserData START', {
+        email: authUser.email,
         retry: retryCount,
         skipSessionCheck
       });
@@ -348,8 +356,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: userObject.status
       });
 
+      const duration = endPerf('fetchUserData');
+      debugHelper.log('AuthContext', 'fetchUserData SUCCESS', {
+        email: userObject.email,
+        role: userObject.role,
+        duration: `${duration}ms`
+      });
+
       return userObject;
-      
+
     } catch (error: any) {
       console.error('[AuthContext] FATAL ERROR in fetchUserData:', {
         message: error?.message,
@@ -359,6 +374,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         maxRetries: 3
       });
 
+      const duration = endPerf('fetchUserData');
+      debugHelper.log('AuthContext', 'fetchUserData ERROR', {
+        error: error?.message,
+        code: error?.code,
+        retry: retryCount,
+        duration: `${duration}ms`
+      });
+
       // Retry logic با حداکثر تعداد
       if (retryCount < 3 &&
           (error?.message?.includes('permission') ||
@@ -366,12 +389,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
            error?.message?.includes('RPC timeout') ||
            error?.code === 'PGRST301')) {
         console.log(`[AuthContext] Will retry fetchUserData (${retryCount + 1}/3)...`);
+        debugHelper.log('AuthContext', 'fetchUserData RETRY', { attempt: retryCount + 1 });
         isFetchingRef.current = false; // Reset before retry
         return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
       }
 
       // بعد از MAX_RETRIES، فقط error بده (نه signOut)
       console.error('[AuthContext] Max retries reached, giving up');
+      debugHelper.log('AuthContext', 'fetchUserData FAILED - Max retries reached');
       toast.error('خطا در بارگذاری اطلاعات کاربر. لطفاً صفحه را رفرش کنید.');
       return null;
     } finally {
@@ -805,25 +830,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('[AuthContext] 🔔 Auth event received:', event, session?.user?.email);
+        debugHelper.log('AuthContext', 'Auth State Change', {
+          event,
+          email: session?.user?.email,
+          isInitialized: isInitializedRef.current,
+          hasUser: !!user
+        });
 
         if (!mounted) {
           console.log('[AuthContext] ⚠️ Component unmounted, ignoring event');
+          debugHelper.log('AuthContext', 'Event IGNORED - Component unmounted');
           return;
         }
 
         // 🔥 FIX: Skip ALL events during initialization
         if (!isInitializedRef.current) {
           console.log('[AuthContext] ⏸️ Skipping event during initialization:', event);
+          debugHelper.log('AuthContext', 'Event SKIPPED - Not initialized', { event });
           return;
         }
 
         // 🔥 FIX: Skip duplicate SIGNED_IN events if user already loaded
         if (event === 'SIGNED_IN' && user !== null) {
           console.log('[AuthContext] ⏸️ User already loaded, ignoring duplicate SIGNED_IN');
+          debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - User already loaded');
           return;
         }
 
         console.log('[AuthContext] Processing auth event:', event);
+        debugHelper.log('AuthContext', 'Processing Auth Event', { event });
 
         // Skip INITIAL_SESSION event - it's handled by initAuth
         if (event === 'INITIAL_SESSION') {
