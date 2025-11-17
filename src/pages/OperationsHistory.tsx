@@ -255,6 +255,37 @@ const OperationsHistory = () => {
       .sort((a: any, b: any) => b.usage_count - a.usage_count);
   }, [narratives]);
 
+  // PsyOp Trend Data - گروه‌بندی بر اساس تاریخ و سطح تهدید
+  const psyopTrendData = React.useMemo(() => {
+    const groupedByDate: Record<string, any> = {};
+
+    significantPosts
+      .filter(p => p.is_psyop && p.published_at)
+      .forEach(post => {
+        const date = new Date(post.published_at).toLocaleDateString('fa-IR');
+
+        if (!groupedByDate[date]) {
+          groupedByDate[date] = {
+            date,
+            بحرانی: 0,
+            بالا: 0,
+            متوسط: 0,
+            پایین: 0,
+          };
+        }
+
+        // شمارش بر اساس threat_level
+        if (post.threat_level === 'Critical') groupedByDate[date]['بحرانی']++;
+        else if (post.threat_level === 'High') groupedByDate[date]['بالا']++;
+        else if (post.threat_level === 'Medium') groupedByDate[date]['متوسط']++;
+        else if (post.threat_level === 'Low') groupedByDate[date]['پایین']++;
+      });
+
+    return Object.values(groupedByDate).sort((a: any, b: any) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+  }, [significantPosts]);
+
   // Fetch data on mount and filter change
   useEffect(() => {
     fetchAllData();
@@ -674,38 +705,99 @@ const OperationsHistory = () => {
               {/* Timeline Chart */}
               <Card>
                 <CardHeader>
-                  <CardTitle>روند عملیات روانی</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-red-600" />
+                    روند عملیات روانی
+                  </CardTitle>
                   <CardDescription>نمودار روند شناسایی PsyOps در طول زمان</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={dailyDigests}>
-                      <CartesianGrid strokeDasharray="3 3" />
+                    <AreaChart data={psyopTrendData}>
+                      <defs>
+                        <linearGradient id="colorCritical" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#DC2626" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#DC2626" stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id="colorHigh" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#F97316" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#F97316" stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id="colorMedium" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#FBBF24" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#FBBF24" stopOpacity={0.1}/>
+                        </linearGradient>
+                        <linearGradient id="colorLow" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0.1}/>
+                        </linearGradient>
+                      </defs>
+
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+
                       <XAxis
-                        dataKey="digest_date"
-                        tickFormatter={(date) => format(new Date(date), 'MM/dd')}
+                        dataKey="date"
+                        tick={{ fontSize: 12 }}
                       />
-                      <YAxis />
+
+                      <YAxis tick={{ fontSize: 12 }} />
+
                       <Tooltip
-                        labelFormatter={(date) => formatPersianDate(date)}
-                        contentStyle={{ direction: 'rtl' }}
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            const total = payload.reduce((sum, entry) => sum + (entry.value as number), 0);
+                            return (
+                              <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
+                                <p className="font-semibold mb-2">{label}</p>
+                                {payload.reverse().map((entry, index) => (
+                                  <p key={index} style={{ color: entry.color }} className="text-sm">
+                                    {entry.name}: {entry.value}
+                                  </p>
+                                ))}
+                                <p className="text-sm font-semibold mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                  جمع: {total}
+                                </p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
                       />
-                      <Legend />
-                      <Line
+
+                      <Legend
+                        wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }}
+                        iconType="square"
+                      />
+
+                      <Area
                         type="monotone"
-                        dataKey="psyop_posts"
-                        stroke={COLORS.critical}
-                        name="PsyOps"
-                        strokeWidth={2}
+                        dataKey="بحرانی"
+                        stackId="1"
+                        stroke="#DC2626"
+                        fill="url(#colorCritical)"
                       />
-                      <Line
+                      <Area
                         type="monotone"
-                        dataKey="critical_threats"
-                        stroke={COLORS.high}
-                        name="تهدیدات بحرانی"
-                        strokeWidth={2}
+                        dataKey="بالا"
+                        stackId="1"
+                        stroke="#F97316"
+                        fill="url(#colorHigh)"
                       />
-                    </LineChart>
+                      <Area
+                        type="monotone"
+                        dataKey="متوسط"
+                        stackId="1"
+                        stroke="#FBBF24"
+                        fill="url(#colorMedium)"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="پایین"
+                        stackId="1"
+                        stroke="#10B981"
+                        fill="url(#colorLow)"
+                      />
+                    </AreaChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
