@@ -187,6 +187,17 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
   ];
 
   const onSubmit = async (data: InviteUserFormData) => {
+    // Validation قبل از ارسال
+    if (!data.email || !data.fullName) {
+      toast.error('لطفاً تمام فیلدهای الزامی را پر کنید');
+      return;
+    }
+
+    if (!data.email.includes('@')) {
+      toast.error('ایمیل نامعتبر است');
+      return;
+    }
+
     if (emailExists) {
       toast.error('این ایمیل قبلاً ثبت شده است');
       return;
@@ -195,35 +206,54 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Step 1: Create user in Supabase Auth
+      // Step 1: Create user in Supabase Auth using Admin API
       const tempPassword = Math.random().toString(36).slice(-12) + 'A1!';
-      
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+
+      console.log('[InviteUserModal] Creating user with Admin API...');
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: data.email,
         password: tempPassword,
-        options: {
-          data: {
-            full_name: data.fullName,
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        }
+        email_confirm: true,  // ✅ تأیید خودکار ایمیل
+        user_metadata: {
+          full_name: data.fullName,
+        },
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('Failed to create user');
+      if (authError) {
+        console.error('Auth error:', authError);
+        throw authError;
+      }
 
-      // Step 2: Insert into users table
-      const { error: userError } = await supabase
+      if (!authData.user) {
+        throw new Error('Failed to create user');
+      }
+
+      console.log('✅ User created in auth:', authData.user.id);
+
+      // Step 2: ایجاد پروفایل در user_profiles (یا users table)
+      console.log('[InviteUserModal] Creating user profile...');
+      const { error: profileError } = await supabase
         .from('users')
         .insert({
-          id: authData.user.id,
+          id: authData.user.id,  // ✅ استفاده از ID کاربر ساخته شده
           email: data.email,
           full_name: data.fullName,
+          phone: data.phone || null,
           status: 'active',
           created_by: currentUser?.id,
         });
 
-      if (userError) throw userError;
+      if (profileError) {
+        console.error('Profile error:', profileError);
+
+        // اگر پروفایل ساخته نشد، کاربر auth را حذف کن
+        console.log('[InviteUserModal] Rolling back: deleting auth user...');
+        await supabase.auth.admin.deleteUser(authData.user.id);
+
+        throw profileError;
+      }
+
+      console.log('✅ User profile created');
 
       // Step 3: Assign role
       const { error: roleError } = await supabase
@@ -233,7 +263,12 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
           role: data.role,
         });
 
-      if (roleError) throw roleError;
+      if (roleError) {
+        console.error('Role error:', roleError);
+        throw roleError;
+      }
+
+      console.log('✅ User role assigned');
 
       // Step 4: Set custom limits if enabled
       if (data.customLimits) {
@@ -246,7 +281,10 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
           })
           .eq('user_id', authData.user.id);
 
-        if (limitsError) throw limitsError;
+        if (limitsError) {
+          console.error('Limits error:', limitsError);
+          // Don't throw - limits are optional
+        }
       }
 
       // Step 5: Send invitation email if requested
@@ -271,24 +309,24 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
         }
       }
 
-      // Step 6: Log activity (commented out until user_activity_logs table is available)
-      // try {
-      //   await supabase.from('user_activity_logs').insert({
-      //     user_id: currentUser?.id,
-      //     action: 'INVITE_USER',
-      //     resource_type: 'user',
-      //     resource_id: authData.user.id,
-      //     details: {
-      //       invited_email: data.email,
-      //       invited_name: data.fullName,
-      //       role: data.role,
-      //     },
-      //   });
-      // } catch (logError) {
-      //   console.log('Activity logging skipped:', logError);
-      // }
+      // Step 6: Log activity
+      try {
+        await supabase.from('user_activity_log').insert({
+          user_id: authData.user.id,
+          action: 'USER_CREATED',
+          details: {
+            created_by: currentUser?.id,
+            role: data.role,
+            email: data.email,
+            full_name: data.fullName,
+          }
+        });
+      } catch (logError) {
+        console.log('Activity logging skipped:', logError);
+        // Don't fail if activity log fails
+      }
 
-      toast.success('دعوتنامه با موفقیت ارسال شد', {
+      toast.success(`کاربر ${data.fullName} با موفقیت ساخته شد`, {
         action: {
           label: 'مشاهده کاربر',
           onClick: () => {
@@ -302,8 +340,20 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
       onSuccess();
       onClose();
     } catch (error: any) {
-      console.error('Error inviting user:', error);
-      toast.error(error.message || 'خطا در ارسال دعوتنامه');
+      console.error('Error creating user:', error);
+
+      // بهبود Error Handling
+      if (error.message?.includes('rate limit')) {
+        toast.error('لطفاً 30 ثانیه صبر کنید و دوباره امتحان کنید');
+      } else if (error.message?.includes('already exists') || error.message?.includes('duplicate')) {
+        toast.error('این ایمیل قبلاً ثبت شده است');
+      } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        toast.error('خطای شبکه: لطفاً اتصال اینترنت خود را بررسی کنید');
+      } else if (error.message?.includes('permission') || error.message?.includes('unauthorized')) {
+        toast.error('شما مجوز ایجاد کاربر ندارید');
+      } else {
+        toast.error('خطا در ایجاد کاربر: ' + (error.message || 'خطای ناشناخته'));
+      }
     } finally {
       setIsSubmitting(false);
     }
