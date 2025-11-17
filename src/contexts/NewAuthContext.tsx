@@ -661,38 +661,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(checkTimeout);
   }, [user, lastActivity, sessionWarningShown]);
 
-  // 🔥 FIX: Manual interval control to prevent dependency issues
-  useEffect(() => {
-    if (!user) {
-      // Clear interval if user logged out
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-      return;
-    }
+  // 🔥 DISABLED: Auto-refresh causing hang issues
+  // useEffect(() => {
+  //   if (!user) {
+  //     // Clear interval if user logged out
+  //     if (refreshIntervalRef.current) {
+  //       clearInterval(refreshIntervalRef.current);
+  //       refreshIntervalRef.current = null;
+  //     }
+  //     return;
+  //   }
 
-    console.log('[AuthContext] ⏰ Setting up user refresh interval');
+  //   console.log('[AuthContext] ⏰ Setting up user refresh interval');
 
-    // Clear any existing interval
-    if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-    }
+  //   // Clear any existing interval
+  //   if (refreshIntervalRef.current) {
+  //     clearInterval(refreshIntervalRef.current);
+  //   }
 
-    // Create new interval
-    refreshIntervalRef.current = setInterval(() => {
-      console.log('[AuthContext] ⏰ Auto-refresh triggered');
-      refreshUser();
-    }, REFRESH_INTERVAL);
+  //   // Create new interval
+  //   refreshIntervalRef.current = setInterval(() => {
+  //     console.log('[AuthContext] ⏰ Auto-refresh triggered');
+  //     refreshUser();
+  //   }, REFRESH_INTERVAL);
 
-    return () => {
-      if (refreshIntervalRef.current) {
-        console.log('[AuthContext] ⏰ Clearing refresh interval');
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    };
-  }, [user?.id]); // ✅ Only depend on user ID, not the whole user object
+  //   return () => {
+  //     if (refreshIntervalRef.current) {
+  //       console.log('[AuthContext] ⏰ Clearing refresh interval');
+  //       clearInterval(refreshIntervalRef.current);
+  //       refreshIntervalRef.current = null;
+  //     }
+  //   };
+  // }, [user?.id]); // ✅ Only depend on user ID, not the whole user object
 
   // Set up auth state listener with improved error handling
   useEffect(() => {
