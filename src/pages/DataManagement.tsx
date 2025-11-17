@@ -96,57 +96,71 @@ const DataManagement = () => {
     const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    // استفاده از count برای سرعت بیشتر و دقت کامل
-    // ⚠️ مهم: از published_at استفاده میشه، نه created_at
-    const [
-      { count: total_posts },
-      { count: new_posts },
-      { count: analyzed_posts },
-      { count: archived_posts },
-      { count: psyop_count },
-      { count: non_psyop_count },
-      { count: high_critical_count },
-      { count: low_medium_count },
-      { count: old_posts },
-      { count: deletable_posts },
-      { count: posts_24h_ago },
-      { count: posts_7d_ago },
-    ] = await Promise.all([
-      supabase.from('posts').select('*', { count: 'exact', head: true }),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'New'),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Analyzed'),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Archived'),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', true),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
-      // ✅ استفاده از published_at به جای created_at
-      supabase.from('posts').select('*', { count: 'exact', head: true }).lt('published_at', cutoff24h),
-      supabase.from('posts').select('*', { count: 'exact', head: true })
-        .lt('published_at', cutoff24h)
-        .neq('status', 'Archived')
-        .in('threat_level', ['Low', 'Medium'])
-        .eq('is_psyop', false),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff24h),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff7d),
-    ]);
+    try {
+      // 🔥 Use Promise.allSettled instead of Promise.all
+      // This ensures loading state will be set to false even if some queries fail
+      const results = await Promise.allSettled([
+        supabase.from('posts').select('*', { count: 'exact', head: true }),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'New'),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Analyzed'),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Archived'),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', true),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
+        // ✅ استفاده از published_at به جای created_at
+        supabase.from('posts').select('*', { count: 'exact', head: true }).lt('published_at', cutoff24h),
+        supabase.from('posts').select('*', { count: 'exact', head: true })
+          .lt('published_at', cutoff24h)
+          .neq('status', 'Archived')
+          .in('threat_level', ['Low', 'Medium'])
+          .eq('is_psyop', false),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff24h),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff7d),
+      ]);
 
-    const stats: DataStats = {
-      total_posts: total_posts || 0,
-      new_posts: new_posts || 0,
-      analyzed_posts: analyzed_posts || 0,
-      archived_posts: archived_posts || 0,
-      psyop_count: psyop_count || 0,
-      non_psyop_count: non_psyop_count || 0,
-      high_critical_count: high_critical_count || 0,
-      low_medium_count: low_medium_count || 0,
-      old_posts: old_posts || 0,
-      deletable_posts: deletable_posts || 0,
-      posts_24h_ago: posts_24h_ago || 0,
-      posts_7d_ago: posts_7d_ago || 0,
-    };
+      // 🔥 Extract counts safely
+      const getCount = (index: number) => {
+        const result = results[index];
+        if (result.status === 'fulfilled') {
+          return result.value?.count || 0;
+        }
+        console.warn(`Query ${index} failed:`, result.reason);
+        return 0;
+      };
 
-    setStats(stats);
+      setStats({
+        total_posts: getCount(0),
+        new_posts: getCount(1),
+        analyzed_posts: getCount(2),
+        archived_posts: getCount(3),
+        psyop_count: getCount(4),
+        non_psyop_count: getCount(5),
+        high_critical_count: getCount(6),
+        low_medium_count: getCount(7),
+        old_posts: getCount(8),
+        deletable_posts: getCount(9),
+        posts_24h_ago: getCount(10),
+        posts_7d_ago: getCount(11),
+      });
+    } catch (error) {
+      console.error('[DataManagement] Error:', error);
+      // Set zeros on complete failure
+      setStats({
+        total_posts: 0,
+        new_posts: 0,
+        analyzed_posts: 0,
+        archived_posts: 0,
+        psyop_count: 0,
+        non_psyop_count: 0,
+        high_critical_count: 0,
+        low_medium_count: 0,
+        old_posts: 0,
+        deletable_posts: 0,
+        posts_24h_ago: 0,
+        posts_7d_ago: 0,
+      });
+    }
   };
 
   const loadCleanupHistory = async () => {
