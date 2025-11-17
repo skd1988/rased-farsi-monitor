@@ -79,300 +79,140 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [sessionWarningShown, setSessionWarningShown] = useState(false);
 
-  // 🔥 FIX: Refs to prevent infinite loops
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitializedRef = useRef(false);
-  const retryCountRef = useRef(0);
-  const isFetchingRef = useRef(false); // ✅ NEW: Prevent concurrent fetches
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null); // ✅ NEW: Manual interval control
+  const fetchUserData = useCallback(async (authUser: SupabaseUser): Promise<User | null> => {
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second between retries
 
-  // Clear any corrupted auth state from localStorage - REMOVED
-  // This function was too aggressive and was clearing valid sessions
-  // Instead, we rely on supabase.auth.signOut() which properly clears auth state
-  const clearCorruptedAuthState = useCallback(() => {
-    console.log('[AuthContext] Attempting to sign out and clear auth state');
-    try {
-      // Use Supabase's built-in signOut which properly clears the session
-      supabase.auth.signOut().then(() => {
-        toast.info('حالت احراز هویت بازنشانی شد. لطفاً دوباره وارد شوید.');
-      }).catch((error) => {
-        console.error('[AuthContext] Error during signOut:', error);
-        toast.error('خطا در خروج از سیستم');
-      });
-    } catch (error) {
-      console.error('[AuthContext] Error clearing auth state:', error);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[fetchUserData] Attempt ${attempt}/${maxRetries} for user:`, authUser.email);
+
+        // Wait before retry (except first attempt)
+        if (attempt > 1) {
+          console.log(`[fetchUserData] Waiting ${retryDelay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+
+        // Query 1: Users table (CRITICAL - must succeed)
+        // Using .maybeSingle() instead of .single() to avoid throwing on 0 rows
+        const { data: userData, error: usersError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', authUser.id)
+          .maybeSingle();
+
+        // Check if query failed with an error
+        if (usersError) {
+          console.error(`[fetchUserData] Attempt ${attempt} - Users query error:`, usersError);
+          if (attempt < maxRetries) {
+            console.log('[fetchUserData] Will retry due to query error...');
+            continue; // Retry
+          }
+          toast.error('خطا در بارگذاری پروفایل کاربر');
+          return null;
+        }
+
+        // Check if no data returned (auth.uid() not ready yet in RLS)
+        if (!userData) {
+          console.warn(`[fetchUserData] Attempt ${attempt} - No user data returned (auth.uid() not ready in RLS?)`);
+          if (attempt < maxRetries) {
+            console.log('[fetchUserData] Will retry - auth.uid() may not be propagated to RLS yet...');
+            continue; // Retry
+          }
+          console.error('[fetchUserData] All attempts exhausted - user data not found');
+          toast.error('خطا در بارگذاری پروفایل کاربر - لطفا دوباره وارد شوید');
+          return null;
+        }
+
+        // SUCCESS! User data found
+        console.log(`[fetchUserData] Attempt ${attempt} - User data loaded successfully:`, userData.email);
+
+        // Query 2: User roles (optional - use guest as fallback)
+        const { data: rolesData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        const role = rolesData?.role || 'guest';
+        console.log('[fetchUserData] User role:', role);
+
+        // Query 3: Daily limits (optional - use unlimited as fallback)
+        const { data: limitsData } = await supabase
+          .from('user_daily_limits')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        console.log('[fetchUserData] Daily limits loaded:', limitsData ? 'yes' : 'using defaults');
+
+        // Query 4: Daily usage (optional - use zero as fallback)
+        const { data: usageData } = await supabase
+          .from('user_daily_usage')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .eq('usage_date', today)
+          .maybeSingle();
+
+        console.log('[fetchUserData] Daily usage loaded:', usageData ? 'yes' : 'using defaults');
+
+        // If no usage record for today, create one (fire and forget)
+        if (!usageData) {
+          supabase
+            .from('user_daily_usage')
+            .insert({
+              user_id: authUser.id,
+              usage_date: today,
+              ai_analysis: 0,
+              chat_messages: 0,
+              exports: 0
+            })
+            .then(() => console.log('[fetchUserData] Created daily usage record'))
+            .catch((err) => console.error('[fetchUserData] Failed to create usage record:', err));
+        }
+
+        // Build and return user object
+        const userObject = {
+          id: userData.id,
+          email: userData.email,
+          fullName: userData.full_name,
+          role: role as UserRole,
+          status: userData.status as UserStatus,
+          preferences: userData.preferences as User['preferences'],
+          dailyLimits: {
+            aiAnalysis: limitsData?.ai_analysis || -1,
+            chatMessages: limitsData?.chat_messages || -1,
+            exports: limitsData?.exports || -1
+          },
+          usageToday: {
+            aiAnalysis: usageData?.ai_analysis || 0,
+            chatMessages: usageData?.chat_messages || 0,
+            exports: usageData?.exports || 0
+          },
+          lastLogin: userData.last_login,
+          createdAt: userData.created_at
+        };
+
+        console.log('[fetchUserData] ✅ User object built successfully for:', userObject.email);
+        return userObject;
+
+      } catch (error: any) {
+        console.error(`[fetchUserData] Attempt ${attempt} - Critical error:`, error);
+        if (attempt < maxRetries) {
+          console.log('[fetchUserData] Will retry due to critical error...');
+          continue; // Retry
+        }
+        toast.error('خطا در بارگذاری اطلاعات کاربر');
+        return null;
+      }
     }
+
+    // Should never reach here, but just in case
+    console.error('[fetchUserData] All retry attempts exhausted');
+    return null;
   }, []);
-
-  const fetchUserData = useCallback(async (
-    authUser: SupabaseUser,
-    retryCount = 0,
-    skipSessionCheck = false
-  ): Promise<User | null> => {
-    // 🔥 FIX: Prevent concurrent fetches
-    if (isFetchingRef.current) {
-      console.log('[AuthContext] ⏸️ Already fetching user data, skipping...');
-      debugHelper.log('AuthContext', 'fetchUserData SKIPPED - Already fetching');
-      return null;
-    }
-
-    isFetchingRef.current = true;
-    startPerf('fetchUserData');
-
-    try {
-      console.log('[AuthContext] 🚀 fetchUserData START', {
-        email: authUser.email,
-        id: authUser.id,
-        retry: retryCount,
-        skipSessionCheck
-      });
-      debugHelper.log('AuthContext', 'fetchUserData START', {
-        email: authUser.email,
-        retry: retryCount,
-        skipSessionCheck
-      });
-
-      // Maximum retries and timeout
-      const MAX_RETRIES = 3;
-      const RPC_TIMEOUT = 10000; // 🔧 Increased to 10 seconds
-
-      // Only delay on retries (optimized delays)
-      if (retryCount > 0) {
-        const OPTIMIZED_DELAYS = [200, 500, 1000];
-        const delay = OPTIMIZED_DELAYS[Math.min(retryCount - 1, OPTIMIZED_DELAYS.length - 1)];
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-
-      // Only verify session if not skipped (skip after fresh login)
-      if (!skipSessionCheck) {
-        const { error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error('[AuthContext] Session verification failed:', sessionError);
-          throw new Error('جلسه معتبر نیست');
-        }
-      }
-
-      // استراتژی دو مرحله‌ای: RPC اصلی → RPC جایگزین (بدون RLS)
-      let data, error;
-
-      // استراتژی 1: تلاش برای RPC اصلی (فقط در اولین تلاش)
-      if (retryCount === 0) {
-        try {
-          console.log('[AuthContext] 📊 Attempting main RPC with 10s timeout...');
-
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('RPC_TIMEOUT')), RPC_TIMEOUT);
-          });
-
-          const rpcPromise = supabase.rpc('get_user_with_details', {
-            p_user_id: authUser.id
-          });
-
-          const response = await Promise.race([rpcPromise, timeoutPromise]) as any;
-          data = response.data;
-          error = response.error;
-
-          if (!error && data) {
-            console.log('[AuthContext] ✅ Main RPC succeeded');
-          } else if (error) {
-            console.warn('[AuthContext] ⚠️ Main RPC error:', error.message);
-            throw error;
-          }
-        } catch (rpcError: any) {
-          console.warn('[AuthContext] ⚠️ Main RPC failed:', rpcError.message);
-          data = null;
-          error = null;
-        }
-      }
-
-      // استراتژی 2: Fallback به RPC بدون parameter (امن‌تر)
-      if (!data || error) {
-        try {
-          console.log('[AuthContext] 🔄 Trying alternative RPC (no params)...');
-
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('RPC_TIMEOUT')), RPC_TIMEOUT);
-          });
-
-          const rpcPromise = supabase.rpc('get_current_user_data');
-
-          const response = await Promise.race([rpcPromise, timeoutPromise]) as any;
-          data = response.data;
-          error = response.error;
-
-          if (!error && data) {
-            console.log('[AuthContext] ✅ Alternative RPC succeeded');
-          } else {
-            throw new Error(error?.message || 'Alternative RPC failed');
-          }
-        } catch (fallbackError: any) {
-          console.error('[AuthContext] ❌ Both RPC methods failed:', fallbackError);
-          throw new Error('خطا در بارگذاری اطلاعات کاربر. لطفاً دوباره تلاش کنید.');
-        }
-      }
-
-      console.log('[AuthContext] 📥 RPC Response:', {
-        hasData: !!data,
-        error: error?.message,
-        dataType: Array.isArray(data) ? 'array' : typeof data,
-        dataKeys: data ? (Array.isArray(data) ? Object.keys(data[0] || {}) : Object.keys(data)) : []
-      });
-      console.log('[AuthContext] 🔍 Raw RPC Data:', JSON.stringify(data));
-
-      if (error) {
-        console.error('[AuthContext] ❌ Database error:', error);
-
-        if (error.message.includes('permission') && retryCount < 2) {
-          console.log('[AuthContext] Retrying due to permissions error...');
-          isFetchingRef.current = false; // Reset before retry
-          return fetchUserData(authUser, retryCount + 1, skipSessionCheck);
-        }
-
-        throw new Error('خطا در بارگذاری اطلاعات: ' + error.message);
-      }
-
-      if (!data) {
-        console.error('[AuthContext] No data returned from database');
-        throw new Error('داده‌های کاربر یافت نشد');
-      }
-
-      // More detailed logging for structure analysis
-      console.log('[AuthContext] 🔍 Data structure analysis:', {
-        isArray: Array.isArray(data),
-        isEmptyArray: Array.isArray(data) && data.length === 0,
-        dataLength: Array.isArray(data) ? data.length : 'N/A',
-        dataType: typeof data,
-        dataKeys: Array.isArray(data) ?
-          (data.length > 0 ? Object.keys(data[0]) : []) :
-          Object.keys(data)
-      });
-
-      // Parse the returned data from RPC function
-      let result;
-      if (Array.isArray(data)) {
-        if (data.length === 0) {
-          console.error('[AuthContext] Empty array returned - user not found in database');
-          throw new Error('کاربر در دیتابیس یافت نشد. لطفاً ابتدا ثبت نام کنید.');
-        }
-        result = data[0];
-      } else {
-        result = data;
-      }
-
-      console.log('[AuthContext] 🔍 Result object properties (flat):', {
-        hasId: 'id' in result,
-        hasEmail: 'email' in result,
-        hasRole: 'role' in result,
-        hasFullName: 'full_name' in result,
-        resultKeys: Object.keys(result)
-      });
-
-      // RPC directly returns flat object - no nested structures
-      const userData = {
-        id: result.id,
-        email: result.email,
-        full_name: result.full_name,
-        status: result.status,
-        preferences: result.preferences,
-        last_login: result.last_login,
-        created_at: result.created_at,
-        updated_at: result.updated_at
-      };
-
-      const roleData = result.role;
-
-      const limitsData = {
-        ai_analysis: result.daily_ai_analysis_limit,
-        chat_messages: result.daily_chat_messages_limit,
-        exports: result.daily_exports_limit
-      };
-
-      const usageData = {
-        ai_analysis: result.daily_ai_analysis_used || 0,
-        chat_messages: result.daily_chat_messages_used || 0,
-        exports: result.daily_exports_used || 0
-      };
-
-      console.log('[AuthContext] 🔍 Parsed data check:', {
-        hasUserData: !!userData,
-        hasRoleData: !!roleData,
-        hasLimitsData: !!limitsData,
-        hasUsageData: !!usageData,
-        userEmail: userData.email,
-        userRole: roleData
-      });
-
-      if (!userData.id || !userData.email) {
-        console.error('[AuthContext] No user data found in result:', {
-          result,
-          userData
-        });
-        throw new Error('پروفایل کاربر یافت نشد');
-      }
-
-      if (!roleData) {
-        console.error('[AuthContext] No role data found in result:', {
-          result,
-          role_value: result.role
-        });
-        throw new Error('نقش کاربر یافت نشد');
-      }
-
-      // If limits data is missing, use default values instead of throwing error
-      if (!limitsData.ai_analysis && limitsData.ai_analysis !== 0) {
-        console.warn('[AuthContext] No limits data found, using defaults:', {
-          result,
-          limitsData
-        });
-        limitsData.ai_analysis = 10;
-        limitsData.chat_messages = 50;
-        limitsData.exports = 20;
-      }
-
-      const userObject: User = {
-        id: userData.id,
-        email: userData.email,
-        fullName: userData.full_name,
-        role: roleData as UserRole,
-        status: userData.status as UserStatus,
-        preferences: userData.preferences as User['preferences'],
-        dailyLimits: {
-          aiAnalysis: limitsData.ai_analysis,
-          chatMessages: limitsData.chat_messages,
-          exports: limitsData.exports
-        },
-        usageToday: {
-          aiAnalysis: usageData.ai_analysis || 0,
-          chatMessages: usageData.chat_messages || 0,
-          exports: usageData.exports || 0
-        },
-        lastLogin: userData.last_login,
-        createdAt: userData.created_at
-      };
-
-      console.log('[AuthContext] ✅ User object created successfully', {
-        email: userObject.email,
-        role: userObject.role,
-        status: userObject.status
-      });
-
-      const duration = endPerf('fetchUserData');
-      debugHelper.log('AuthContext', 'fetchUserData SUCCESS', {
-        email: userObject.email,
-        role: userObject.role,
-        duration: `${duration}ms`
-      });
-
-      return userObject;
-
-    } catch (error: any) {
-      console.error('[AuthContext] FATAL ERROR in fetchUserData:', {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        retry: retryCount,
-        maxRetries: 3
-      });
 
       const duration = endPerf('fetchUserData');
       debugHelper.log('AuthContext', 'fetchUserData ERROR', {
@@ -735,71 +575,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, MAX_LOADING_TIME);
 
-    // Check for existing session
-    const initAuth = async () => {
-      console.log('[AuthContext] 🔄 Starting initAuth...');
+    // Then set up listener for future auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('[NewAuthContext] Auth state changed:', event, session?.user?.email);
 
-      try {
-        console.log('[AuthContext] 📞 Calling getSession...');
+        // Skip INITIAL_SESSION event as we already handled it above
+        if (event === 'INITIAL_SESSION') return;
 
-        // Add timeout to getSession
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('getSession timeout')), 5000)
-        );
-
-        const { data: { session }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as any;
-
-        console.log('[AuthContext] ✅ getSession completed', {
-          hasSession: !!session,
-          email: session?.user?.email,
-          error: error?.message
-        });
-
-        if (error) {
-          console.error('[AuthContext] getSession error:', error);
-          throw error;
-        }
-
-        console.log('[AuthContext] Initial session check:', session?.user?.email || 'No session');
         setSession(session);
-        
-        if (session?.user && mounted) {
-          try {
-            const userData = await fetchUserData(session.user);
 
-            if (mounted) {
-              if (userData) {
-                setUser(userData);
-                console.log('[AuthContext] User loaded successfully');
-              } else {
-                console.error('[AuthContext] Failed to load user data - will retry on next action');
-                // Don't sign out! Just set loading to false
-                // User will be prompted to login again only if they try to do something
-                setUser(null);
-              }
-            }
-          } catch (error) {
-            console.error('[AuthContext] Error fetching user data:', error);
-            if (mounted) {
-              // Don't sign out on error during session restoration
-              // Keep the session, just set user to null
-              // This allows retry on next user action
-              console.log('[AuthContext] Keeping session for retry, user will be null');
-              setUser(null);
-            }
+        if (session?.user) {
+          // CRITICAL FIX: Add delay for SIGNED_IN to allow auth.uid() to propagate to RLS
+          if (event === 'SIGNED_IN') {
+            console.log('[NewAuthContext] SIGNED_IN detected - waiting 500ms for auth.uid() to propagate to RLS...');
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
-        }
-      } catch (error) {
-        console.error('[AuthContext] Init auth error:', error);
-        if (mounted) {
-          // Don't clear corrupted state aggressively
-          // Just ensure we're signed out
-          await supabase.auth.signOut();
-          setSession(null);
+
+          const userData = await fetchUserData(session.user);
+          console.log('[NewAuthContext] User data fetched:', userData);
+          setUser(userData);
+        } else {
+          console.log('[NewAuthContext] No session, clearing user');
           setUser(null);
         }
       } finally {
