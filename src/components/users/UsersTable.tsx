@@ -27,7 +27,8 @@ import {
   Trash,
   Mail,
   ArrowUpDown,
-  Users
+  Users,
+  UserX
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
@@ -126,35 +127,53 @@ export const UsersTable: React.FC<UsersTableProps> = ({
     }
   };
 
-  const handleSuspendUser = async (userId: string) => {
+  // ✅ Toggle user status
+  const handleToggleStatus = async (userId: string, currentStatus: string) => {
     try {
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+
       const { error } = await supabase
-        .from('users')
-        .update({ status: 'suspended' })
+        .from('user_profiles')
+        .update({ is_active: newStatus === 'active' })
         .eq('id', userId);
 
       if (error) throw error;
-      toast.success('کاربر با موفقیت معلق شد');
+
+      toast.success(`وضعیت کاربر به ${newStatus === 'active' ? 'فعال' : 'غیرفعال'} تغییر کرد`);
       onRefresh();
-    } catch (error) {
-      console.error('Error suspending user:', error);
-      toast.error('خطا در تعلیق کاربر');
+    } catch (error: any) {
+      console.error('Error toggling status:', error);
+      toast.error('خطا در تغییر وضعیت');
     }
   };
 
-  const handleActivateUser = async (userId: string) => {
+  // ✅ Delete user
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    if (!confirm(`آیا از حذف کاربر ${userEmail} اطمینان دارید؟`)) {
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ status: 'active' })
+      // Delete from user_profiles first
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .delete()
         .eq('id', userId);
 
-      if (error) throw error;
-      toast.success('کاربر با موفقیت فعال شد');
+      if (profileError) throw profileError;
+
+      // Delete from auth
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+
+      if (authError) {
+        console.warn('Auth delete warning:', authError);
+      }
+
+      toast.success('کاربر با موفقیت حذف شد');
       onRefresh();
-    } catch (error) {
-      console.error('Error activating user:', error);
-      toast.error('خطا در فعال‌سازی کاربر');
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      toast.error('خطا در حذف کاربر');
     }
   };
 
@@ -279,25 +298,24 @@ export const UsersTable: React.FC<UsersTableProps> = ({
                         ویرایش
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      {user.status === 'active' ? (
-                        <DropdownMenuItem
-                          onClick={() => handleSuspendUser(user.id)}
-                          className="text-orange-600"
-                        >
-                          <Ban className="ml-2 h-4 w-4" />
-                          تعلیق حساب
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem
-                          onClick={() => handleActivateUser(user.id)}
-                          className="text-green-600"
-                        >
-                          <CheckCircle className="ml-2 h-4 w-4" />
-                          فعال‌سازی
-                        </DropdownMenuItem>
-                      )}
+                      <DropdownMenuItem onClick={() => handleToggleStatus(user.id, user.status)}>
+                        {user.status === 'active' ? (
+                          <>
+                            <UserX className="w-4 h-4 ml-2" />
+                            غیرفعال کردن
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4 ml-2" />
+                            فعال کردن
+                          </>
+                        )}
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteUser(user.id, user.email)}
+                        className="text-destructive"
+                      >
                         <Trash className="ml-2 h-4 w-4" />
                         حذف کاربر
                       </DropdownMenuItem>

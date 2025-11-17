@@ -72,53 +72,44 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      console.log('[UserManagement] Starting to fetch users...');
-      
-      // Fetch users
-      const { data: usersData, error: usersError } = await supabase
-        .from('users')
+      console.log('[UserManagement] Fetching users...');
+
+      // ✅ Fetch from user_profiles (not users)
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('user_profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (usersError) {
-        console.error('[UserManagement] Error fetching users:', usersError);
-        throw usersError;
+      if (profilesError) throw profilesError;
+
+      // ✅ Get emails from auth.users
+      const userIds = profilesData?.map(p => p.id) || [];
+      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
+
+      if (authError) {
+        console.error('Auth error:', authError);
       }
 
-      console.log('[UserManagement] Users data:', usersData);
+      // ✅ Create email map
+      const emailMap = new Map<string, string>();
+      authUsers?.forEach(u => emailMap.set(u.id, u.email || ''));
 
-      // Fetch roles separately
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role');
-
-      if (rolesError) {
-        console.error('[UserManagement] Error fetching roles:', rolesError);
-        throw rolesError;
-      }
-
-      console.log('[UserManagement] Roles data:', rolesData);
-
-      // Create a map of user_id to role
-      const roleMap = new Map<string, string>();
-      rolesData?.forEach(r => roleMap.set(r.user_id, r.role));
-
-      // Transform data to match User interface
-      const transformedUsers = usersData?.map(u => ({
-        id: u.id,
-        email: u.email,
-        full_name: u.full_name,
-        role: (roleMap.get(u.id) || 'viewer') as 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest',
-        status: u.status,
-        preferences: u.preferences,
-        last_login: u.last_login,
-        created_at: u.created_at,
-        updated_at: u.updated_at
+      // ✅ Transform to match User interface
+      const transformedUsers = profilesData?.map(profile => ({
+        id: profile.id,
+        email: emailMap.get(profile.id) || 'نامشخص',
+        full_name: profile.full_name || '',
+        role: profile.role as 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest',
+        status: profile.is_active ? 'active' : 'inactive',
+        preferences: {},
+        last_login: profile.last_login_at,
+        created_at: profile.created_at,
+        updated_at: profile.updated_at,
       })) || [];
 
-      console.log('[UserManagement] Transformed users:', transformedUsers);
       setUsers(transformedUsers);
-      toast.success(`${transformedUsers.length} کاربر بارگذاری شد`);
+      console.log(`✅ Loaded ${transformedUsers.length} users`);
+
     } catch (error: any) {
       console.error('[UserManagement] Error:', error);
       toast.error(`خطا در بارگذاری کاربران: ${error.message}`);
@@ -286,11 +277,11 @@ const UserManagement = () => {
 
     // Subscribe to real-time changes
     const channel = supabase
-      .channel('users-changes')
+      .channel('user-profiles-changes')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'users'
+        table: 'user_profiles'
       }, () => {
         fetchUsers();
       })

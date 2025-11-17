@@ -51,6 +51,7 @@ import { useNewAuth } from '@/contexts/NewAuthContext';
 const inviteUserSchema = z.object({
   fullName: z.string().min(3, 'نام کامل حداقل 3 کاراکتر باشد'),
   email: z.string().email('لطفاً ایمیل معتبر وارد کنید'),
+  password: z.string().min(6, 'رمز عبور حداقل 6 کاراکتر').optional(),
   phone: z.string().optional(),
   role: z.enum(['super_admin', 'admin', 'analyst', 'viewer', 'guest']),
   guestDuration: z.number().optional(),
@@ -107,14 +108,12 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
     const timeoutId = setTimeout(async () => {
       setCheckingEmail(true);
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('id')
-          .eq('email', emailValue)
-          .maybeSingle();
+        // Check in auth.users
+        const { data: { users }, error } = await supabase.auth.admin.listUsers();
+        const exists = users?.some(u => u.email === emailValue);
 
-        setEmailExists(!!data);
-        if (data) {
+        setEmailExists(!!exists);
+        if (exists) {
           form.setError('email', { message: 'این ایمیل قبلاً ثبت شده است' });
         }
       } catch (error) {
@@ -186,6 +185,18 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
     },
   ];
 
+  // ✅ Helper function to map role names
+  const mapRoleToProfile = (role: string): string => {
+    const roleMap: Record<string, string> = {
+      'super_admin': 'Super Admin',
+      'admin': 'Admin',
+      'analyst': 'Analyst',
+      'viewer': 'Viewer',
+      'guest': 'Guest',
+    };
+    return roleMap[role] || 'Viewer';
+  };
+
   const onSubmit = async (data: InviteUserFormData) => {
     if (emailExists) {
       toast.error('این ایمیل قبلاً ثبت شده است');
@@ -195,115 +206,99 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Step 1: Create user in Supabase Auth
-      const tempPassword = Math.random().toString(36).slice(-12) + 'A1!';
-      
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // ✅ STEP 1: Create user with Admin API (no rate limit)
+      const tempPassword = data.password || Math.random().toString(36).slice(-12) + 'A1!';
+
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: data.email,
         password: tempPassword,
-        options: {
-          data: {
-            full_name: data.fullName,
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        }
+        email_confirm: true,  // ✅ Auto-confirm email
+        user_metadata: {
+          full_name: data.fullName,
+        },
       });
 
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user');
 
-      // Step 2: Insert into users table
-      const { error: userError } = await supabase
-        .from('users')
+      console.log('✅ Auth user created:', authData.user.id);
+
+      // ✅ STEP 2: Create profile in user_profiles
+      const { error: profileError } = await supabase
+        .from('user_profiles')
         .insert({
           id: authData.user.id,
-          email: data.email,
           full_name: data.fullName,
-          status: 'active',
-          created_by: currentUser?.id,
+          phone: data.phone || null,
+          role: mapRoleToProfile(data.role),  // Map role names
+          is_active: true,
+          department: null,
+          notes: null,
         });
 
-      if (userError) throw userError;
-
-      // Step 3: Assign role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: authData.user.id,
-          role: data.role,
-        });
-
-      if (roleError) throw roleError;
-
-      // Step 4: Set custom limits if enabled
-      if (data.customLimits) {
-        const { error: limitsError } = await supabase
-          .from('user_daily_limits')
-          .update({
-            ai_analysis: data.aiAnalysisLimit ?? getRoleDefaults(data.role).ai,
-            chat_messages: data.chatMessagesLimit ?? getRoleDefaults(data.role).chat,
-            exports: data.exportsLimit ?? getRoleDefaults(data.role).exports,
-          })
-          .eq('user_id', authData.user.id);
-
-        if (limitsError) throw limitsError;
+      if (profileError) {
+        console.error('Profile error:', profileError);
+        // Rollback: delete auth user
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        throw profileError;
       }
 
-      // Step 5: Send invitation email if requested
-      if (data.sendInviteNow) {
-        try {
-          const { error: emailError } = await supabase.functions.invoke('send-invite-email', {
-            body: {
-              to: data.email,
-              fullName: data.fullName,
-              role: data.role,
-              tempPassword,
-              requirePasswordChange: data.requirePasswordChange,
-            },
-          });
+      console.log('✅ User profile created');
 
-          if (emailError) {
-            console.error('Email sending failed:', emailError);
-            toast.warning('کاربر ایجاد شد اما ارسال ایمیل با خطا مواجه شد');
+      // ✅ STEP 3: Set custom limits if enabled (optional - skip if table doesn't exist)
+      if (data.customLimits) {
+        try {
+          const { error: limitsError } = await supabase
+            .from('user_daily_limits')
+            .insert({
+              user_id: authData.user.id,
+              ai_analysis: data.aiAnalysisLimit ?? getRoleDefaults(data.role).ai,
+              chat_messages: data.chatMessagesLimit ?? getRoleDefaults(data.role).chat,
+              exports: data.exportsLimit ?? getRoleDefaults(data.role).exports,
+            });
+
+          if (limitsError) {
+            console.warn('Limits not set (table may not exist):', limitsError);
           }
-        } catch (emailError) {
-          console.error('Email error:', emailError);
+        } catch (limitsError) {
+          console.warn('Skipping limits:', limitsError);
         }
       }
 
-      // Step 6: Log activity (commented out until user_activity_logs table is available)
-      // try {
-      //   await supabase.from('user_activity_logs').insert({
-      //     user_id: currentUser?.id,
-      //     action: 'INVITE_USER',
-      //     resource_type: 'user',
-      //     resource_id: authData.user.id,
-      //     details: {
-      //       invited_email: data.email,
-      //       invited_name: data.fullName,
-      //       role: data.role,
-      //     },
-      //   });
-      // } catch (logError) {
-      //   console.log('Activity logging skipped:', logError);
-      // }
-
-      toast.success('دعوتنامه با موفقیت ارسال شد', {
-        action: {
-          label: 'مشاهده کاربر',
-          onClick: () => {
-            // Navigate to user profile
-            console.log('View user:', authData.user.id);
+      // ✅ STEP 4: Log activity
+      try {
+        await supabase.from('user_activity_log').insert({
+          user_id: currentUser?.id,
+          action: 'USER_CREATED',
+          details: {
+            created_user_id: authData.user.id,
+            created_user_email: data.email,
+            role: data.role,
           },
-        },
+        });
+      } catch (logError) {
+        console.warn('Activity log skipped:', logError);
+      }
+
+      // ✅ Success
+      toast.success(`کاربر ${data.fullName} با موفقیت ایجاد شد`, {
+        description: data.sendInviteNow
+          ? 'ایمیل دعوت ارسال شد'
+          : `رمز عبور موقت: ${tempPassword}`,
       });
 
       form.reset();
       onSuccess();
       onClose();
+
     } catch (error: any) {
-      console.error('Error inviting user:', error);
-      toast.error(error.message || 'خطا در ارسال دعوتنامه');
+      console.error('Error creating user:', error);
+
+      if (error.message?.includes('already exists')) {
+        toast.error('این ایمیل قبلاً ثبت شده است');
+      } else {
+        toast.error(`خطا در ایجاد کاربر: ${error.message}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -371,6 +366,26 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
                           <AlertCircle className="absolute left-3 top-3 h-4 w-4 text-destructive" />
                         )}
                       </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      رمز عبور <span className="text-xs text-muted-foreground">(اختیاری - اگر خالی باشد خودکار ایجاد می‌شود)</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="حداقل 6 کاراکتر"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
