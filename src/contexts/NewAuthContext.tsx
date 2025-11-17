@@ -645,26 +645,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Only fetch user data for SIGNED_IN events when user is not already loaded
         if (session?.user && event === 'SIGNED_IN') {
-          // 🔥 Skip if already fetching
-          if (isFetchingRef.current) {
-            console.log('[AuthContext] ⏸️ Already fetching, skipping SIGNED_IN');
-            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Already fetching');
-            return;
-          }
-
-          // 🔥 Skip if user already loaded
+          // ✅ اول چک کن user قبلاً load شده یا نه
           if (user !== null) {
             console.log('[AuthContext] ⏸️ User already loaded, skipping SIGNED_IN');
             debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - User loaded', { email: user.email });
             return;
           }
 
-          try {
-            // 🔥 Set fetching flag to prevent duplicate SIGNED_IN events
-            isFetchingRef.current = true;
-            console.log('[AuthContext] 🔄 Fetching user data for SIGNED_IN event...');
-            debugHelper.log('AuthContext', 'SIGNED_IN - Fetching user data');
+          // ✅ چک کن داریم fetch می‌کنیم یا نه
+          if (isFetchingRef.current) {
+            console.log('[AuthContext] ⏸️ Already fetching, skipping SIGNED_IN');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Already fetching');
+            return;
+          }
 
+          // ✅ حالا set کن و fetch کن
+          isFetchingRef.current = true;
+          console.log('[AuthContext] 🔄 Fetching user data for SIGNED_IN event...');
+          debugHelper.log('AuthContext', 'SIGNED_IN - Fetching user data');
+
+          try {
             const userData = await fetchUserData(session.user);
             if (mounted && userData) {
               setUser(userData);
@@ -672,10 +672,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               debugHelper.log('AuthContext', 'SIGNED_IN - User data loaded', { email: userData.email });
             }
           } catch (error) {
-            console.error('[AuthContext] Error in auth state change handler:', error);
-            debugHelper.log('AuthContext', 'SIGNED_IN - Error', { error });
+            console.error('[AuthContext] ❌ Error fetching user data for SIGNED_IN:', error);
+            debugHelper.log('AuthContext', 'SIGNED_IN - Fetch ERROR', { error: error.message });
           } finally {
-            // 🔥 Clear fetching flag
+            // ✅ حتماً reset کن
             isFetchingRef.current = false;
             console.log('[AuthContext] 🏁 Fetching complete for SIGNED_IN event');
           }
