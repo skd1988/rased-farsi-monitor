@@ -262,8 +262,14 @@ const APIUsage = () => {
 
       // Bar chart by operation type
       const operationTypes = ['stream_contents', 'subscription_list', 'folder_list'];
+      const operationLabels: { [key: string]: string } = {
+        'stream_contents': 'دریافت محتوا',
+        'subscription_list': 'لیست اشتراک‌ها',
+        'folder_list': 'لیست فولدرها'
+      };
+      
       const barData = operationTypes.map(type => ({
-        operation: type,
+        operation: operationLabels[type] || type,
         count: logs.filter(l => l.request_type === type).length
       }));
       setInoreaderBarChartData(barData);
@@ -570,7 +576,7 @@ const APIUsage = () => {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" name="تعداد" />
                 </BarChart>
               </ResponsiveContainer>
             </Card>
@@ -578,36 +584,25 @@ const APIUsage = () => {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">توزیع محتوا به تفکیک Folder</h3>
               <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={inoreaderFolderDistribution}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {inoreaderFolderDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
+                <BarChart data={inoreaderFolderDistribution} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis dataKey="name" type="category" width={100} />
                   <Tooltip />
-                </PieChart>
+                  <Legend />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" name="تعداد پست" />
+                </BarChart>
               </ResponsiveContainer>
               
               {/* Stats below chart */}
               <div className="mt-4 space-y-2 text-sm">
+                <div className="flex justify-between font-semibold border-b pb-2">
+                  <span>Folder</span>
+                  <span>تعداد پست</span>
+                </div>
                 {inoreaderFolderDistribution.slice(0, 5).map((folder, index) => (
                   <div key={index} className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                      />
-                      <span>{folder.name}</span>
-                    </div>
+                    <span className="text-muted-foreground">{folder.name}</span>
                     <span className="font-mono font-semibold">{folder.value.toLocaleString()}</span>
                   </div>
                 ))}
