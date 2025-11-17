@@ -103,6 +103,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const fetchUserDataDirect = useCallback(async (userId: string): Promise<any> => {
+    try {
+      console.log('[AuthContext] 📊 Fetching user data directly from tables...');
+
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (userError) throw userError;
+      console.log('[AuthContext] ✅ User data fetched:', userData.email);
+
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+      console.log('[AuthContext] ✅ Role fetched:', roleData?.role || 'viewer');
+
+      const { data: limitsData } = await supabase
+        .from('user_daily_limits')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      console.log('[AuthContext] ✅ Limits fetched');
+
+      const today = new Date().toISOString().split('T')[0];
+      const { data: usageData } = await supabase
+        .from('user_daily_usage')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('usage_date', today)
+        .maybeSingle();
+      console.log('[AuthContext] ✅ Usage fetched');
+
+      return {
+        id: userData.id,
+        email: userData.email,
+        full_name: userData.full_name,
+        status: userData.status,
+        preferences: userData.preferences,
+        last_login: userData.last_login,
+        created_at: userData.created_at,
+        updated_at: userData.updated_at,
+        role: roleData?.role || 'viewer',
+        daily_ai_analysis_limit: limitsData?.ai_analysis || 10,
+        daily_chat_messages_limit: limitsData?.chat_messages || 50,
+        daily_exports_limit: limitsData?.exports || 20,
+        daily_ai_analysis_used: usageData?.ai_analysis || 0,
+        daily_chat_messages_used: usageData?.chat_messages || 0,
+        daily_exports_used: usageData?.exports || 0
+      };
+    } catch (error: any) {
+      console.error('[AuthContext] ❌ Direct fetch error:', error);
+      throw error;
+    }
+  }, []);
+
   const fetchUserData = useCallback(async (
     authUser: SupabaseUser,
     retryCount = 0,
@@ -126,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Maximum retries and timeout
       const MAX_RETRIES = 3;
-      const RPC_TIMEOUT = 5000; // 5 seconds
+      const RPC_TIMEOUT = 10000; // 🔧 Increased to 10 seconds
 
       // Only delay on retries (optimized delays)
       if (retryCount > 0) {
@@ -144,37 +203,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // RPC call with explicit timeout and error handling
-      console.log('[AuthContext] 📊 Calling get_user_with_details RPC with timeout...');
-
+      // 🆕 استراتژی دو مرحله‌ای: RPC → Direct Queries
       let data, error;
-      try {
-        const timeoutMs = RPC_TIMEOUT;
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('RPC_TIMEOUT')), timeoutMs);
-        });
 
-        const rpcPromise = supabase.rpc('get_user_with_details', {
-          p_user_id: authUser.id
-        });
+      // استراتژی 1: تلاش برای RPC (فقط در اولین تلاش)
+      if (retryCount === 0) {
+        try {
+          console.log('[AuthContext] 📊 Attempting RPC call with 10s timeout...');
 
-        const response = await Promise.race([rpcPromise, timeoutPromise]) as any;
-        data = response.data;
-        error = response.error;
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('RPC_TIMEOUT')), RPC_TIMEOUT);
+          });
 
-        console.log('[AuthContext] 📥 RPC completed', {
-          hasData: !!data,
-          hasError: !!error,
-          errorMessage: error?.message
-        });
-      } catch (err: any) {
-        console.error('[AuthContext] 🔥 RPC call failed:', err);
+          const rpcPromise = supabase.rpc('get_user_with_details', {
+            p_user_id: authUser.id
+          });
 
-        if (err.message === 'RPC_TIMEOUT') {
-          console.log('[AuthContext] ⏱️ RPC timeout - will retry');
-          throw new Error('timeout');
+          const response = await Promise.race([rpcPromise, timeoutPromise]) as any;
+          data = response.data;
+          error = response.error;
+
+          if (!error && data) {
+            console.log('[AuthContext] ✅ RPC call succeeded');
+          } else if (error) {
+            console.warn('[AuthContext] ⚠️ RPC returned error:', error.message);
+            throw error;
+          }
+        } catch (rpcError: any) {
+          console.warn('[AuthContext] ⚠️ RPC failed, falling back to direct queries:', rpcError.message);
+          data = null;
+          error = null;
         }
-        throw err;
+      }
+
+      // استراتژی 2: Fallback به direct queries
+      if (!data || error) {
+        console.log('[AuthContext] 🔄 Using direct query strategy...');
+        data = await fetchUserDataDirect(authUser.id);
+        error = null;
       }
 
       console.log('[AuthContext] 📥 RPC Response:', {
