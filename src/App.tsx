@@ -36,6 +36,7 @@ import GoogleSheetsSync from "./pages/GoogleSheetsSync";
 import OperationsHistory from "./pages/OperationsHistory";
 import PerformanceDashboard from "./pages/PerformanceDashboard";
 import DataManagement from "./pages/DataManagement";
+import TestPage from "./pages/TestPage";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ const App = () => (
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/unauthorized" element={<Unauthorized />} />
                   <Route path="/debug" element={<Debug />} />
+                  <Route path="/test" element={<TestPage />} />
                   
                   <Route element={
                     <ProtectedRoute requiredPermission="VIEW_POSTS">

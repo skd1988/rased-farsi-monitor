@@ -23,7 +23,10 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import { format, subDays } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 
+console.log('🔴 [TargetAnalysis] FILE LOADED');
+
 const TargetAnalysis = () => {
+  console.log('🟡 [TargetAnalysis] FUNCTION CALLED');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('entities');
   const [posts, setPosts] = useState<any[]>([]);
@@ -39,9 +42,20 @@ const TargetAnalysis = () => {
   const [personRole, setPersonRole] = useState('همه');
   const [categorizing, setCategorizing] = useState(false);
 
+  // Mount effect
+  useEffect(() => {
+    console.log('🟢 [TargetAnalysis] COMPONENT MOUNTED!');
+    console.log('🟢 [TargetAnalysis] Location:', window.location.href);
+
+    return () => {
+      console.log('🔵 [TargetAnalysis] COMPONENT UNMOUNTING');
+    };
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
+        console.log('📊 [TargetAnalysis] Fetching data...');
         setLoading(true);
 
         // Fetch posts with PsyOp data

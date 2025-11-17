@@ -18,7 +18,10 @@ import CampaignCard from '@/components/campaigns/CampaignCard';
 import CampaignDetailModal from '@/components/campaigns/CampaignDetailModal';
 import { toast } from '@/hooks/use-toast';
 
+console.log('🔴 [CampaignTracking] FILE LOADED');
+
 const CampaignTracking = () => {
+  console.log('🟡 [CampaignTracking] FUNCTION CALLED');
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,8 +37,19 @@ const CampaignTracking = () => {
   const [timeRange, setTimeRange] = useState<number>(7);
   const [sortBy, setSortBy] = useState<string>('start_date');
 
+  // Mount effect
+  useEffect(() => {
+    console.log('🟢 [CampaignTracking] COMPONENT MOUNTED!');
+    console.log('🟢 [CampaignTracking] Location:', window.location.href);
+
+    return () => {
+      console.log('🔵 [CampaignTracking] COMPONENT UNMOUNTING');
+    };
+  }, []);
+
   // Detect campaigns using AI
   useEffect(() => {
+    console.log('📊 [CampaignTracking] Detecting campaigns with timeRange:', timeRange);
     detectCampaigns();
   }, [timeRange]);
 
