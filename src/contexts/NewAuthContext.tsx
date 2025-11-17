@@ -850,11 +850,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        // 🔥 FIX: Skip duplicate SIGNED_IN events if user already loaded
-        if (event === 'SIGNED_IN' && user !== null) {
-          console.log('[AuthContext] ⏸️ User already loaded, ignoring duplicate SIGNED_IN');
-          debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - User already loaded');
-          return;
+        // 🔥 FIX: Skip duplicate SIGNED_IN events if user already loaded OR being fetched
+        if (event === 'SIGNED_IN') {
+          if (user !== null) {
+            console.log('[AuthContext] ⏸️ User already loaded, ignoring duplicate SIGNED_IN');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - User already loaded', {
+              userEmail: user.email
+            });
+            return;
+          }
+
+          if (isFetchingRef.current) {
+            console.log('[AuthContext] ⏸️ Already fetching user data, ignoring duplicate SIGNED_IN');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Already fetching');
+            return;
+          }
         }
 
         console.log('[AuthContext] Processing auth event:', event);
