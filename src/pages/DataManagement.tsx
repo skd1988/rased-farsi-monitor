@@ -97,6 +97,7 @@ const DataManagement = () => {
     const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // استفاده از count برای سرعت بیشتر و دقت کامل
+    // ⚠️ مهم: از published_at استفاده میشه، نه created_at
     const [
       { count: total_posts },
       { count: new_posts },
@@ -119,14 +120,15 @@ const DataManagement = () => {
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
       supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
       supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).lt('created_at', cutoff24h),
+      // ✅ استفاده از published_at به جای created_at
+      supabase.from('posts').select('*', { count: 'exact', head: true }).lt('published_at', cutoff24h),
       supabase.from('posts').select('*', { count: 'exact', head: true })
-        .lt('created_at', cutoff24h)
+        .lt('published_at', cutoff24h)
         .neq('status', 'Archived')
         .in('threat_level', ['Low', 'Medium'])
         .eq('is_psyop', false),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff24h),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff7d),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff24h),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff7d),
     ]);
 
     const stats: DataStats = {
@@ -568,7 +570,7 @@ const DataManagement = () => {
           <CardContent className="text-sm space-y-1">
             <p>• پست‌های High/Critical آرشیو می‌شوند</p>
             <p>• پست‌های PsyOp نگه‌داری می‌شوند</p>
-            <p>• مدت نگه‌داری: 24 ساعت</p>
+            <p>• مدت: 24 ساعت از زمان انتشار خبر</p>
           </CardContent>
         </Card>
 
@@ -579,18 +581,18 @@ const DataManagement = () => {
           <CardContent className="text-sm space-y-1">
             <p>• پست‌های Low/Medium حذف می‌شوند</p>
             <p>• فقط پست‌های غیر PsyOp</p>
-            <p>• بعد از 24 ساعت</p>
+            <p>• بعد از 24 ساعت از انتشار اصلی</p>
           </CardContent>
         </Card>
 
         <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">✅ وضعیت سیستم</CardTitle>
+            <CardTitle className="text-sm">✅ نکته مهم</CardTitle>
           </CardHeader>
           <CardContent className="text-sm space-y-1">
-            <p>• اجرای خودکار: فعال</p>
-            <p>• فاصله اجرا: هر 1 ساعت</p>
-            <p>• آماده برای پاکسازی: {stats.deletable_posts} پست</p>
+            <p>• محاسبه بر اساس published_at</p>
+            <p>• نه created_at (زمان ایمپورت)</p>
+            <p>• خبرهای قدیمی سریع‌تر حذف می‌شوند</p>
           </CardContent>
         </Card>
       </div>
