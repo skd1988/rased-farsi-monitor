@@ -43,55 +43,116 @@
             opacity: 0.9;
             font-size: 0.95rem;
         }
+        .debug {
+            background: rgba(0,0,0,0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.75rem;
+            text-align: left;
+            direction: ltr;
+            max-height: 150px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="spinner"></div>
-        <h1>در حال اتصال به Inoreader</h1>
-        <p>لطفاً صبر کنید...</p>
+        <h1 id="status">در حال اتصال به Inoreader</h1>
+        <p id="message">لطفاً صبر کنید...</p>
+        <div id="debug" class="debug"></div>
     </div>
     
     <script>
         (function() {
+            const debugDiv = document.getElementById('debug');
+            const statusEl = document.getElementById('status');
+            const messageEl = document.getElementById('message');
+            
+            function log(msg) {
+                console.log('[OAuth Callback]', msg);
+                const line = document.createElement('div');
+                line.textContent = msg;
+                debugDiv.appendChild(line);
+            }
+            
             try {
-                console.log('[OAuth Callback] Page loaded');
+                log('Page loaded');
+                log('Full URL: ' + window.location.href);
+                log('Search: ' + window.location.search);
+                log('Hash: ' + window.location.hash);
                 
-                // دریافت code از URL
-                const urlParams = new URLSearchParams(window.location.search);
-                const code = urlParams.get('code');
-                const error = urlParams.get('error');
+                // گرفتن code از query string (بعد از ?)
+                let code = null;
+                let error = null;
+                
+                // اول از search بگیر
+                const searchParams = new URLSearchParams(window.location.search);
+                code = searchParams.get('code');
+                error = searchParams.get('error');
+                
+                // اگه پیدا نکردی، از hash بگیر
+                if (!code && window.location.hash.includes('?')) {
+                    const hashQuery = window.location.hash.split('?')[1];
+                    const hashParams = new URLSearchParams(hashQuery);
+                    code = hashParams.get('code');
+                    error = hashParams.get('error');
+                }
+                
+                log('Code found: ' + (code ? 'YES (' + code.substring(0, 15) + '...)' : 'NO'));
+                log('Error: ' + (error || 'none'));
                 
                 if (error) {
-                    alert('خطا در OAuth: ' + error);
+                    statusEl.textContent = 'خطا در OAuth';
+                    messageEl.textContent = error;
+                    log('ERROR: ' + error);
                     return;
                 }
                 
                 if (!code) {
-                    alert('کد OAuth یافت نشد!');
+                    statusEl.textContent = 'خطا';
+                    messageEl.textContent = 'کد OAuth یافت نشد!';
+                    log('ERROR: No code in URL');
                     return;
                 }
                 
-                console.log('[OAuth Callback] Code received:', code.substring(0, 10) + '...');
-                
                 // تشخیص base URL
                 const origin = window.location.origin;
-                const pathname = window.location.pathname.replace('/oauth-callback.html', '');
-                const baseUrl = origin + pathname;
+                const pathname = window.location.pathname;
                 
-                console.log('[OAuth Callback] Base URL:', baseUrl);
+                // حذف /oauth-callback.html از path
+                let basePath = pathname.replace('/oauth-callback.html', '');
+                if (!basePath.endsWith('/')) {
+                    basePath += '/';
+                }
                 
-                // Redirect مستقیم به hash route
+                const baseUrl = origin + basePath;
+                
+                log('Origin: ' + origin);
+                log('Pathname: ' + pathname);
+                log('Base path: ' + basePath);
+                log('Base URL: ' + baseUrl);
+                
+                // Redirect به hash route
                 const redirectUrl = baseUrl + '#/settings/inoreader?code=' + encodeURIComponent(code);
                 
-                console.log('[OAuth Callback] Redirecting to:', redirectUrl);
+                log('Redirecting to: ' + redirectUrl);
                 
-                // Redirect فوری (بدون delay)
-                window.location.replace(redirectUrl);
+                statusEl.textContent = '✓ موفق';
+                messageEl.textContent = 'در حال انتقال...';
+                
+                // Redirect بعد از 500ms
+                setTimeout(function() {
+                    log('Executing redirect now...');
+                    window.location.replace(redirectUrl);
+                }, 500);
                 
             } catch (err) {
                 console.error('[OAuth Callback] Error:', err);
-                alert('خطای داخلی: ' + err.message);
+                statusEl.textContent = 'خطای داخلی';
+                messageEl.textContent = err.message;
+                log('EXCEPTION: ' + err.message);
             }
         })();
     </script>
