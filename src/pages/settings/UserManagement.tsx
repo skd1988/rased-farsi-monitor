@@ -68,6 +68,25 @@ const UserManagement = () => {
   const [sortColumn, setSortColumn] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // Helper function to normalize role format
+  const normalizeRole = (role: string): 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest' => {
+    // Convert any role format to snake_case lowercase
+    const normalized = role.toLowerCase().replace(/\s+/g, '_');
+
+    // Map common variations
+    const roleMap: Record<string, string> = {
+      'super_admin': 'super_admin',
+      'superadmin': 'super_admin',
+      'admin': 'admin',
+      'administrator': 'admin',
+      'analyst': 'analyst',
+      'viewer': 'viewer',
+      'guest': 'guest',
+    };
+
+    return (roleMap[normalized] || 'viewer') as 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest';
+  };
+
   // Fetch users
   const fetchUsers = async () => {
     try {
@@ -99,7 +118,7 @@ const UserManagement = () => {
         id: profile.id,
         email: emailMap.get(profile.id) || 'نامشخص',
         full_name: profile.full_name || '',
-        role: profile.role as 'super_admin' | 'admin' | 'analyst' | 'viewer' | 'guest',
+        role: normalizeRole(profile.role || 'viewer'),
         status: profile.is_active ? 'active' : 'inactive',
         preferences: {},
         last_login: profile.last_login_at,

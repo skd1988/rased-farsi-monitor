@@ -185,17 +185,9 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
     },
   ];
 
-  // ✅ Helper function to map role names
-  const mapRoleToProfile = (role: string): string => {
-    const roleMap: Record<string, string> = {
-      'super_admin': 'Super Admin',
-      'admin': 'Admin',
-      'analyst': 'Analyst',
-      'viewer': 'Viewer',
-      'guest': 'Guest',
-    };
-    return roleMap[role] || 'Viewer';
-  };
+  // ✅ Keep role in snake_case format for consistency
+  // The role should be stored as 'admin', 'analyst', etc. (not 'Admin', 'Analyst')
+  // This matches the TypeScript interface and makes filtering work correctly
 
   const onSubmit = async (data: InviteUserFormData) => {
     if (emailExists) {
@@ -230,7 +222,7 @@ export const InviteUserModal: React.FC<InviteUserModalProps> = ({
           id: authData.user.id,
           full_name: data.fullName,
           phone: data.phone || null,
-          role: mapRoleToProfile(data.role),  // Map role names
+          role: data.role,  // Keep role in snake_case format (e.g., 'admin', 'analyst')
           is_active: true,
           department: null,
           notes: null,
