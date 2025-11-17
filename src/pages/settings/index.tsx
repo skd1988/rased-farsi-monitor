@@ -1,10 +1,12 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Database, Shield, Palette, Zap } from 'lucide-react';
+import { Users, Database, Shield, Palette, Zap, Image as ImageIcon } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import AppearanceTab from './tabs/AppearanceTab';
 import DataSourcesTab from './tabs/DataSourcesTab';
 import AutomationTab from './tabs/AutomationTab';
 import UsersTab from './tabs/UsersTab';
+import PhotoManagement from './PhotoManagement';
 
 const SettingsPage = () => {
   return (
@@ -19,7 +21,7 @@ const SettingsPage = () => {
 
       {/* Tabs */}
       <Tabs defaultValue="appearance" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-8">
+        <TabsList className="grid w-full grid-cols-6 mb-8">
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">کاربران</span>
@@ -33,6 +35,11 @@ const SettingsPage = () => {
           <TabsTrigger value="monitoring" className="gap-2">
             <Shield className="h-4 w-4" />
             <span className="hidden sm:inline">رصد</span>
+          </TabsTrigger>
+
+          <TabsTrigger value="photos" className="gap-2">
+            <ImageIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">تصاویر اهداف</span>
           </TabsTrigger>
 
           <TabsTrigger value="appearance" className="gap-2">
@@ -58,6 +65,20 @@ const SettingsPage = () => {
           <div className="text-center py-12 text-muted-foreground">
             بخش قوانین رصد (در حال توسعه)
           </div>
+        </TabsContent>
+
+        <TabsContent value="photos" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>مدیریت تصاویر اهداف</CardTitle>
+              <CardDescription>
+                آپلود و مدیریت تصاویر شخصیت‌ها و نهادهای مورد هدف جنگ روانی
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PhotoManagement />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-6">
