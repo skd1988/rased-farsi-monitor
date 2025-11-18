@@ -72,6 +72,16 @@ const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const MAX_LOADING_TIME = 15000; // 15 seconds
 const RETRY_DELAYS = [500, 1000, 2000]; // Retry delays in ms
 
+// 🔥 Track last visibility change to prevent duplicate SIGNED_IN
+let lastVisibilityChange = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      lastVisibilityChange = Date.now();
+    }
+  });
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -645,7 +655,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Only fetch user data for SIGNED_IN events when user is not already loaded
         if (session?.user && event === 'SIGNED_IN') {
-          // 🔥 Skip if page is hidden (prevents issues on tab switch)
+          // 🔥 Skip if this SIGNED_IN came right after tab switch
+          const timeSinceVisible = Date.now() - lastVisibilityChange;
+          if (timeSinceVisible < 2000) { // کمتر از 2 ثانیه
+            console.log('[AuthContext] ⏸️ Ignoring SIGNED_IN after tab switch');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Recent tab switch');
+            return;
+          }
+
+          // Skip if page is hidden
           if (document.hidden) {
             console.log('[AuthContext] ⏸️ Page is hidden, skipping SIGNED_IN');
             debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Page hidden');
