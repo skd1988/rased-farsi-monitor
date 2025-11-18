@@ -645,6 +645,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Only fetch user data for SIGNED_IN events when user is not already loaded
         if (session?.user && event === 'SIGNED_IN') {
+          // 🔥 Skip if page is hidden (prevents issues on tab switch)
+          if (document.hidden) {
+            console.log('[AuthContext] ⏸️ Page is hidden, skipping SIGNED_IN');
+            debugHelper.log('AuthContext', 'SIGNED_IN SKIPPED - Page hidden');
+            return;
+          }
+
           // ✅ اول چک کن user قبلاً load شده یا نه
           if (user !== null) {
             console.log('[AuthContext] ⏸️ User already loaded, skipping SIGNED_IN');

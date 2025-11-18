@@ -68,7 +68,16 @@ const DataManagement = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 60000); // هر 1 دقیقه
+
+    const interval = setInterval(() => {
+      // 🔥 فقط اگه صفحه visible باشه
+      if (!document.hidden) {
+        loadData();
+      } else {
+        console.log('[DataManagement] ⏸️ Skipping refresh - page hidden');
+      }
+    }, 60000);
+
     return () => clearInterval(interval);
   }, []);
 

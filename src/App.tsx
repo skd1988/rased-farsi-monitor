@@ -47,12 +47,37 @@ const App = () => {
   // Track component renders
   useRenderTracker('App');
 
+  // 🔥 Handle page visibility changes
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      console.log('[App] Page visibility changed:', isVisible ? '🟢 Visible' : '🔴 Hidden');
+
+      if (isVisible) {
+        console.log('[App] ✅ Page became visible - no action needed (Auth will handle)');
+      } else {
+        console.log('[App] ⏸️ Page hidden - pausing activities');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   // Memory monitoring
   useEffect(() => {
     debugHelper.log('App', 'Application started with debugging enabled');
 
     // Memory monitor - runs every 10 seconds
     const checkMemory = setInterval(() => {
+      // 🔥 Skip if page is hidden
+      if (document.hidden) {
+        return;
+      }
+
       if ('memory' in performance) {
         const mem = (performance as any).memory;
         const usedMB = Math.round(mem.usedJSHeapSize / 1048576);
