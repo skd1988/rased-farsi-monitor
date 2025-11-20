@@ -15,6 +15,12 @@ export interface EnrichedPost extends RawPost {
   status: string;
   keywords: string[];
   source_country?: string | null;
+  psyop_risk_score?: number | null;
+  threat_level?: string | null;
+  sentiment?: string | null;
+  stance_type?: string | null;
+  psyop_category?: string | null;
+  psyop_techniques?: string[] | null;
 }
 
 // Utility functions for data derivation

@@ -140,7 +140,7 @@ const Dashboard = () => {
 
         const { data, error, count } = await supabase
           .from('posts')
-          .select('id, title, source, published_at, psyop_risk_score, threat_level, sentiment, contents, source_url, author, language, status, article_url, keywords, source_country', { count: 'exact' })
+          .select('id, title, source, published_at, psyop_risk_score, threat_level, sentiment, contents, source_url, author, language, status, article_url, keywords, source_country, stance_type, psyop_category, psyop_techniques', { count: 'exact' })
           .eq('is_psyop', true)
           .order('psyop_risk_score', { ascending: false })
           .range(from, to);
@@ -163,6 +163,9 @@ const Dashboard = () => {
           psyop_risk_score: post.psyop_risk_score,
           threat_level: post.threat_level,
           sentiment: post.sentiment,
+          stance_type: post.stance_type,
+          psyop_category: post.psyop_category,
+          psyop_techniques: post.psyop_techniques,
         } as EnrichedPost));
 
         setPsyopPosts(mappedPosts);

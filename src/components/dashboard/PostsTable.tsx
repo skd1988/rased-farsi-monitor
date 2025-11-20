@@ -35,6 +35,30 @@ const getLanguageFlag = (language: string): string => {
   return flags[language] || '🌐';
 };
 
+const getStanceBadgeClass = (stance?: string | null): string => {
+  switch (stance) {
+    case 'hostile_propaganda':
+      return 'bg-red-600 text-white';
+    case 'legitimate_criticism':
+      return 'bg-blue-600 text-white';
+    case 'supportive':
+      return 'bg-green-600 text-white';
+    default:
+      return 'bg-gray-500 text-white';
+  }
+};
+
+const getCategoryBadgeClass = (category?: string | null): string => {
+  switch (category) {
+    case 'confirmed_psyop':
+      return 'bg-red-700 text-white';
+    case 'potential_psyop':
+      return 'bg-orange-600 text-white';
+    default:
+      return 'bg-gray-600 text-white';
+  }
+};
+
 const PostsTable: React.FC<PostsTableProps> = ({
   posts,
   onViewPost,
@@ -76,13 +100,38 @@ const PostsTable: React.FC<PostsTableProps> = ({
               <tr key={post.id} className="hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3 text-sm">{index + 1}</td>
                 <td className="px-4 py-3 max-w-xs">
-                  <button
-                    onClick={() => onViewPost(post)}
-                    className="text-sm font-medium hover:text-primary transition-colors text-right line-clamp-2"
-                    title={post.title}
-                  >
-                    {post.title}
-                  </button>
+                  <div className="flex flex-col items-start gap-1">
+                    <button
+                      onClick={() => onViewPost(post)}
+                      className="text-sm font-medium hover:text-primary transition-colors text-right line-clamp-2"
+                      title={post.title}
+                    >
+                      {post.title}
+                    </button>
+                    <div className="flex flex-wrap gap-1">
+                      <span
+                        className={cn('px-2 py-0.5 rounded text-[11px] font-semibold', getStanceBadgeClass(post.stance_type))}
+                      >
+                        {(post.stance_type ?? 'neutral').replace(/_/g, ' ')}
+                      </span>
+                      {post.psyop_category && (
+                        <span
+                          className={cn('px-2 py-0.5 rounded text-[11px] font-semibold', getCategoryBadgeClass(post.psyop_category))}
+                        >
+                          {post.psyop_category.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                    {Array.isArray(post.psyop_techniques) && post.psyop_techniques.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {post.psyop_techniques.slice(0, 3).map((tech: string) => (
+                          <Badge key={tech} variant="outline" className="text-[11px]">
+                            {tech.replace(/_/g, ' ')}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   {post.sourceURL ? (
