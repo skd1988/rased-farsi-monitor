@@ -37,12 +37,21 @@ serve(async (req) => {
       .select('name_english, name_persian, name_arabic')
       .eq('active', true);
     
-    const entityList = entities?.map(e => 
+    const entityList = entities?.map(e =>
       `${e.name_persian} (${e.name_arabic} / ${e.name_english})`
     ).join(', ') || '';
-    
+
+    const { data: postContent, error: contentErr } = await supabase
+      .from("posts")
+      .select("contents, summary")
+      .eq("id", postId)
+      .single();
+
+    const snippetRaw = postContent?.summary || postContent?.contents || "";
+    const snippet = snippetRaw.slice(0, 500);
+
     // Build quick screening prompt
-    const prompt = buildQuickPrompt(title, source, language, entityList, undefined);
+    const prompt = buildQuickPrompt(title, source, language, entityList, snippet);
     
     // Call DeepSeek API with retry logic
     let deepseekData;
