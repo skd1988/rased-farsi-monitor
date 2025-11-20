@@ -27,32 +27,6 @@ import { DateRange } from 'react-day-picker';
 import { DataPagination } from '@/components/common/DataPagination';
 import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
 
-console.log('🔴 [PsyOpDetection] FILE LOADED');
-
-const getStanceBadgeClass = (stance?: string | null) => {
-  switch (stance) {
-    case 'hostile_propaganda':
-      return 'bg-red-600 text-white';
-    case 'legitimate_criticism':
-      return 'bg-blue-600 text-white';
-    case 'supportive':
-      return 'bg-green-600 text-white';
-    default:
-      return 'bg-gray-500 text-white';
-  }
-};
-
-const getCategoryBadgeClass = (category?: string | null) => {
-  switch (category) {
-    case 'confirmed_psyop':
-      return 'bg-red-700 text-white';
-    case 'potential_psyop':
-      return 'bg-orange-600 text-white';
-    default:
-      return 'bg-gray-500 text-white';
-  }
-};
-
 interface PsyOpPost {
   id: string;
   title: string;
@@ -686,51 +660,8 @@ const PsyOpDetection = () => {
             : 'space-y-4'
         )}>
           {sortedPosts.map(post => {
-            const review = post.psyop_review_status ?? 'unreviewed';
-            const reviewColor =
-              review === 'confirmed'
-                ? 'bg-green-600 text-white'
-                : review === 'rejected'
-                  ? 'bg-red-600 text-white'
-                  : review === 'needs_followup'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-gray-500 text-white';
-
             return (
               <div key={post.id} className="relative space-y-2">
-                <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
-                  <span className="text-xs text-muted-foreground">ریسک</span>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-semibold text-white ${
-                      (post.psyop_risk_score ?? 0) >= 70
-                        ? 'bg-red-600'
-                        : (post.psyop_risk_score ?? 0) >= 40
-                          ? 'bg-orange-500'
-                          : 'bg-green-600'
-                    }`}
-                  >
-                    {post.psyop_risk_score ?? 0}
-                  </span>
-                </div>
-
-                <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${reviewColor}`}>
-                    {review.replace('_', ' ')}
-                  </span>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-semibold ${getStanceBadgeClass(post.stance_type)}`}
-                  >
-                    {(post.stance_type ?? 'neutral').replace(/_/g, ' ')}
-                  </span>
-                  {post.psyop_category && (
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-semibold ${getCategoryBadgeClass(post.psyop_category)}`}
-                    >
-                      {post.psyop_category.replace(/_/g, ' ')}
-                    </span>
-                  )}
-                </div>
-
                 <PsyOpCard
                   post={post}
                   onViewAnalysis={(post) => {
