@@ -42,7 +42,7 @@ serve(async (req) => {
     ).join(', ') || '';
     
     // Build quick screening prompt
-    const prompt = buildQuickPrompt(title, source, language, entityList);
+    const prompt = buildQuickPrompt(title, source, language, entityList, undefined);
     
     // Call DeepSeek API with retry logic
     let deepseekData;
@@ -239,33 +239,91 @@ serve(async (req) => {
   }
 });
 
-function buildQuickPrompt(title: string, source: string, language: string, entityList: string): string {
-  return `تو یک فیلتر سریع و دقیق برای شناسایی عملیات روانی علیه محور مقاومت هستی.
+function buildQuickPrompt(
+  title: string,
+  source: string,
+  language: string,
+  entityList: string,
+  snippet?: string
+) {
+  return `You are an expert media analyst whose job is to quickly assess whether a given piece of content is likely part of a **psychological operation (psyop)** against the "Axis of Resistance" or not.
 
-وظیفه: فقط تشخیص بده که این مطلب جنگ روانی هست یا خیر. جزئیات نمی‌خوام.
+Respond **only in valid JSON** as described below. Do not include any extra text.
 
-مطلب:
-عنوان: ${title}
-منبع: ${source}
-زبان: ${language}
+=====================
+INPUT CONTENT
+=====================
+- Title: ${title}
+- Source / Outlet: ${source}
+- Language: ${language}
+- Axis of Resistance entities (possible targets): ${entityList}
 
-نهادهای محور مقاومت:
-${entityList}
+Content excerpt (may be empty if not available):
+${snippet || '[no excerpt available]'}
 
-سوالات:
-1. آیا این مطلب علیه محور مقاومت است؟
-2. اگر بله، چقدر مطمئنی؟ (0-100)
-3. سطح تهدید چقدره؟
-4. کدوم نهاد هدف اصلی است؟
+=====================
+KEY DEFINITIONS
+=====================
 
-⚠️ CRITICAL INSTRUCTIONS FOR JSON OUTPUT:
-1. Return ONLY valid JSON - no explanations before or after
-2. NO markdown code blocks (no \`\`\`json)
-3. NO comments inside JSON
-4. NO extra text or explanations
-5. Just the pure JSON object
+1) Legitimate criticism:
+- Critical or negative views about the Axis of Resistance,
+- But expressed in a professional, analytical, or fact-based way,
+- Without obvious emotional manipulation, dehumanization, or clear falsehoods.
 
-Required format (copy exactly):
+2) Neutral reporting:
+- News-style reporting of facts and events,
+- Even if the facts are negative for the Axis of Resistance,
+- Without strong emotional language, labels, or clear propaganda techniques.
+
+3) Hostile propaganda:
+- Strongly negative, emotional, or demonizing language,
+- Heavy use of labels like "terrorist", "barbaric", "evil" etc. without balance,
+- Clear one-sided framing designed to create hatred, fear, or disgust.
+
+4) Coordinated psyop (psychological operation):
+- Hostile propaganda that appears designed to influence public perception or morale,
+- Uses classic psyop techniques such as demonization, fear-mongering, division, confusion,
+- Presents a highly simplified "good vs evil" narrative,
+- Often ignores key facts or context in order to shape emotions and perceptions.
+
+Important:
+- **Not every negative or critical article is a psyop.**
+- A text can be negative and still be "legitimate criticism" or "neutral reporting".
+
+=====================
+YOUR TASK
+=====================
+
+First, internally (in your reasoning), decide:
+- Is this mainly: supportive / neutral / critical / hostile toward the Axis of Resistance?
+- Is the tone: analytical/professional vs emotional/propagandistic?
+- Are there clear psyop-style techniques (demonization, fear, division, confusion, ridicule, etc.)?
+
+Then, based on that internal reasoning (which you do NOT output), answer these:
+
+1) is_psyop (boolean):
+- true  → only if the content is **hostile propaganda AND likely part of a psychological operation** against the Axis of Resistance.
+- false → if it is neutral reporting or legitimate criticism, even if negative.
+
+2) confidence (integer 0-100):
+- How confident you are in your classification as psyop / not psyop.
+
+3) threat_level (string):
+- "Low"      → mild or limited-impact content, or unclear significance.
+- "Medium"   → clearly hostile propaganda but limited likely impact.
+- "High"     → strong hostile propaganda with significant potential impact.
+- "Critical" → extremely aggressive psyop with very high potential impact.
+
+4) primary_target (string or null):
+- The **English name** of the main target entity from the provided entities list,
+- Or null if there is no clear specific target.
+
+=====================
+OUTPUT FORMAT (JSON ONLY)
+=====================
+
+Return **only** a single JSON object, with this exact structure:
+
 {
   "is_psyop": true,
   "confidence": 85,
@@ -273,20 +331,13 @@ Required format (copy exactly):
   "primary_target": "Hezbollah Lebanon"
 }
 
-Rules for values:
-- is_psyop: must be boolean true or false (not string)
-- confidence: must be integer number 0-100
-- threat_level: must be exactly one of: "Low", "Medium", "High", "Critical"
-- primary_target: must be English name from entity list above, or null
+Rules:
+- is_psyop: must be a boolean (true or false), NOT a string.
+- confidence: must be an integer between 0 and 100.
+- threat_level: exactly one of "Low", "Medium", "High", "Critical".
+- primary_target: must be one of the English names from the entities list above, or null.
 
-قوانین:
-- اگر اتهام، تهمت، اتهام تروریسم، یا دروغ علیه محور مقاومت دیدی → is_psyop: true
-- اگر خبر عادی یا خنثی بود → is_psyop: false
-- threat_level را بر اساس شدت حمله تعیین کن
-
-⚠️ فقط JSON برگردان - هیچ کلمه دیگه‌ای نه، حتی برای توضیح
-
-حالا تحلیل کن و فقط JSON بده:`;
+Do NOT include any explanation, commentary, or extra text. Return only valid JSON.`;
 }
 
 function shouldDoDeepAnalysis(result: any): boolean {
