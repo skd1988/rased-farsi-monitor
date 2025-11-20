@@ -200,11 +200,28 @@ serve(async (req) => {
       stage: "quick_detection",
       parsing_status: parsingStatus
     };
-    
+
     console.log('Final normalized result:', normalizedResult);
-    
+
+    const riskScore = calculateRiskScore(result);
+
+    const { error: updateError } = await supabase
+      .from("posts")
+      .update({
+        is_psyop: normalizedResult.is_psyop,
+        psyop_confidence: normalizedResult.psyop_confidence,
+        threat_level: normalizedResult.threat_level,
+        primary_target: normalizedResult.primary_target,
+        psyop_risk_score: riskScore,
+      })
+      .eq("id", postId);
+
+    if (updateError) {
+      console.error("Error updating post:", updateError);
+    }
+
     const responseTime = Date.now() - startTime;
-    
+
     // Log API usage
     await logAPIUsage(supabase, {
       endpoint: 'quick-psyop-detection',
@@ -357,6 +374,36 @@ function shouldDoDeepAnalysis(result: any): boolean {
     result.threat_level === "High" ||
     (result.confidence >= 70 && result.threat_level === "Medium")
   );
+}
+
+function calculateRiskScore(result: any): number {
+  const isPsyop = result?.is_psyop === true;
+  const confidence =
+    typeof result?.confidence === "number" && !isNaN(result.confidence)
+      ? result.confidence
+      : 50;
+
+  const level = (result?.threat_level || "Low") as string;
+
+  const baseByLevel: Record<string, number> = {
+    Low: 20,
+    Medium: 50,
+    High: 75,
+    Critical: 90,
+  };
+
+  const base = baseByLevel[level] ?? 20;
+
+  let score = (base * confidence) / 100;
+
+  if (isPsyop) {
+    score += 10;
+  }
+
+  if (score > 100) score = 100;
+  if (score < 0) score = 0;
+
+  return Math.round(score);
 }
 
 async function logAPIUsage(supabase: any, data: any) {
