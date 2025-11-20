@@ -29,6 +29,30 @@ import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
 
 console.log('🔴 [PsyOpDetection] FILE LOADED');
 
+const getStanceBadgeClass = (stance?: string | null) => {
+  switch (stance) {
+    case 'hostile_propaganda':
+      return 'bg-red-600 text-white';
+    case 'legitimate_criticism':
+      return 'bg-blue-600 text-white';
+    case 'supportive':
+      return 'bg-green-600 text-white';
+    default:
+      return 'bg-gray-500 text-white';
+  }
+};
+
+const getCategoryBadgeClass = (category?: string | null) => {
+  switch (category) {
+    case 'confirmed_psyop':
+      return 'bg-red-700 text-white';
+    case 'potential_psyop':
+      return 'bg-orange-600 text-white';
+    default:
+      return 'bg-gray-500 text-white';
+  }
+};
+
 interface PsyOpPost {
   id: string;
   title: string;
@@ -46,6 +70,9 @@ interface PsyOpPost {
   is_psyop?: boolean | null;
   urgency_level?: string | null;
   virality_potential?: number | null;
+  stance_type?: string | null;
+  psyop_category?: string | null;
+  psyop_techniques?: string[] | null;
 }
 
 const PsyOpDetection = () => {
@@ -68,6 +95,8 @@ const PsyOpDetection = () => {
   const [threatLevelFilter, setThreatLevelFilter] = useState<string>('All');
   const [urgencyFilter, setUrgencyFilter] = useState<string>('All');
   const [psyopTypeFilter, setPsyopTypeFilter] = useState<string>('All');
+  const [stanceFilter, setStanceFilter] = useState<'all' | 'supportive' | 'neutral' | 'legitimate_criticism' | 'hostile_propaganda'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'none' | 'potential_psyop' | 'confirmed_psyop'>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 7),
     to: new Date(),
@@ -108,7 +137,7 @@ const PsyOpDetection = () => {
       // Build query with filters
       let query = supabase
         .from('posts')
-        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential', { count: 'exact' })
+        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential, stance_type, psyop_category, psyop_techniques', { count: 'exact' })
         .eq('is_psyop', true);
 
       if (riskFilter === 'high') {
@@ -195,6 +224,14 @@ const PsyOpDetection = () => {
   const filteredPosts = useMemo(() => {
     let filtered = posts;
 
+    if (stanceFilter !== 'all') {
+      filtered = filtered.filter(p => (p.stance_type ?? 'neutral') === stanceFilter);
+    }
+
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(p => (p.psyop_category ?? 'none') === categoryFilter);
+    }
+
     if (riskFilter === 'high') {
       filtered = filtered.filter(p => (p.psyop_risk_score ?? 0) >= 70);
     } else if (riskFilter === 'medium') {
@@ -217,7 +254,7 @@ const PsyOpDetection = () => {
     }
 
     return filtered;
-  }, [posts, searchQuery, riskFilter]);
+  }, [posts, searchQuery, riskFilter, stanceFilter, categoryFilter]);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
@@ -443,6 +480,31 @@ const PsyOpDetection = () => {
             </SelectContent>
           </Select>
 
+          <Select value={stanceFilter} onValueChange={(value) => setStanceFilter(value as typeof stanceFilter)}>
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="فیلتر موضع" />
+            </SelectTrigger>
+            <SelectContent className="bg-card z-50">
+              <SelectItem value="all">تمام مواضع</SelectItem>
+              <SelectItem value="supportive">حامی</SelectItem>
+              <SelectItem value="neutral">خنثی</SelectItem>
+              <SelectItem value="legitimate_criticism">انتقاد مشروع</SelectItem>
+              <SelectItem value="hostile_propaganda">تبلیغات خصمانه</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as typeof categoryFilter)}>
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="دسته‌بندی عملیات روانی" />
+            </SelectTrigger>
+            <SelectContent className="bg-card z-50">
+              <SelectItem value="all">تمام دسته‌ها</SelectItem>
+              <SelectItem value="none">بدون عملیات</SelectItem>
+              <SelectItem value="potential_psyop">احتمال عملیات روانی</SelectItem>
+              <SelectItem value="confirmed_psyop">تأیید شده</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-60">
@@ -554,7 +616,7 @@ const PsyOpDetection = () => {
             : 'space-y-4'
         )}>
           {sortedPosts.map(post => (
-            <div key={post.id} className="relative">
+            <div key={post.id} className="relative space-y-2">
               <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
                 <span className="text-xs text-muted-foreground">ریسک</span>
                 <span
@@ -569,6 +631,22 @@ const PsyOpDetection = () => {
                   {post.psyop_risk_score ?? 0}
                 </span>
               </div>
+
+              <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-semibold ${getStanceBadgeClass(post.stance_type)}`}
+                >
+                  {(post.stance_type ?? 'neutral').replace(/_/g, ' ')}
+                </span>
+                {post.psyop_category && (
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-semibold ${getCategoryBadgeClass(post.psyop_category)}`}
+                  >
+                    {post.psyop_category.replace(/_/g, ' ')}
+                  </span>
+                )}
+              </div>
+
               <PsyOpCard
                 post={post}
                 onViewAnalysis={(post) => {
@@ -601,6 +679,19 @@ const PsyOpDetection = () => {
                   });
                 }}
               />
+
+              {Array.isArray(post.psyop_techniques) && post.psyop_techniques.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {post.psyop_techniques.map((tech) => (
+                    <span
+                      key={tech}
+                      className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-100 text-xs"
+                    >
+                      {tech.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
