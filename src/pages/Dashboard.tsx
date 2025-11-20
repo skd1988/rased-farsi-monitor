@@ -17,6 +17,7 @@ import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import TopTargetedPersonsChart from '@/components/dashboard/TopTargetedPersonsChart';
 import TopTargetedOrganizationsChart from '@/components/dashboard/TopTargetedOrganizationsChart';
 import ModelCalibrationCard from '@/components/dashboard/ModelCalibrationCard';
+import CalibrationThresholdCard from '@/components/dashboard/CalibrationThresholdCard';
 import { SourceThreatChart } from '@/components/dashboard/SourceThreatChart';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
@@ -854,8 +855,9 @@ const Dashboard = () => {
           }
         />
         </div>
-        <div className="mt-4">
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ModelCalibrationCard />
+          <CalibrationThresholdCard />
         </div>
       </div>
 
