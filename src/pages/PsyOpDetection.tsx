@@ -26,6 +26,7 @@ import { toast } from '@/hooks/use-toast';
 import { DateRange } from 'react-day-picker';
 import { DataPagination } from '@/components/common/DataPagination';
 import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
+import { useNewAuth } from '@/contexts/NewAuthContext';
 
 interface PsyOpPost {
   id: string;
@@ -59,8 +60,19 @@ interface PsyOpPost {
   deepest_analysis_completed_at?: string | null;
 }
 
+type BatchResult = {
+  stage?: string;
+  processed_posts?: number;
+  summarize_calls?: number;
+  quick_calls?: number;
+  deep_calls?: number;
+  deepest_calls?: number;
+  errors?: number;
+};
+
 const PsyOpDetection = () => {
   console.log('🟡 [PsyOpDetection] FUNCTION CALLED');
+  const { user } = useNewAuth();
   const [posts, setPosts] = useState<PsyOpPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,6 +105,15 @@ const PsyOpDetection = () => {
   // View and sort
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<string>('threat');
+
+  // Batch processing state
+  const [batchMaxPosts, setBatchMaxPosts] = useState<number>(25);
+  const [batchRunSummarize, setBatchRunSummarize] = useState<boolean>(true);
+  const [batchRunQuick, setBatchRunQuick] = useState<boolean>(true);
+  const [batchRunDeep, setBatchRunDeep] = useState<boolean>(true);
+  const [batchRunDeepest, setBatchRunDeepest] = useState<boolean>(false);
+  const [isBatchRunning, setIsBatchRunning] = useState<boolean>(false);
+  const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
 
   // Mount effect
   useEffect(() => {
@@ -403,6 +424,66 @@ const PsyOpDetection = () => {
     }
   };
 
+  const handleRunBatchPipeline = async () => {
+    try {
+      setIsBatchRunning(true);
+      setBatchResult(null);
+
+      const payload = {
+        maxPosts: batchMaxPosts,
+        runSummarize: batchRunSummarize,
+        runQuick: batchRunQuick,
+        runDeep: batchRunDeep,
+        runDeepest: batchRunDeepest,
+      };
+
+      const { data, error } = await supabase.functions.invoke('psyop-batch-pipeline', {
+        body: payload,
+      });
+
+      if (error) {
+        console.error('Batch pipeline error', error);
+        toast({
+          title: 'خطا در اجرای پردازش گروهی',
+          description: 'لطفاً دوباره تلاش کنید',
+          variant: 'destructive',
+        });
+        setBatchResult({
+          processed_posts: 0,
+          summarize_calls: 0,
+          quick_calls: 0,
+          deep_calls: 0,
+          deepest_calls: 0,
+          errors: 1,
+        });
+        return;
+      }
+
+      setBatchResult(data || null);
+      toast({
+        title: 'پردازش گروهی اجرا شد',
+        description: 'نتایج پردازش در بخش خلاصه قابل مشاهده است',
+      });
+    } catch (err) {
+      console.error('Unexpected error during batch pipeline', err);
+      toast({
+        title: 'خطای غیرمنتظره در پردازش گروهی',
+        description: 'لطفاً دوباره تلاش کنید',
+        variant: 'destructive',
+      });
+      setBatchResult({
+        processed_posts: 0,
+        summarize_calls: 0,
+        quick_calls: 0,
+        deep_calls: 0,
+        deepest_calls: 0,
+        errors: 1,
+      });
+    } finally {
+      setIsBatchRunning(false);
+    }
+  };
+
   console.log('🟠 [PsyOpDetection] RENDERING... loading=', loading, 'posts=', posts.length);
 
   if (loading) {
@@ -458,6 +539,89 @@ const PsyOpDetection = () => {
 
       {/* Filters */}
       <div className="space-y-4">
+        {user?.role === 'super_admin' && (
+          <div className="border border-slate-700 rounded-xl p-3 bg-slate-900/60 space-y-3 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold text-slate-100 text-sm">پردازش گروهی (Batch)</div>
+              {isBatchRunning && (
+                <span className="text-[11px] text-amber-400">در حال اجرا...</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="flex items-center gap-1">
+                <span>حداکثر پست:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={batchMaxPosts}
+                  onChange={(e) => setBatchMaxPosts(Number(e.target.value) || 1)}
+                  className="w-16 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-right text-xs"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={batchRunSummarize}
+                  onChange={(e) => setBatchRunSummarize(e.target.checked)}
+                />
+                <span>خلاصه‌سازی</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={batchRunQuick}
+                  onChange={(e) => setBatchRunQuick(e.target.checked)}
+                />
+                <span>تشخیص سریع</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={batchRunDeep}
+                  onChange={(e) => setBatchRunDeep(e.target.checked)}
+                />
+                <span>تحلیل عمیق</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={batchRunDeepest}
+                  onChange={(e) => setBatchRunDeepest(e.target.checked)}
+                />
+                <span>تحلیل بحران (Deepest)</span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                onClick={handleRunBatchPipeline}
+                disabled={isBatchRunning}
+                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-xs font-semibold"
+              >
+                {isBatchRunning ? 'در حال پردازش...' : 'اجرای پردازش گروهی'}
+              </Button>
+
+              {batchResult && (
+                <div className="text-[11px] text-slate-300 text-left space-y-0.5">
+                  <div>مرحله: {batchResult.stage ?? 'batch_pipeline'}</div>
+                  <div>پست‌های پردازش‌شده: {batchResult.processed_posts ?? 0}</div>
+                  <div>خلاصه‌سازی: {batchResult.summarize_calls ?? 0}</div>
+                  <div>تشخیص سریع: {batchResult.quick_calls ?? 0}</div>
+                  <div>تحلیل عمیق: {batchResult.deep_calls ?? 0}</div>
+                  <div>تحلیل بحران: {batchResult.deepest_calls ?? 0}</div>
+                  <div>خطاها: {batchResult.errors ?? 0}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Search */}
         <div className="relative">
           <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
