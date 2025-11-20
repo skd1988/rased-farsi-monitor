@@ -711,11 +711,11 @@ const OperationsHistory = () => {
                   </CardTitle>
                   <CardDescription>نمودار روند شناسایی PsyOps در طول زمان</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={psyopTrendData}>
-                      <defs>
-                        <linearGradient id="colorCritical" x1="0" y1="0" x2="0" y2="1">
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={psyopTrendData}>
+                        <defs>
+                          <linearGradient id="colorCritical" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#DC2626" stopOpacity={0.8}/>
                           <stop offset="95%" stopColor="#DC2626" stopOpacity={0.1}/>
                         </linearGradient>
@@ -729,78 +729,106 @@ const OperationsHistory = () => {
                         </linearGradient>
                         <linearGradient id="colorLow" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#10B981" stopOpacity={0.1}/>
-                        </linearGradient>
-                      </defs>
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0.1}/>
+                          </linearGradient>
+                        </defs>
 
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="hsl(var(--border))"
+                          opacity={0.6}
+                        />
 
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 12 }}
-                      />
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                          axisLine={{ stroke: 'hsl(var(--border))' }}
+                          tickLine={{ stroke: 'hsl(var(--border))' }}
+                        />
 
-                      <YAxis tick={{ fontSize: 12 }} />
+                        <YAxis
+                          tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                          axisLine={{ stroke: 'hsl(var(--border))' }}
+                          tickLine={{ stroke: 'hsl(var(--border))' }}
+                        />
 
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (active && payload && payload.length) {
-                            const total = payload.reduce((sum, entry) => sum + (entry.value as number), 0);
-                            return (
-                              <div className="bg-white dark:bg-gray-800 p-3 border border-gray-200 dark:border-gray-700 rounded shadow-lg">
+                        <Tooltip
+                          content={({ active, payload, label }) => {
+                            if (active && payload && payload.length) {
+                              const total = payload.reduce((sum, entry) => sum + (entry.value as number), 0);
+                              return (
+                              <div
+                                className="p-3 rounded-lg shadow-lg"
+                                style={{
+                                  backgroundColor: 'hsl(var(--card))',
+                                  border: '1px solid hsl(var(--border))',
+                                  color: 'hsl(var(--foreground))'
+                                }}
+                              >
                                 <p className="font-semibold mb-2">{label}</p>
                                 {payload.reverse().map((entry, index) => (
                                   <p key={index} style={{ color: entry.color }} className="text-sm">
                                     {entry.name}: {entry.value}
                                   </p>
                                 ))}
-                                <p className="text-sm font-semibold mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <p
+                                  className="text-sm font-semibold mt-2 pt-2"
+                                  style={{ borderTop: '1px solid hsl(var(--border))' }}
+                                >
                                   جمع: {total}
                                 </p>
                               </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
+                              );
+                            }
+                            return null;
+                          }}
+                        />
 
-                      <Legend
-                        wrapperStyle={{ fontSize: '14px', paddingTop: '10px' }}
-                        iconType="square"
-                      />
+                        <Legend
+                          wrapperStyle={{
+                            fontSize: '14px',
+                            paddingTop: '10px',
+                            color: 'hsl(var(--muted-foreground))'
+                          }}
+                          iconType="square"
+                        />
 
-                      <Area
-                        type="monotone"
-                        dataKey="بحرانی"
-                        stackId="1"
-                        stroke="#DC2626"
-                        fill="url(#colorCritical)"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="بالا"
-                        stackId="1"
-                        stroke="#F97316"
-                        fill="url(#colorHigh)"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="متوسط"
-                        stackId="1"
-                        stroke="#FBBF24"
-                        fill="url(#colorMedium)"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="پایین"
-                        stackId="1"
-                        stroke="#10B981"
-                        fill="url(#colorLow)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+                        <Area
+                          type="monotone"
+                          dataKey="بحرانی"
+                          stackId="1"
+                          stroke="#DC2626"
+                          fill="url(#colorCritical)"
+                          strokeWidth={2}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="بالا"
+                          stackId="1"
+                          stroke="#F97316"
+                          fill="url(#colorHigh)"
+                          strokeWidth={2}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="متوسط"
+                          stackId="1"
+                          stroke="#FBBF24"
+                          fill="url(#colorMedium)"
+                          strokeWidth={2}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="پایین"
+                          stackId="1"
+                          stroke="#10B981"
+                          fill="url(#colorLow)"
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
               {/* Daily Digest Cards */}
               <div className="grid grid-cols-1 gap-4">
@@ -1596,11 +1624,30 @@ const OperationsHistory = () => {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={400}>
                     <BarChart data={highRiskSources.slice(0, 15)} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" domain={[0, 100]} />
-                      <YAxis dataKey="source" type="category" width={150} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
+                      <XAxis
+                        type="number"
+                        domain={[0, 100]}
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                        axisLine={{ stroke: 'hsl(var(--border))' }}
+                        tickLine={{ stroke: 'hsl(var(--border))' }}
+                      />
+                      <YAxis
+                        dataKey="source"
+                        type="category"
+                        width={150}
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                        axisLine={{ stroke: 'hsl(var(--border))' }}
+                        tickLine={{ stroke: 'hsl(var(--border))' }}
+                      />
                       <Tooltip
-                        contentStyle={{ direction: 'rtl' }}
+                        contentStyle={{
+                          direction: 'rtl',
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '10px',
+                          color: 'hsl(var(--foreground))'
+                        }}
                         formatter={(value: number) => `${Number(value).toFixed(1)}%`}
                       />
                       <Bar
@@ -1776,11 +1823,30 @@ const OperationsHistory = () => {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={400}>
                     <BarChart data={highRiskChannels.slice(0, 15)} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" domain={[0, 100]} />
-                      <YAxis dataKey="channel_name" type="category" width={150} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
+                      <XAxis
+                        type="number"
+                        domain={[0, 100]}
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                        axisLine={{ stroke: 'hsl(var(--border))' }}
+                        tickLine={{ stroke: 'hsl(var(--border))' }}
+                      />
+                      <YAxis
+                        dataKey="channel_name"
+                        type="category"
+                        width={150}
+                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                        axisLine={{ stroke: 'hsl(var(--border))' }}
+                        tickLine={{ stroke: 'hsl(var(--border))' }}
+                      />
                       <Tooltip
-                        contentStyle={{ direction: 'rtl' }}
+                        contentStyle={{
+                          direction: 'rtl',
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '10px',
+                          color: 'hsl(var(--foreground))'
+                        }}
                         formatter={(value: number) => `${Number(value).toFixed(1)}%`}
                       />
                       <Bar
