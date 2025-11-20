@@ -50,6 +50,13 @@ interface PsyOpPost {
   psyop_review_status?: string | null;
   psyop_reviewed_at?: string | null;
   psyop_review_notes?: string | null;
+  deepest_escalation_level?: string | null;
+  deepest_strategic_summary?: string | null;
+  deepest_key_risks?: string[] | null;
+  deepest_audience_segments?: string[] | null;
+  deepest_recommended_actions?: string[] | null;
+  deepest_monitoring_indicators?: string[] | null;
+  deepest_analysis_completed_at?: string | null;
 }
 
 const PsyOpDetection = () => {
@@ -64,6 +71,8 @@ const PsyOpDetection = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const ITEMS_PER_PAGE = 20;
+
+  const [deepestLoadingId, setDeepestLoadingId] = useState<string | null>(null);
   
   // Filters
   const [isPsyOpFilter, setIsPsyOpFilter] = useState<string>('Yes');
@@ -115,7 +124,7 @@ const PsyOpDetection = () => {
       // Build query with filters
       let query = supabase
         .from('posts')
-        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential, stance_type, psyop_category, psyop_techniques, psyop_review_status, psyop_reviewed_at, psyop_review_notes', { count: 'exact' })
+        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential, stance_type, psyop_category, psyop_techniques, psyop_review_status, psyop_reviewed_at, psyop_review_notes, deepest_escalation_level, deepest_strategic_summary, deepest_key_risks, deepest_audience_segments, deepest_recommended_actions, deepest_monitoring_indicators, deepest_analysis_completed_at', { count: 'exact' })
         .eq('is_psyop', true);
 
       if (riskFilter === 'high') {
@@ -342,6 +351,57 @@ const PsyOpDetection = () => {
       uncertain: posts.filter(p => p.is_psyop === null).length,
     };
   }, [posts]);
+
+  const handleRunDeepestAnalysis = async (postId: string) => {
+    try {
+      setDeepestLoadingId(postId);
+
+      const { data, error } = await supabase.functions.invoke('deepest-analysis', {
+        body: { postId },
+      });
+
+      if (error) {
+        console.error('Deepest analysis error', error);
+        toast({
+          title: 'خطا در تحلیل بحران',
+          description: 'لطفاً دوباره تلاش کنید',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setPosts(prev =>
+        prev.map(p =>
+          p.id === postId
+            ? {
+                ...p,
+                deepest_escalation_level: data?.escalation_level ?? p.deepest_escalation_level ?? null,
+                deepest_strategic_summary: data?.strategic_summary ?? p.deepest_strategic_summary ?? null,
+                deepest_key_risks: data?.key_risks ?? p.deepest_key_risks ?? null,
+                deepest_audience_segments: data?.audience_segments ?? p.deepest_audience_segments ?? null,
+                deepest_recommended_actions: data?.recommended_actions ?? p.deepest_recommended_actions ?? null,
+                deepest_monitoring_indicators: data?.monitoring_indicators ?? p.deepest_monitoring_indicators ?? null,
+                deepest_analysis_completed_at: new Date().toISOString(),
+              }
+            : p
+        )
+      );
+
+      toast({
+        title: 'تحلیل بحران ثبت شد',
+        description: 'نتایج تحلیل عمیق به‌روز شد',
+      });
+    } catch (err) {
+      console.error('Unexpected deepest-analysis error', err);
+      toast({
+        title: 'خطای غیرمنتظره',
+        description: 'لطفاً دوباره تلاش کنید',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeepestLoadingId(null);
+    }
+  };
 
   console.log('🟠 [PsyOpDetection] RENDERING... loading=', loading, 'posts=', posts.length);
 
@@ -664,6 +724,8 @@ const PsyOpDetection = () => {
               <div key={post.id} className="relative space-y-2">
                 <PsyOpCard
                   post={post}
+                  deepestLoadingId={deepestLoadingId}
+                  onRunDeepestAnalysis={handleRunDeepestAnalysis}
                   onViewAnalysis={(post) => {
                     setSelectedPost(post);
                     setIsModalOpen(true);
