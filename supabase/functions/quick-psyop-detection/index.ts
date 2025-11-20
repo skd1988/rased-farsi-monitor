@@ -189,13 +189,22 @@ serve(async (req) => {
       console.warn(`Invalid threat_level: ${result.threat_level}, defaulting to Low`);
       result.threat_level = 'Low';
     }
-    
+
+    const stanceType = result.stance_type ?? null;
+    const psyopCategory = result.psyop_category ?? null;
+    const psyopTechniques = Array.isArray(result.psyop_techniques)
+      ? result.psyop_techniques
+      : null;
+
     // Validate and normalize result
     const normalizedResult = {
       is_psyop: result.is_psyop === true || result.is_psyop === "true" || result.is_psyop === "Yes",
       psyop_confidence: parseInt(result.confidence) || parseInt(result.psyop_confidence) || 50,
       threat_level: result.threat_level || "Low",
       primary_target: result.primary_target || result.target || null,
+      stance_type: stanceType,
+      psyop_category: psyopCategory,
+      psyop_techniques: psyopTechniques,
       needs_deep_analysis: shouldDoDeepAnalysis(result),
       stage: "quick_detection",
       parsing_status: parsingStatus
@@ -213,6 +222,9 @@ serve(async (req) => {
         threat_level: normalizedResult.threat_level,
         primary_target: normalizedResult.primary_target,
         psyop_risk_score: riskScore,
+        stance_type: stanceType,
+        psyop_category: psyopCategory,
+        psyop_techniques: psyopTechniques,
       })
       .eq("id", postId);
 
@@ -354,7 +366,10 @@ Return **only** a single JSON object, with this exact structure:
   "is_psyop": true,
   "confidence": 85,
   "threat_level": "High",
-  "primary_target": "Hezbollah Lebanon"
+  "primary_target": "Hezbollah Lebanon",
+  "stance_type": "hostile_propaganda",
+  "psyop_category": "confirmed_psyop",
+  "psyop_techniques": ["demonization", "fear_mongering"]
 }
 
 Rules:
@@ -362,6 +377,25 @@ Rules:
 - confidence: must be an integer between 0 and 100.
 - threat_level: exactly one of "Low", "Medium", "High", "Critical".
 - primary_target: must be one of the English names from the entities list above, or null.
+- stance_type:
+  - "supportive"
+  - "neutral"
+  - "legitimate_criticism"
+  - "hostile_propaganda"
+- psyop_category:
+  - "none" → neutral or legitimate criticism, not a psyop
+  - "potential_psyop" → clearly hostile propaganda but uncertain if coordinated
+  - "confirmed_psyop" → clearly part of a psychological operation
+- psyop_techniques:
+  - an array of zero or more of:
+    - "demonization"
+    - "fear_mongering"
+    - "division_creation"
+    - "confusion"
+    - "ridicule"
+    - "character_assassination"
+    - "agenda_shifting"
+    - "disinformation"
 
 Do NOT include any explanation, commentary, or extra text. Return only valid JSON.`;
 }
