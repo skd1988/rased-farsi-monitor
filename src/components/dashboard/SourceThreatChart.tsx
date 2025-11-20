@@ -19,7 +19,7 @@ export function SourceThreatChart({ data, onSourceClick }: SourceThreatChartProp
   };
 
   return (
-    <Card>
+    <Card className="bg-slate-900/60 border border-slate-800 rounded-xl">
       <CardHeader>
         <CardTitle>🎯 توزیع تهدید منابع</CardTitle>
         <CardDescription>
@@ -27,42 +27,48 @@ export function SourceThreatChart({ data, onSourceClick }: SourceThreatChartProp
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data} layout="vertical" margin={{ left: 80 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis type="number" />
+        <ResponsiveContainer width="100%" height={250}>
+          <BarChart data={data} layout="vertical" margin={{ left: 90, right: 10, top: 8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
+            <XAxis
+              type="number"
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              axisLine={{ stroke: 'hsl(var(--border))' }}
+              tickLine={{ stroke: 'hsl(var(--border))' }}
+            />
             <YAxis
               dataKey="source"
               type="category"
-              width={70}
-              tick={{ fontSize: 11 }}
+              width={120}
+              tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             />
             <Tooltip
-              content={({ active, payload }) => {
-                if (active && payload?.length) {
-                  const data = payload[0].payload;
-                  return (
-                    <div className="bg-white dark:bg-gray-800 p-3 border rounded shadow-lg">
-                      <div className="font-bold">{data.source}</div>
-                      <div className="text-sm">تعداد: {data.count}</div>
-                      <div className="text-sm text-red-600">
-                        ضریب تهدید: {data.threat_multiplier.toFixed(1)}x
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
+              contentStyle={{
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '10px',
+                direction: 'rtl',
+                fontFamily: 'inherit'
+              }}
+              formatter={(value: number, _name, props) => {
+                const payload = props?.payload as { threat_multiplier: number; source: string } | undefined;
+                return [
+                  `${value} پست`,
+                  payload ? `ضریب تهدید ${payload.threat_multiplier.toFixed(1)}x` : 'تعداد'
+                ];
               }}
             />
             <Bar
               dataKey="count"
-              onClick={(data) => onSourceClick?.(data.source)}
-              style={{ cursor: 'pointer' }}
+              onClick={(data) => onSourceClick?.((data as { source: string }).source)}
+              className="cursor-pointer"
+              radius={[0, 10, 10, 0]}
             >
               {data.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
                   fill={getThreatColor(entry.threat_multiplier)}
+                  className="transition-all duration-200 hover:opacity-90"
                 />
               ))}
             </Bar>

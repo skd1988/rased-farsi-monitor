@@ -55,14 +55,25 @@ const Dashboard = () => {
 
         const since = subDays(startOfDay(new Date()), 30).toISOString();
 
-        const { data: postsData, error: postsError } = await supabase
-          .from('posts')
-          .select('*')
-          .gte('published_at', since)
-          .order('published_at', { ascending: false })
-          .range(0, 999);
+        const pageSize = 1000;
+        let rangeFrom = 0;
+        let hasMore = true;
+        let postsData: any[] = [];
 
-        if (postsError) throw postsError;
+        while (hasMore) {
+          const { data: pageData, error: postsError } = await supabase
+            .from('posts')
+            .select('*')
+            .gte('published_at', since)
+            .order('published_at', { ascending: false })
+            .range(rangeFrom, rangeFrom + pageSize - 1);
+
+          if (postsError) throw postsError;
+
+          postsData = [...postsData, ...(pageData || [])];
+          hasMore = (pageData?.length || 0) === pageSize;
+          rangeFrom += pageSize;
+        }
 
         // Fetch AI analysis data
         const { data: analysisData, error: analysisError } = await supabase
@@ -748,10 +759,10 @@ const Dashboard = () => {
 
         {/* Charts */}
         <div className="grid md:grid-cols-3 gap-4">
-          <Card>
+          <Card className="bg-slate-900/60 border border-slate-800 rounded-xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Flame className="w-5 h-5 text-red-600" />
+                <Flame className="w-5 h-5 text-red-500" />
                 Top 10 کانال پرخطر
               </CardTitle>
               <p className="text-sm text-muted-foreground">
@@ -759,22 +770,41 @@ const Dashboard = () => {
               </p>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={topRiskyChannelsData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart
+                  data={topRiskyChannelsData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 8, left: 90, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.6} />
+                  <XAxis
+                    type="number"
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={{ stroke: 'hsl(var(--border))' }}
+                  />
                   <YAxis
                     dataKey="channel_name"
                     type="category"
-                    width={120}
-                    style={{ fontSize: '12px' }}
+                    width={140}
+                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
                   />
-                  <Tooltip />
-                  <Bar dataKey="threat_score" fill="#ef4444" radius={[0, 4, 4, 0]}>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '10px',
+                      direction: 'rtl',
+                      fontFamily: 'inherit'
+                    }}
+                    formatter={(value: number) => [`${value} امتیاز`, 'تهدید']}
+                  />
+                  <Bar dataKey="threat_score" radius={[0, 10, 10, 0]}>
                     {topRiskyChannelsData.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
-                        fill={entry.threat_score >= 100 ? '#dc2626' : '#ef4444'}
+                        fill={entry.threat_score >= 100 ? '#ef4444' : '#f97316'}
+                        className="transition-all duration-200 hover:opacity-90"
                       />
                     ))}
                   </Bar>
