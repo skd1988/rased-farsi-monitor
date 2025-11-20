@@ -33,6 +33,34 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const STANCE_LABELS: Record<string, string> = {
+  supportive: 'حمایتی',
+  neutral: 'خنثی',
+  legitimate_criticism: 'نقد مشروع',
+  hostile_propaganda: 'تبلیغات خصمانه',
+};
+
+const STANCE_COLORS: Record<string, string> = {
+  supportive: 'bg-emerald-600 text-white',
+  neutral: 'bg-slate-500 text-white',
+  legitimate_criticism: 'bg-blue-600 text-white',
+  hostile_propaganda: 'bg-red-600 text-white',
+};
+
+const REVIEW_LABELS: Record<string, string> = {
+  unreviewed: 'بررسی‌نشده',
+  confirmed: 'تأیید شده',
+  rejected: 'رد شده',
+  needs_followup: 'نیاز به پیگیری',
+};
+
+const REVIEW_COLORS: Record<string, string> = {
+  unreviewed: 'bg-slate-500 text-white',
+  confirmed: 'bg-emerald-600 text-white',
+  rejected: 'bg-red-600 text-white',
+  needs_followup: 'bg-amber-500 text-white',
+};
+
 interface PsyOpCardProps {
   post: any;
   onViewAnalysis: (post: any) => void;
@@ -67,9 +95,37 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
 
   const threatLevel = post.threat_level || 'Medium';
   const colors = threatColors[threatLevel as keyof typeof threatColors] || threatColors.Medium;
-  
-  const hasCoordination = post.coordination_indicators && 
-    Array.isArray(post.coordination_indicators) && 
+
+  const riskScore = post.psyop_risk_score ?? 0;
+  const riskColor =
+    riskScore >= 70
+      ? 'bg-red-600 text-white'
+      : riskScore >= 40
+        ? 'bg-orange-500 text-white'
+        : 'bg-green-600 text-white';
+
+  const rawStance = post.stance_type ?? 'neutral';
+  const stanceLabel = STANCE_LABELS[rawStance] ?? STANCE_LABELS.neutral;
+  const stanceColor = STANCE_COLORS[rawStance] ?? STANCE_COLORS.neutral;
+
+  const stanceBadge = (
+    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${stanceColor}`}>
+      {stanceLabel}
+    </span>
+  );
+
+  const rawReview = post.psyop_review_status ?? 'unreviewed';
+  const reviewLabel = REVIEW_LABELS[rawReview] ?? REVIEW_LABELS.unreviewed;
+  const reviewColor = REVIEW_COLORS[rawReview] ?? REVIEW_COLORS.unreviewed;
+
+  const reviewBadge = (
+    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${reviewColor}`}>
+      {reviewLabel}
+    </span>
+  );
+
+  const hasCoordination = post.coordination_indicators &&
+    Array.isArray(post.coordination_indicators) &&
     post.coordination_indicators.length > 0;
 
   const viralityPotential = post.virality_potential || 0;
@@ -129,7 +185,7 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
         </div>
 
         {/* Header */}
-        <div className="space-y-2 pt-8">
+        <div className="space-y-2 pt-5">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-base line-clamp-2 flex-1 text-right">
               {post.title}
@@ -164,25 +220,48 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-xs">
-              {post.source}
-            </Badge>
-            {post.source_credibility && (
-              <Badge 
-                variant="secondary" 
-                className={cn(
-                  'text-xs',
-                  post.source_credibility === 'Known Enemy Source' && 'bg-danger/20 text-danger'
-                )}
-              >
-                {post.source_credibility}
+
+          {/* Header metadata */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2 flex-wrap text-[11px]">
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className={`px-2 py-0.5 rounded-full font-semibold ${riskColor}`}>
+                  ریسک {riskScore}
+                </span>
+                <span className={cn(
+                  'px-2 py-0.5 rounded-full font-semibold text-[11px]',
+                  colors.bg,
+                  colors.text
+                )}>
+                  {threatLevel}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1 flex-wrap">
+                {stanceBadge}
+                {reviewBadge}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500">
+              <Badge variant="outline" className="text-[11px]">
+                {post.source}
               </Badge>
-            )}
-            <span className="text-xs text-muted-foreground">
-              {formatDistanceToNowIran(post.published_at)}
-            </span>
+              {post.source_credibility && (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    'text-[11px]',
+                    post.source_credibility === 'Known Enemy Source' && 'bg-danger/20 text-danger'
+                  )}
+                >
+                  {post.source_credibility}
+                </Badge>
+              )}
+              <span className="text-[11px] text-muted-foreground">
+                {formatDistanceToNowIran(post.published_at)}
+              </span>
+            </div>
           </div>
         </div>
 
