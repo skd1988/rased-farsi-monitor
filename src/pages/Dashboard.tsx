@@ -16,6 +16,7 @@ import PostDetailModal from '@/components/dashboard/PostDetailModal';
 import SocialMediaPieChart from '@/components/dashboard/SocialMediaPieChart';
 import TopTargetedPersonsChart from '@/components/dashboard/TopTargetedPersonsChart';
 import TopTargetedOrganizationsChart from '@/components/dashboard/TopTargetedOrganizationsChart';
+import ModelCalibrationCard from '@/components/dashboard/ModelCalibrationCard';
 import { SourceThreatChart } from '@/components/dashboard/SourceThreatChart';
 import { EnrichedPost } from '@/lib/mockData';
 import { supabase } from '@/integrations/supabase/client';
@@ -853,8 +854,11 @@ const Dashboard = () => {
           }
         />
         </div>
+        <div className="mt-4">
+          <ModelCalibrationCard />
+        </div>
       </div>
-      
+
       {/* Charts Row 1 - Threat Timeline and Targeted Entities */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ThreatLevelTimeline data={threatTimelineData} />
