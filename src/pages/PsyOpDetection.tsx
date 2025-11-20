@@ -73,6 +73,9 @@ interface PsyOpPost {
   stance_type?: string | null;
   psyop_category?: string | null;
   psyop_techniques?: string[] | null;
+  psyop_review_status?: string | null;
+  psyop_reviewed_at?: string | null;
+  psyop_review_notes?: string | null;
 }
 
 const PsyOpDetection = () => {
@@ -97,6 +100,7 @@ const PsyOpDetection = () => {
   const [psyopTypeFilter, setPsyopTypeFilter] = useState<string>('All');
   const [stanceFilter, setStanceFilter] = useState<'all' | 'supportive' | 'neutral' | 'legitimate_criticism' | 'hostile_propaganda'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'none' | 'potential_psyop' | 'confirmed_psyop'>('all');
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'unreviewed' | 'confirmed' | 'rejected' | 'needs_followup'>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 7),
     to: new Date(),
@@ -137,7 +141,7 @@ const PsyOpDetection = () => {
       // Build query with filters
       let query = supabase
         .from('posts')
-        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential, stance_type, psyop_category, psyop_techniques', { count: 'exact' })
+        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential, stance_type, psyop_category, psyop_techniques, psyop_review_status, psyop_reviewed_at, psyop_review_notes', { count: 'exact' })
         .eq('is_psyop', true);
 
       if (riskFilter === 'high') {
@@ -220,9 +224,62 @@ const PsyOpDetection = () => {
     };
   }, []);
 
+  const handleReviewUpdate = async (
+    postId: string,
+    status: 'confirmed' | 'rejected' | 'needs_followup'
+  ) => {
+    const reviewedAt = new Date().toISOString();
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({
+          psyop_review_status: status,
+          psyop_reviewed_at: reviewedAt,
+        })
+        .eq('id', postId);
+
+      if (error) {
+        console.error('Failed to update review status', error);
+        toast({
+          title: 'خطا در به‌روزرسانی وضعیت',
+          description: 'لطفاً دوباره تلاش کنید',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setPosts(prev =>
+        prev.map(p =>
+          p.id === postId
+            ? { ...p, psyop_review_status: status, psyop_reviewed_at: reviewedAt }
+            : p
+        )
+      );
+
+      toast({
+        title: 'وضعیت بررسی به‌روزرسانی شد',
+        description: 'وضعیت جدید ثبت شد',
+      });
+    } catch (error) {
+      console.error('Unexpected error updating review status', error);
+      toast({
+        title: 'خطای غیرمنتظره',
+        description: 'لطفاً دوباره تلاش کنید',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Filter posts (client-side filtering for search only, other filters are server-side)
   const filteredPosts = useMemo(() => {
     let filtered = posts;
+
+    if (reviewFilter !== 'all') {
+      filtered = filtered.filter(
+        p => (p.psyop_review_status ?? 'unreviewed') === reviewFilter
+      );
+    }
 
     if (stanceFilter !== 'all') {
       filtered = filtered.filter(p => (p.stance_type ?? 'neutral') === stanceFilter);
@@ -254,7 +311,7 @@ const PsyOpDetection = () => {
     }
 
     return filtered;
-  }, [posts, searchQuery, riskFilter, stanceFilter, categoryFilter]);
+  }, [posts, searchQuery, riskFilter, stanceFilter, categoryFilter, reviewFilter]);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
@@ -505,6 +562,19 @@ const PsyOpDetection = () => {
             </SelectContent>
           </Select>
 
+          <Select value={reviewFilter} onValueChange={(value) => setReviewFilter(value as typeof reviewFilter)}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="وضعیت بررسی" />
+            </SelectTrigger>
+            <SelectContent className="bg-card z-50">
+              <SelectItem value="all">همه وضعیت‌ها</SelectItem>
+              <SelectItem value="unreviewed">بررسی نشده</SelectItem>
+              <SelectItem value="confirmed">تأیید شده</SelectItem>
+              <SelectItem value="rejected">رد شده</SelectItem>
+              <SelectItem value="needs_followup">نیاز به پیگیری</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-60">
@@ -615,85 +685,124 @@ const PsyOpDetection = () => {
             ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
             : 'space-y-4'
         )}>
-          {sortedPosts.map(post => (
-            <div key={post.id} className="relative space-y-2">
-              <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
-                <span className="text-xs text-muted-foreground">ریسک</span>
-                <span
-                  className={`px-2 py-1 rounded text-xs font-semibold text-white ${
-                    (post.psyop_risk_score ?? 0) >= 70
-                      ? 'bg-red-600'
-                      : (post.psyop_risk_score ?? 0) >= 40
-                        ? 'bg-orange-500'
-                        : 'bg-green-600'
-                  }`}
-                >
-                  {post.psyop_risk_score ?? 0}
-                </span>
-              </div>
+          {sortedPosts.map(post => {
+            const review = post.psyop_review_status ?? 'unreviewed';
+            const reviewColor =
+              review === 'confirmed'
+                ? 'bg-green-600 text-white'
+                : review === 'rejected'
+                  ? 'bg-red-600 text-white'
+                  : review === 'needs_followup'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-500 text-white';
 
-              <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-semibold ${getStanceBadgeClass(post.stance_type)}`}
-                >
-                  {(post.stance_type ?? 'neutral').replace(/_/g, ' ')}
-                </span>
-                {post.psyop_category && (
+            return (
+              <div key={post.id} className="relative space-y-2">
+                <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
+                  <span className="text-xs text-muted-foreground">ریسک</span>
                   <span
-                    className={`px-2 py-1 rounded text-xs font-semibold ${getCategoryBadgeClass(post.psyop_category)}`}
+                    className={`px-2 py-1 rounded text-xs font-semibold text-white ${
+                      (post.psyop_risk_score ?? 0) >= 70
+                        ? 'bg-red-600'
+                        : (post.psyop_risk_score ?? 0) >= 40
+                          ? 'bg-orange-500'
+                          : 'bg-green-600'
+                    }`}
                   >
-                    {post.psyop_category.replace(/_/g, ' ')}
+                    {post.psyop_risk_score ?? 0}
                   </span>
+                </div>
+
+                <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${reviewColor}`}>
+                    {review.replace('_', ' ')}
+                  </span>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-semibold ${getStanceBadgeClass(post.stance_type)}`}
+                  >
+                    {(post.stance_type ?? 'neutral').replace(/_/g, ' ')}
+                  </span>
+                  {post.psyop_category && (
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-semibold ${getCategoryBadgeClass(post.psyop_category)}`}
+                    >
+                      {post.psyop_category.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
+
+                <PsyOpCard
+                  post={post}
+                  onViewAnalysis={(post) => {
+                    setSelectedPost(post);
+                    setIsModalOpen(true);
+                  }}
+                  onPrepareResponse={(post) => {
+                    toast({
+                      title: "آماده‌سازی پاسخ",
+                      description: "این ویژگی به زودی اضافه خواهد شد",
+                    });
+                  }}
+                  onMarkFalsePositive={(post) => {
+                    toast({
+                      title: "علامت‌گذاری به عنوان مثبت کاذب",
+                      description: "این ویژگی به زودی اضافه خواهد شد",
+                    });
+                  }}
+                  onAddToCampaign={(post) => {
+                    toast({
+                      title: "افزودن به کمپین",
+                      description: "این ویژگی به زودی اضافه خواهد شد",
+                    });
+                  }}
+                  onStatusChange={async (postId, newStatus) => {
+                    // Status change will be implemented after database migration
+                    toast({
+                      title: "⚠️ در حال توسعه",
+                      description: "قابلیت تغییر وضعیت به زودی فعال می‌شود",
+                    });
+                  }}
+                />
+
+                <div className="flex gap-2 mt-2 justify-end">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => handleReviewUpdate(post.id, 'confirmed')}
+                  >
+                    تأیید
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => handleReviewUpdate(post.id, 'rejected')}
+                  >
+                    مثبت کاذب
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => handleReviewUpdate(post.id, 'needs_followup')}
+                  >
+                    نیاز به پیگیری
+                  </Button>
+                </div>
+
+                {Array.isArray(post.psyop_techniques) && post.psyop_techniques.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {post.psyop_techniques.map((tech) => (
+                      <span
+                        key={tech}
+                        className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-100 text-xs"
+                      >
+                        {tech.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              <PsyOpCard
-                post={post}
-                onViewAnalysis={(post) => {
-                  setSelectedPost(post);
-                  setIsModalOpen(true);
-                }}
-                onPrepareResponse={(post) => {
-                  toast({
-                    title: "آماده‌سازی پاسخ",
-                    description: "این ویژگی به زودی اضافه خواهد شد",
-                  });
-                }}
-                onMarkFalsePositive={(post) => {
-                  toast({
-                    title: "علامت‌گذاری به عنوان مثبت کاذب",
-                    description: "این ویژگی به زودی اضافه خواهد شد",
-                  });
-                }}
-                onAddToCampaign={(post) => {
-                  toast({
-                    title: "افزودن به کمپین",
-                    description: "این ویژگی به زودی اضافه خواهد شد",
-                  });
-                }}
-                onStatusChange={async (postId, newStatus) => {
-                  // Status change will be implemented after database migration
-                  toast({
-                    title: "⚠️ در حال توسعه",
-                    description: "قابلیت تغییر وضعیت به زودی فعال می‌شود",
-                  });
-                }}
-              />
-
-              {Array.isArray(post.psyop_techniques) && post.psyop_techniques.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {post.psyop_techniques.map((tech) => (
-                    <span
-                      key={tech}
-                      className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-100 text-xs"
-                    >
-                      {tech.replace(/_/g, ' ')}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
