@@ -197,6 +197,9 @@ serve(async (req) => {
       : null;
 
     // Validate and normalize result
+    const riskScore = calculateRiskScore(result);
+    const needsDeep = shouldDoDeepAnalysis(result, riskScore);
+
     const normalizedResult = {
       is_psyop: result.is_psyop === true || result.is_psyop === "true" || result.is_psyop === "Yes",
       psyop_confidence: parseInt(result.confidence) || parseInt(result.psyop_confidence) || 50,
@@ -205,14 +208,12 @@ serve(async (req) => {
       stance_type: stanceType,
       psyop_category: psyopCategory,
       psyop_techniques: psyopTechniques,
-      needs_deep_analysis: shouldDoDeepAnalysis(result),
+      needs_deep_analysis: needsDeep,
       stage: "quick_detection",
       parsing_status: parsingStatus
     };
 
     console.log('Final normalized result:', normalizedResult);
-
-    const riskScore = calculateRiskScore(result);
 
     const { error: updateError } = await supabase
       .from("posts")
@@ -400,44 +401,110 @@ Rules:
 Do NOT include any explanation, commentary, or extra text. Return only valid JSON.`;
 }
 
-function shouldDoDeepAnalysis(result: any): boolean {
-  // Criteria for deep analysis
-  return (
+function shouldDoDeepAnalysis(result: any, riskScore: number): boolean {
+  if (!result) return false;
+
+  const isPsyop =
     result.is_psyop === true ||
-    result.threat_level === "Critical" ||
-    result.threat_level === "High" ||
-    (result.confidence >= 70 && result.threat_level === "Medium")
-  );
+    result.is_psyop === "true" ||
+    result.psyop_category === "confirmed_psyop";
+
+  const category = (result.psyop_category || "none") as string;
+  const level = (result.threat_level || "Low") as string;
+
+  let confidence = 50;
+  if (typeof result.confidence === "number") {
+    confidence = result.confidence;
+  } else if (typeof result.confidence === "string") {
+    const p = parseInt(result.confidence, 10);
+    if (!isNaN(p)) confidence = p;
+  }
+  confidence = Math.min(100, Math.max(0, confidence));
+
+  const techniques = Array.isArray(result.psyop_techniques)
+    ? (result.psyop_techniques as string[])
+    : [];
+
+  const severe = ["demonization", "fear_mongering", "disinformation", "character_assassination"];
+  const hasSevere = techniques.some((t) => severe.includes(t));
+
+  // RULES:
+  if (isPsyop && riskScore >= 80) return true;          // Major psyop risk
+  if (category === "confirmed_psyop" && riskScore >= 70) return true;
+  if (isPsyop && (level === "High" || level === "Critical") && confidence >= 70 && riskScore >= 70)
+    return true;
+  if (category === "potential_psyop" && riskScore >= 75) return true;
+  if (hasSevere && riskScore >= 75) return true;
+
+  return false;
 }
 
 function calculateRiskScore(result: any): number {
-  const isPsyop = result?.is_psyop === true;
-  const confidence =
-    typeof result?.confidence === "number" && !isNaN(result.confidence)
-      ? result.confidence
-      : 50;
+  const isPsyop = result?.is_psyop === true || result?.is_psyop === "true";
 
-  const level = (result?.threat_level || "Low") as string;
+  const categoryRaw = (result?.psyop_category || "none") as string;
+  const category = categoryRaw.toLowerCase();
 
-  const baseByLevel: Record<string, number> = {
-    Low: 20,
-    Medium: 50,
-    High: 75,
-    Critical: 90,
-  };
+  const stanceRaw = (result?.stance_type || "neutral") as string;
+  const stance = stanceRaw.toLowerCase();
 
-  const base = baseByLevel[level] ?? 20;
+  const levelRaw = (result?.threat_level || "Low") as string;
+  const level = levelRaw as string;
 
-  let score = (base * confidence) / 100;
-
-  if (isPsyop) {
-    score += 10;
+  // Normalize confidence to 0–100
+  let confidence = 50;
+  if (typeof result?.confidence === "number") {
+    confidence = result.confidence;
+  } else if (typeof result?.confidence === "string") {
+    const parsed = parseInt(result.confidence, 10);
+    if (!isNaN(parsed)) confidence = parsed;
   }
+  confidence = Math.min(100, Math.max(0, confidence));
 
-  if (score > 100) score = 100;
-  if (score < 0) score = 0;
+  let score = 0;
 
-  return Math.round(score);
+  // 1) is_psyop
+  if (isPsyop) score += 20;
+
+  // 2) psyop_category
+  if (category === "confirmed_psyop") score += 35;
+  else if (category === "potential_psyop") score += 20;
+
+  // 3) stance_type
+  if (stance === "hostile_propaganda") score += 15;
+  else if (stance === "legitimate_criticism") score += 5;
+
+  // 4) threat_level
+  const threatWeights: Record<string, number> = {
+    Low: 10,
+    Medium: 25,
+    High: 40,
+    Critical: 55,
+  };
+  score += threatWeights[level] ?? 10;
+
+  // 5) confidence (0–33)
+  score += Math.round(confidence / 3);
+
+  // 6) techniques bonus (max +20)
+  const techniques = Array.isArray(result?.psyop_techniques)
+    ? (result.psyop_techniques as string[])
+    : [];
+
+  const severe = new Set([
+    "demonization",
+    "fear_mongering",
+    "disinformation",
+    "character_assassination",
+  ]);
+
+  let techBonus = 0;
+  for (const t of techniques) {
+    techBonus += severe.has(t) ? 5 : 3;
+  }
+  score += Math.min(techBonus, 20);
+
+  return Math.min(100, Math.max(0, Math.round(score)));
 }
 
 async function logAPIUsage(supabase: any, data: any) {
