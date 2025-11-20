@@ -67,6 +67,8 @@ interface PsyOpCardProps {
   onPrepareResponse?: (post: any) => void;
   onMarkFalsePositive?: (post: any) => void;
   onAddToCampaign?: (post: any) => void;
+  onRunDeepestAnalysis?: (postId: string) => void;
+  deepestLoadingId?: string | null;
   onStatusChange?: (postId: string, status: string) => void;
 }
 
@@ -76,6 +78,8 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
   onPrepareResponse,
   onMarkFalsePositive,
   onAddToCampaign,
+  onRunDeepestAnalysis,
+  deepestLoadingId,
   onStatusChange,
 }) => {
   const threatColors = {
@@ -123,6 +127,16 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
       {reviewLabel}
     </span>
   );
+
+  const escalationColors: Record<string, string> = {
+    Critical: 'bg-red-700 text-white',
+    High: 'bg-orange-700 text-white',
+    Medium: 'bg-yellow-700 text-white',
+    Low: 'bg-emerald-700 text-white',
+  };
+  const escalationBadgeColor = post.deepest_escalation_level
+    ? escalationColors[post.deepest_escalation_level as keyof typeof escalationColors] || 'bg-slate-700 text-white'
+    : 'bg-slate-700 text-white';
 
   const hasCoordination = post.coordination_indicators &&
     Array.isArray(post.coordination_indicators) &&
@@ -414,6 +428,22 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
           </TooltipProvider>
         )}
 
+        {post.deepest_escalation_level && (
+          <div className="mt-2 border-t border-slate-700 pt-2 text-xs space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-400">سطح بحران:</span>
+              <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-semibold', escalationBadgeColor)}>
+                {post.deepest_escalation_level}
+              </span>
+            </div>
+            {post.deepest_strategic_summary && (
+              <p className="text-slate-300 line-clamp-2">
+                {post.deepest_strategic_summary}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2 border-t">
           <Button 
@@ -426,13 +456,23 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
           </Button>
           
           {(post.urgency_level === 'Immediate' || post.urgency_level === 'High') && (
-            <Button 
+            <Button
               onClick={() => onPrepareResponse?.(post)}
               variant="secondary"
               size="sm"
             >
               <MessageSquare className="ml-2 h-4 w-4" />
               پاسخ
+            </Button>
+          )}
+          {riskScore >= 80 && !post.deepest_escalation_level && (
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={deepestLoadingId === post.id}
+              onClick={() => onRunDeepestAnalysis?.(post.id)}
+            >
+              {deepestLoadingId === post.id ? 'در حال تحلیل عمیق...' : 'تحلیل بحران'}
             </Button>
           )}
         </div>
