@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
@@ -22,57 +22,88 @@ interface CalibrationMetrics {
 const CalibrationThresholdCard = () => {
   const [latest, setLatest] = useState<CalibrationMetrics | null>(null);
   const [history, setHistory] = useState<CalibrationMetrics[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
+
+  const loadCalibrationMetrics = useCallback(async (isComponentMounted: () => boolean = () => true) => {
+    setMetricsLoading(true);
+    setMetricsError(null);
+
+    const [latestResult, historyResult] = await Promise.all([
+      supabase
+        .from('psyop_calibration_metrics')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('psyop_calibration_metrics')
+        .select(
+          'id, created_at, total_reviewed, model_agreement, model_disagreement, false_positive_count, false_negative_count, recommended_risk_threshold, recommended_deep_threshold, recommended_deepest_threshold'
+        )
+        .order('created_at', { ascending: false })
+        .limit(5)
+    ]);
+
+    if (!isComponentMounted()) return;
+
+    if (latestResult.error || historyResult.error) {
+      console.error('Error fetching calibration metrics', {
+        latestError: latestResult.error,
+        historyError: historyResult.error
+      });
+      setMetricsError('خطا در بارگذاری داده‌های کالیبراسیون');
+      setMetricsLoading(false);
+      return;
+    }
+
+    const latestRow = (latestResult.data?.[0] as CalibrationMetrics | undefined) ?? null;
+    setLatest(latestRow);
+    setHistory((historyResult.data as CalibrationMetrics[]) || []);
+    setMetricsLoading(false);
+  }, []);
+
+  const handleRunCalibration = async () => {
+    try {
+      setIsCalibrating(true);
+      setCalibrationError(null);
+
+      const { data, error } = await supabase.functions.invoke('calibration-refresh');
+
+      if (error) {
+        console.error('Calibration refresh error', error);
+        setCalibrationError('خطا در اجرای کالیبراسیون');
+        return;
+      }
+
+      console.log('Calibration refreshed:', data);
+      await loadCalibrationMetrics();
+    } catch (err) {
+      console.error('Unexpected error running calibration-refresh', err);
+      setCalibrationError('خطای غیرمنتظره در اجرای کالیبراسیون');
+    } finally {
+      setIsCalibrating(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
 
     const fetchCalibrationMetrics = async () => {
-      setLoading(true);
-      setError(null);
-
-      const [latestResult, historyResult] = await Promise.all([
-        supabase
-          .from('psyop_calibration_metrics')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(1),
-        supabase
-          .from('psyop_calibration_metrics')
-          .select(
-            'id, created_at, total_reviewed, model_agreement, model_disagreement, false_positive_count, false_negative_count, recommended_risk_threshold, recommended_deep_threshold, recommended_deepest_threshold'
-          )
-          .order('created_at', { ascending: false })
-          .limit(5)
-      ]);
-
-      if (!isMounted) return;
-
-      if (latestResult.error || historyResult.error) {
-        console.error('Error fetching calibration metrics', {
-          latestError: latestResult.error,
-          historyError: historyResult.error
-        });
-        setError('خطا در بارگذاری داده‌های کالیبراسیون');
-        setLoading(false);
-        return;
-      }
-
-      const latestRow = (latestResult.data?.[0] as CalibrationMetrics | undefined) ?? null;
-      setLatest(latestRow);
-      setHistory((historyResult.data as CalibrationMetrics[]) || []);
-      setLoading(false);
+      await loadCalibrationMetrics(() => isMounted);
     };
 
-    fetchCalibrationMetrics();
+    if (isMounted) {
+      fetchCalibrationMetrics();
+    }
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadCalibrationMetrics]);
 
-  if (loading) {
+  if (metricsLoading) {
     return (
       <Card className="bg-slate-900/40 border border-slate-800">
         <CardContent className="p-4 text-xs text-slate-400 flex items-center gap-2">
@@ -83,10 +114,10 @@ const CalibrationThresholdCard = () => {
     );
   }
 
-  if (error) {
+  if (metricsError) {
     return (
       <Card className="bg-slate-900/40 border border-slate-800">
-        <CardContent className="p-4 text-xs text-red-400">{error}</CardContent>
+        <CardContent className="p-4 text-xs text-red-400">{metricsError}</CardContent>
       </Card>
     );
   }
@@ -112,13 +143,26 @@ const CalibrationThresholdCard = () => {
             <p className="text-[11px] text-slate-400">
               آستانه‌های پیشنهادی بر اساس آخرین کالیبراسیون
             </p>
+            {calibrationError && (
+              <div className="text-[11px] text-red-400 mt-1">{calibrationError}</div>
+            )}
           </div>
-          {latest.created_at && (
-            <div className="text-[11px] text-slate-400 text-left">
-              <div>آخرین به‌روزرسانی:</div>
-              <div>{formatPersianDateTime(latest.created_at)}</div>
-            </div>
-          )}
+          <div className="flex flex-col items-end gap-2">
+            {latest.created_at && (
+              <div className="text-[11px] text-slate-400 text-left">
+                <div>آخرین به‌روزرسانی:</div>
+                <div>{formatPersianDateTime(latest.created_at)}</div>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleRunCalibration}
+              disabled={isCalibrating}
+              className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-[11px] font-semibold"
+            >
+              {isCalibrating ? 'در حال کالیبراسیون...' : 'اجرای کالیبراسیون'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] mb-3">
