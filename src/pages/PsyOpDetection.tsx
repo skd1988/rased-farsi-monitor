@@ -29,9 +29,28 @@ import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
 
 console.log('🔴 [PsyOpDetection] FILE LOADED');
 
+interface PsyOpPost {
+  id: string;
+  title: string;
+  source: string | null;
+  published_at: string | null;
+  threat_level: string | null;
+  psyop_confidence: number | null;
+  narrative_theme: string | null;
+  psyop_technique: string[] | null;
+  target_entity: string | null;
+  analysis_summary: string | null;
+  sentiment: string | null;
+  keywords: string[] | null;
+  psyop_risk_score?: number | null;
+  is_psyop?: boolean | null;
+  urgency_level?: string | null;
+  virality_potential?: number | null;
+}
+
 const PsyOpDetection = () => {
   console.log('🟡 [PsyOpDetection] FUNCTION CALLED');
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PsyOpPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState<any>(null);
@@ -53,7 +72,8 @@ const PsyOpDetection = () => {
     from: subDays(new Date(), 7),
     to: new Date(),
   });
-  
+  const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+
   // View and sort
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<string>('threat');
@@ -74,10 +94,11 @@ const PsyOpDetection = () => {
       currentPage,
       threatLevelFilter,
       psyopTypeFilter,
-      dateRange
+      dateRange,
+      riskFilter
     });
     fetchPosts();
-  }, [currentPage, threatLevelFilter, psyopTypeFilter, dateRange]);
+  }, [currentPage, threatLevelFilter, psyopTypeFilter, dateRange, riskFilter]);
 
   const fetchPosts = async () => {
     try {
@@ -87,8 +108,16 @@ const PsyOpDetection = () => {
       // Build query with filters
       let query = supabase
         .from('posts')
-        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords', { count: 'exact' })
+        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential', { count: 'exact' })
         .eq('is_psyop', true);
+
+      if (riskFilter === 'high') {
+        query = query.gte('psyop_risk_score', 70);
+      } else if (riskFilter === 'medium') {
+        query = query.gte('psyop_risk_score', 40).lte('psyop_risk_score', 69);
+      } else if (riskFilter === 'low') {
+        query = query.lte('psyop_risk_score', 39);
+      }
       
       // Apply filters
       if (threatLevelFilter !== 'All') {
@@ -166,6 +195,17 @@ const PsyOpDetection = () => {
   const filteredPosts = useMemo(() => {
     let filtered = posts;
 
+    if (riskFilter === 'high') {
+      filtered = filtered.filter(p => (p.psyop_risk_score ?? 0) >= 70);
+    } else if (riskFilter === 'medium') {
+      filtered = filtered.filter(p => {
+        const score = p.psyop_risk_score ?? 0;
+        return score >= 40 && score <= 69;
+      });
+    } else if (riskFilter === 'low') {
+      filtered = filtered.filter(p => (p.psyop_risk_score ?? 0) < 40);
+    }
+
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -177,7 +217,7 @@ const PsyOpDetection = () => {
     }
 
     return filtered;
-  }, [posts, searchQuery]);
+  }, [posts, searchQuery, riskFilter]);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
@@ -191,9 +231,13 @@ const PsyOpDetection = () => {
         return aOrder - bOrder;
       });
     } else if (sortBy === 'date') {
-      sorted.sort((a, b) => 
+      sorted.sort((a, b) =>
         new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
       );
+    } else if (sortBy === 'risk_desc') {
+      sorted.sort((a, b) => (b.psyop_risk_score ?? 0) - (a.psyop_risk_score ?? 0));
+    } else if (sortBy === 'risk_asc') {
+      sorted.sort((a, b) => (a.psyop_risk_score ?? 0) - (b.psyop_risk_score ?? 0));
     } else if (sortBy === 'urgency') {
       const urgencyOrder = { 'Immediate': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Monitor Only': 4 };
       sorted.sort((a, b) => {
@@ -431,15 +475,29 @@ const PsyOpDetection = () => {
           </Popover>
 
           <div className="mr-auto flex gap-2">
-            <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-40">
+          <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="w-40">
                 <SelectValue placeholder="مرتب‌سازی" />
               </SelectTrigger>
               <SelectContent className="bg-card z-50">
                 <SelectItem value="threat">سطح تهدید</SelectItem>
                 <SelectItem value="date">تاریخ</SelectItem>
+                <SelectItem value="risk_desc">ریسک (زیاد → کم)</SelectItem>
+                <SelectItem value="risk_asc">ریسک (کم → زیاد)</SelectItem>
                 <SelectItem value="urgency">فوریت</SelectItem>
                 <SelectItem value="virality">پتانسیل ویروس</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={riskFilter} onValueChange={(value) => setRiskFilter(value as typeof riskFilter)}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="فیلتر ریسک" />
+              </SelectTrigger>
+              <SelectContent className="bg-card z-50">
+                <SelectItem value="all">تمام سطوح ریسک</SelectItem>
+                <SelectItem value="high">ریسک بالا</SelectItem>
+                <SelectItem value="medium">ریسک متوسط</SelectItem>
+                <SelectItem value="low">ریسک پایین</SelectItem>
               </SelectContent>
             </Select>
 
@@ -496,39 +554,54 @@ const PsyOpDetection = () => {
             : 'space-y-4'
         )}>
           {sortedPosts.map(post => (
-            <PsyOpCard
-              key={post.id}
-              post={post}
-              onViewAnalysis={(post) => {
-                setSelectedPost(post);
-                setIsModalOpen(true);
-              }}
-              onPrepareResponse={(post) => {
-                toast({
-                  title: "آماده‌سازی پاسخ",
-                  description: "این ویژگی به زودی اضافه خواهد شد",
-                });
-              }}
-              onMarkFalsePositive={(post) => {
-                toast({
-                  title: "علامت‌گذاری به عنوان مثبت کاذب",
-                  description: "این ویژگی به زودی اضافه خواهد شد",
-                });
-              }}
-              onAddToCampaign={(post) => {
-                toast({
-                  title: "افزودن به کمپین",
-                  description: "این ویژگی به زودی اضافه خواهد شد",
-                });
-              }}
-              onStatusChange={async (postId, newStatus) => {
-                // Status change will be implemented after database migration
-                toast({
-                  title: "⚠️ در حال توسعه",
-                  description: "قابلیت تغییر وضعیت به زودی فعال می‌شود",
-                });
-              }}
-            />
+            <div key={post.id} className="relative">
+              <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
+                <span className="text-xs text-muted-foreground">ریسک</span>
+                <span
+                  className={`px-2 py-1 rounded text-xs font-semibold text-white ${
+                    (post.psyop_risk_score ?? 0) >= 70
+                      ? 'bg-red-600'
+                      : (post.psyop_risk_score ?? 0) >= 40
+                        ? 'bg-orange-500'
+                        : 'bg-green-600'
+                  }`}
+                >
+                  {post.psyop_risk_score ?? 0}
+                </span>
+              </div>
+              <PsyOpCard
+                post={post}
+                onViewAnalysis={(post) => {
+                  setSelectedPost(post);
+                  setIsModalOpen(true);
+                }}
+                onPrepareResponse={(post) => {
+                  toast({
+                    title: "آماده‌سازی پاسخ",
+                    description: "این ویژگی به زودی اضافه خواهد شد",
+                  });
+                }}
+                onMarkFalsePositive={(post) => {
+                  toast({
+                    title: "علامت‌گذاری به عنوان مثبت کاذب",
+                    description: "این ویژگی به زودی اضافه خواهد شد",
+                  });
+                }}
+                onAddToCampaign={(post) => {
+                  toast({
+                    title: "افزودن به کمپین",
+                    description: "این ویژگی به زودی اضافه خواهد شد",
+                  });
+                }}
+                onStatusChange={async (postId, newStatus) => {
+                  // Status change will be implemented after database migration
+                  toast({
+                    title: "⚠️ در حال توسعه",
+                    description: "قابلیت تغییر وضعیت به زودی فعال می‌شود",
+                  });
+                }}
+              />
+            </div>
           ))}
         </div>
       )}

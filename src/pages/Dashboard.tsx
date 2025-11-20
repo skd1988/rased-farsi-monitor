@@ -39,39 +39,29 @@ const Dashboard = () => {
   const [socialMediaChannels, setSocialMediaChannels] = useState<any[]>([]);
   const [highThreatSourcesCount, setHighThreatSourcesCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [postsTablePage, setPostsTablePage] = useState(1);
-  const postsPerPage = 50;
-  
+  const [psyopPosts, setPsyopPosts] = useState<EnrichedPost[]>([]);
+  const [psyopPage, setPsyopPage] = useState(1);
+  const [psyopTotalCount, setPsyopTotalCount] = useState(0);
+  const psyopPageSize = 20;
+  const [isLoadingPsyop, setIsLoadingPsyop] = useState(false);
+
   // Fetch real data from Supabase
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch ALL posts with pagination (no 1000 limit)
-        let allPosts: any[] = [];
-        let from = 0;
-        const pageSize = 1000;
-        let hasMore = true;
-        
-        while (hasMore) {
-          const { data: postsData, error: postsError } = await supabase
-            .from('posts')
-            .select('*')
-            .order('published_at', { ascending: false })
-            .range(from, from + pageSize - 1);
-          
-          if (postsError) throw postsError;
-          
-          if (postsData && postsData.length > 0) {
-            allPosts = [...allPosts, ...postsData];
-            from += pageSize;
-            hasMore = postsData.length === pageSize;
-          } else {
-            hasMore = false;
-          }
-        }
-        
+
+        const since = subDays(startOfDay(new Date()), 30).toISOString();
+
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select('*')
+          .gte('published_at', since)
+          .order('published_at', { ascending: false })
+          .range(0, 999);
+
+        if (postsError) throw postsError;
+
         // Fetch AI analysis data
         const { data: analysisData, error: analysisError } = await supabase
           .from('ai_analysis')
@@ -121,7 +111,7 @@ const Dashboard = () => {
 
         if (sourcesError) console.error('Error fetching sources:', sourcesError);
 
-        setPosts(allPosts);
+        setPosts(postsData || []);
         setAiAnalysis(analysisData || []);
         setCampaigns(campaignsData || []);
         setTargetProfiles(profilesData || []);
@@ -137,9 +127,60 @@ const Dashboard = () => {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const fetchPsyopPosts = async () => {
+      try {
+        setIsLoadingPsyop(true);
+        const from = (psyopPage - 1) * psyopPageSize;
+        const to = from + psyopPageSize - 1;
+
+        const { data, error, count } = await supabase
+          .from('posts')
+          .select('id, title, source, published_at, psyop_risk_score, threat_level, sentiment, contents, source_url, author, language, status, article_url, keywords, source_country', { count: 'exact' })
+          .eq('is_psyop', true)
+          .order('psyop_risk_score', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+
+        const mappedPosts = (data || []).map(post => ({
+          id: post.id,
+          title: post.title,
+          contents: post.contents || '',
+          date: post.published_at,
+          source: post.source,
+          sourceURL: post.source_url || undefined,
+          author: post.author || 'نامشخص',
+          language: post.language || 'نامشخص',
+          status: post.status || 'نامشخص',
+          articleURL: post.article_url || '',
+          keywords: post.keywords || [],
+          source_country: post.source_country || null,
+          psyop_risk_score: post.psyop_risk_score,
+          threat_level: post.threat_level,
+          sentiment: post.sentiment,
+        } as EnrichedPost));
+
+        setPsyopPosts(mappedPosts);
+        setPsyopTotalCount(count || 0);
+      } catch (error) {
+        console.error('Error fetching psyop posts:', error);
+        toast({
+          title: "خطا در دریافت داده‌ها",
+          description: "مشکلی در دریافت اطلاعات جنگ روانی پیش آمد",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingPsyop(false);
+      }
+    };
+
+    fetchPsyopPosts();
+  }, [psyopPage]);
 
   // Calculate KPIs
   const activePsyOpsToday = useMemo(() => {
@@ -448,47 +489,7 @@ const Dashboard = () => {
     return data;
   }, [posts]);
 
-  // PsyOp Posts for table (only posts with is_psyop = true)
-  const allPsyopPosts = useMemo(() => {
-    return posts
-      .filter(post => post.is_psyop === true)
-      .map(post => ({
-        id: post.id,
-        title: post.title,
-        contents: post.contents || '',
-        date: post.published_at,
-        source: post.source,
-        sourceURL: post.source_url || undefined,
-        author: post.author || 'نامشخص',
-        language: post.language,
-        status: post.status,
-        articleURL: post.article_url || '',
-        keywords: post.keywords || [],
-        source_country: post.source_country || null,
-      } as EnrichedPost))
-      .sort((a, b) => {
-        // Sort by threat level first
-        const threatOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
-        const postA = posts.find(p => p.id === a.id);
-        const postB = posts.find(p => p.id === b.id);
-        const threatA = threatOrder[postA?.threat_level as keyof typeof threatOrder] ?? 999;
-        const threatB = threatOrder[postB?.threat_level as keyof typeof threatOrder] ?? 999;
-
-        if (threatA !== threatB) return threatA - threatB;
-
-        // Then by date
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
-      });
-  }, [posts]);
-
-  // Paginated psyop posts
-  const psyopPosts = useMemo(() => {
-    const startIndex = (postsTablePage - 1) * postsPerPage;
-    const endIndex = startIndex + postsPerPage;
-    return allPsyopPosts.slice(startIndex, endIndex);
-  }, [allPsyopPosts, postsTablePage]);
-
-  const totalPostsPages = Math.ceil(allPsyopPosts.length / postsPerPage);
+  const totalPostsPages = Math.max(1, Math.ceil(psyopTotalCount / psyopPageSize));
   
   const handleViewPost = (post: EnrichedPost) => {
     setSelectedPost(post);
@@ -884,8 +885,11 @@ const Dashboard = () => {
       {/* PsyOp Detections Table */}
       <div className="mt-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold">آخرین تشخیص‌های جنگ روانی</h2>
-          <button 
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold">آخرین تشخیص‌های جنگ روانی</h2>
+            {isLoadingPsyop && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+          </div>
+          <button
             className="text-sm text-primary hover:underline"
             onClick={() => navigate('/ai-analysis')}
           >
@@ -895,9 +899,9 @@ const Dashboard = () => {
         <PostsTable
           posts={psyopPosts}
           onViewPost={handleViewPost}
-          currentPage={postsTablePage}
+          currentPage={psyopPage}
           totalPages={totalPostsPages}
-          onPageChange={setPostsTablePage}
+          onPageChange={setPsyopPage}
         />
       </div>
       
