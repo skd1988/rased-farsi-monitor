@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 
 interface ModelConfusionRow {
@@ -106,8 +106,8 @@ const ModelCalibrationCard = () => {
 
   if (loading) {
     return (
-      <Card className="bg-slate-900/40 border border-slate-800">
-        <CardContent className="p-4 text-xs text-slate-400 flex items-center gap-2">
+      <Card>
+        <CardContent className="p-4 text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />
           در حال بارگذاری آمار کالیبراسیون مدل...
         </CardContent>
@@ -117,93 +117,92 @@ const ModelCalibrationCard = () => {
 
   if (error) {
     return (
-      <Card className="bg-slate-900/40 border border-slate-800">
-        <CardContent className="p-4 text-xs text-red-400">
-          {error}
-        </CardContent>
+      <Card>
+        <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="bg-slate-900/40 border border-slate-800">
-      <CardContent className="p-4 space-y-4">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-100">کالیبراسیون مدل عملیات روانی</h3>
-            <p className="text-[11px] text-slate-400">
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-lg">کالیبراسیون مدل عملیات روانی</CardTitle>
+            <CardDescription>
               مقایسهٔ تصمیمات مدل با برچسب‌های تحلیلگران انسانی
-            </p>
+            </CardDescription>
           </div>
           {agreementRate !== null && (
-            <div className="text-right text-xs">
-              <div className="text-slate-400">نرخ هم‌خوانی</div>
-              <div className="text-emerald-400 font-semibold">{agreementRate}%</div>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">نرخ هم‌خوانی</div>
+              <div className="text-lg font-semibold text-emerald-500">{agreementRate}%</div>
             </div>
           )}
         </div>
-
-        <div className="grid grid-cols-3 gap-2 text-[11px] mb-3">
-          <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2">
-            <div className="text-slate-400">پست‌های بررسی‌شده</div>
-            <div className="text-slate-100 font-semibold text-sm">{totalReviewed}</div>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+          <div className="rounded-lg border bg-muted/50 p-3">
+            <div className="text-xs text-muted-foreground">پست‌های بررسی‌شده</div>
+            <div className="text-lg font-semibold">{totalReviewed}</div>
           </div>
-          <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2">
-            <div className="text-slate-400">هم‌خوانی تقریبی</div>
-            <div className="text-emerald-400 font-semibold text-sm">{approxAgreement}</div>
+          <div className="rounded-lg border bg-muted/50 p-3">
+            <div className="text-xs text-muted-foreground">هم‌خوانی تقریبی</div>
+            <div className="text-lg font-semibold text-emerald-600">{approxAgreement}</div>
           </div>
-          <div className="bg-slate-900/70 border border-slate-700 rounded-lg p-2">
-            <div className="text-slate-400">ناهم‌خوانی تقریبی</div>
-            <div className="text-amber-400 font-semibold text-sm">{approxDisagreement}</div>
+          <div className="rounded-lg border bg-muted/50 p-3">
+            <div className="text-xs text-muted-foreground">ناهم‌خوانی تقریبی</div>
+            <div className="text-lg font-semibold text-amber-600">{approxDisagreement}</div>
           </div>
         </div>
 
-        <div className="space-y-3">
-          <table className="w-full text-[11px] text-slate-300">
-            <thead>
-              <tr className="text-slate-400 border-b border-slate-700">
-                <th className="py-1 text-right">برچسب مدل</th>
-                <th className="py-1 text-right">برچسب انسانی</th>
-                <th className="py-1 text-right">تعداد</th>
-                <th className="py-1 text-right">میانگین ریسک</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(confusionData ?? []).map((row) => (
-                <tr
-                  key={`${row.model_label}-${row.human_label}`}
-                  className="border-b border-slate-800/80"
-                >
-                  <td className="py-1">{row.model_label}</td>
-                  <td className="py-1">{row.human_label}</td>
-                  <td className="py-1">{row.total_posts}</td>
-                  <td className="py-1">{row.avg_risk_score != null ? row.avg_risk_score : '-'}</td>
+        <div className="space-y-4 text-sm">
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full text-right">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <tr>
+                  <th className="py-2 px-3">برچسب مدل</th>
+                  <th className="py-2 px-3">برچسب انسانی</th>
+                  <th className="py-2 px-3">تعداد</th>
+                  <th className="py-2 px-3">میانگین ریسک</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(confusionData ?? []).map((row) => (
+                  <tr key={`${row.model_label}-${row.human_label}`} className="border-t">
+                    <td className="py-2 px-3">{row.model_label}</td>
+                    <td className="py-2 px-3">{row.human_label}</td>
+                    <td className="py-2 px-3">{row.total_posts}</td>
+                    <td className="py-2 px-3">
+                      {row.avg_risk_score != null ? row.avg_risk_score : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          <table className="w-full text-[11px] text-slate-300">
-            <thead>
-              <tr className="text-slate-400 border-b border-slate-700">
-                <th className="py-1 text-right">بازه ریسک</th>
-                <th className="py-1 text-right">وضعیت بررسی</th>
-                <th className="py-1 text-right">تعداد</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRiskBuckets.map((row) => (
-                <tr
-                  key={`${row.risk_bucket}-${row.human_label}`}
-                  className="border-b border-slate-800/80"
-                >
-                  <td className="py-1">{row.risk_bucket}</td>
-                  <td className="py-1">{row.human_label}</td>
-                  <td className="py-1">{row.total_posts}</td>
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full text-right">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <tr>
+                  <th className="py-2 px-3">بازه ریسک</th>
+                  <th className="py-2 px-3">وضعیت بررسی</th>
+                  <th className="py-2 px-3">تعداد</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sortedRiskBuckets.map((row) => (
+                  <tr key={`${row.risk_bucket}-${row.human_label}`} className="border-t">
+                    <td className="py-2 px-3">{row.risk_bucket}</td>
+                    <td className="py-2 px-3">{row.human_label}</td>
+                    <td className="py-2 px-3">{row.total_posts}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </CardContent>
     </Card>
