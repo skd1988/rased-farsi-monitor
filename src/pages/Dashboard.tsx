@@ -26,7 +26,7 @@ import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { startOfDay, subDays, eachDayOfInterval, format, parseISO } from 'date-fns';
 import { Separator } from '@/components/ui/separator';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const Dashboard = () => {
@@ -759,17 +759,15 @@ const Dashboard = () => {
 
         {/* Charts */}
         <div className="grid md:grid-cols-3 gap-4">
-          <Card className="bg-slate-900/60 border border-slate-800 rounded-xl">
+          <Card className="h-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Flame className="w-5 h-5 text-red-500" />
                 Top 10 کانال پرخطر
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                بر اساس امتیاز تهدید
-              </p>
+              <CardDescription>بر اساس امتیاز تهدید</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart
                   data={topRiskyChannelsData}
