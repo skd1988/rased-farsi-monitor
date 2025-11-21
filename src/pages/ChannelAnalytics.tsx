@@ -30,13 +30,24 @@ interface SocialMediaChannel {
 interface ChannelPost {
   id: string;
   title: string;
-  source: string;
+  source: string | null;
   channel_name: string;
-  is_psyop: boolean;
-  threat_level: string;
+  platform?: string | null;
+  is_psyop: boolean | null;
+  threat_level: string | null;
+  psyop_risk_score: number | null;
   source_impact_score: number;
   weighted_threat_level: string;
-  published_at: string;
+  published_at: string | null;
+}
+
+interface ChannelRiskStats {
+  channelKey: string;
+  psyop_posts: number;
+  total_posts: number;
+  max_risk: number;
+  avg_risk: number;
+  last_psyop_at: string | null;
 }
 
 const ChannelAnalytics = () => {
@@ -129,10 +140,11 @@ const ChannelAnalytics = () => {
       // Fetch posts with channel_name
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
-        .select('id, title, source, channel_name, is_psyop, threat_level, source_impact_score, weighted_threat_level, published_at')
+        .select('id, title, source, channel_name, platform, is_psyop, threat_level, psyop_risk_score, source_impact_score, weighted_threat_level, published_at')
         .not('channel_name', 'is', null)
         .neq('status', 'Archived')
-        .order('published_at', { ascending: false });
+        .order('published_at', { ascending: false })
+        .limit(1000);
       
       if (postsError) throw postsError;
       setChannelPosts(postsData || []);
@@ -149,18 +161,72 @@ const ChannelAnalytics = () => {
     }
   };
 
+  const channelRiskStats = useMemo<ChannelRiskStats[]>(() => {
+    if (!channelPosts || channelPosts.length === 0) return [];
+
+    const map = new Map<string, {
+      psyop_posts: number;
+      total_posts: number;
+      max_risk: number;
+      risk_sum: number;
+      risk_count: number;
+      last_psyop_at: string | null;
+    }>();
+
+    for (const post of channelPosts) {
+      const key = post.channel_name || post.source;
+      if (!key || !post.published_at) continue;
+
+      let entry = map.get(key);
+      if (!entry) {
+        entry = {
+          psyop_posts: 0,
+          total_posts: 0,
+          max_risk: 0,
+          risk_sum: 0,
+          risk_count: 0,
+          last_psyop_at: null,
+        };
+        map.set(key, entry);
+      }
+
+      entry.total_posts += 1;
+
+      if (post.is_psyop === true && post.psyop_risk_score != null) {
+        entry.psyop_posts += 1;
+        entry.risk_sum += post.psyop_risk_score;
+        entry.risk_count += 1;
+        if (post.psyop_risk_score > entry.max_risk) {
+          entry.max_risk = post.psyop_risk_score;
+        }
+        if (!entry.last_psyop_at || (post.published_at && post.published_at > entry.last_psyop_at)) {
+          entry.last_psyop_at = post.published_at;
+        }
+      }
+    }
+
+    return Array.from(map.entries()).map(([channelKey, entry]) => ({
+      channelKey,
+      psyop_posts: entry.psyop_posts,
+      total_posts: entry.total_posts,
+      max_risk: entry.max_risk,
+      avg_risk: entry.risk_count > 0 ? entry.risk_sum / entry.risk_count : 0,
+      last_psyop_at: entry.last_psyop_at,
+    }));
+  }, [channelPosts]);
+
   // KPI Calculations
   const kpis = useMemo(() => {
     const totalChannels = channels.length;
     const criticalChannels = channels.filter(c => c.threat_multiplier >= 2.0).length;
-    const enemyChannels = channels.filter(c => 
+    const enemyChannels = channels.filter(c =>
       ['Anti-Resistance', 'Western-Aligned', 'Israeli-Affiliated', 'Saudi-Aligned']
         .includes(c.political_alignment)
     ).length;
-    const totalPsyOps = channelPosts.filter(p => p.is_psyop).length;
-    
+    const totalPsyOps = channelRiskStats.reduce((sum, c) => sum + c.psyop_posts, 0);
+
     return { totalChannels, criticalChannels, enemyChannels, totalPsyOps };
-  }, [channels, channelPosts]);
+  }, [channels, channelRiskStats]);
 
   // Filtered and sorted channels
   const filteredChannels = useMemo(() => {
@@ -186,15 +252,35 @@ const ChannelAnalytics = () => {
 
   // Top threat channels for bar chart
   const topThreatChannels = useMemo(() => {
-    return [...channels]
-      .sort((a, b) => b.threat_multiplier - a.threat_multiplier)
+    if (channelRiskStats.length === 0) {
+      return [...channels]
+        .sort((a, b) => b.threat_multiplier - a.threat_multiplier)
+        .slice(0, 10)
+        .map(c => ({
+          channel_name: c.channel_name,
+          threat_score: Math.round(c.threat_multiplier * c.reach_score * c.virality_coefficient),
+          threat_multiplier: c.threat_multiplier,
+          psyop_posts: 0,
+        }));
+    }
+
+    return [...channelRiskStats]
+      .sort((a, b) => {
+        if (b.max_risk !== a.max_risk) return b.max_risk - a.max_risk;
+        return b.psyop_posts - a.psyop_posts;
+      })
       .slice(0, 10)
-      .map(c => ({
-        channel_name: c.channel_name,
-        threat_score: Math.round(c.threat_multiplier * c.reach_score * c.virality_coefficient),
-        threat_multiplier: c.threat_multiplier
-      }));
-  }, [channels]);
+      .map(stat => {
+        const channel = channels.find(ch => ch.channel_name === stat.channelKey || ch.channel_id === stat.channelKey || ch.id === stat.channelKey);
+        const label = channel?.channel_name || stat.channelKey;
+        return {
+          channel_name: label,
+          threat_score: Math.round(stat.max_risk || 0),
+          threat_multiplier: channel?.threat_multiplier ?? 0,
+          psyop_posts: stat.psyop_posts,
+        };
+      });
+  }, [channelRiskStats, channels]);
 
   // Platform distribution
   const platformDistribution = useMemo(() => {
