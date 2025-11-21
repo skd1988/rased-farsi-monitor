@@ -30,19 +30,19 @@ interface SocialMediaChannel {
 interface ChannelPost {
   id: string;
   title: string;
-  source: string | null;
+  source: string;
   channel_name: string;
-  platform?: string | null;
-  is_psyop: boolean | null;
-  threat_level: string | null;
-  psyop_risk_score: number | null;
+  is_psyop: boolean;
+  threat_level: string;
   source_impact_score: number;
   weighted_threat_level: string;
-  published_at: string | null;
+  published_at: string;
+  // NEW optional fields from posts:
+  psyop_risk_score?: number | null;
 }
 
 interface ChannelRiskStats {
-  channelKey: string;
+  channel_name: string;
   psyop_posts: number;
   total_posts: number;
   max_risk: number;
@@ -140,7 +140,7 @@ const ChannelAnalytics = () => {
       // Fetch posts with channel_name
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
-        .select('id, title, source, channel_name, platform, is_psyop, threat_level, psyop_risk_score, source_impact_score, weighted_threat_level, published_at')
+        .select('id, title, source, channel_name, is_psyop, threat_level, source_impact_score, weighted_threat_level, published_at, psyop_risk_score')
         .not('channel_name', 'is', null)
         .neq('status', 'Archived')
         .order('published_at', { ascending: false })
@@ -174,8 +174,8 @@ const ChannelAnalytics = () => {
     }>();
 
     for (const post of channelPosts) {
-      const key = post.channel_name || post.source;
-      if (!key || !post.published_at) continue;
+      const key = post.channel_name;
+      if (!key) continue;
 
       let entry = map.get(key);
       if (!entry) {
@@ -192,7 +192,7 @@ const ChannelAnalytics = () => {
 
       entry.total_posts += 1;
 
-      if (post.is_psyop === true && post.psyop_risk_score != null) {
+      if (post.is_psyop && post.psyop_risk_score != null) {
         entry.psyop_posts += 1;
         entry.risk_sum += post.psyop_risk_score;
         entry.risk_count += 1;
@@ -205,8 +205,8 @@ const ChannelAnalytics = () => {
       }
     }
 
-    return Array.from(map.entries()).map(([channelKey, entry]) => ({
-      channelKey,
+    return Array.from(map.entries()).map(([channel_name, entry]) => ({
+      channel_name,
       psyop_posts: entry.psyop_posts,
       total_posts: entry.total_posts,
       max_risk: entry.max_risk,
@@ -271,12 +271,12 @@ const ChannelAnalytics = () => {
       })
       .slice(0, 10)
       .map(stat => {
-        const channel = channels.find(ch => ch.channel_name === stat.channelKey || ch.channel_id === stat.channelKey || ch.id === stat.channelKey);
-        const label = channel?.channel_name || stat.channelKey;
+        const channel = channels.find(ch => ch.channel_name === stat.channel_name);
+        const label = channel?.channel_name || stat.channel_name;
         return {
           channel_name: label,
           threat_score: Math.round(stat.max_risk || 0),
-          threat_multiplier: channel?.threat_multiplier ?? 0,
+          threat_multiplier: channel?.threat_multiplier ?? 1,
           psyop_posts: stat.psyop_posts,
         };
       });
