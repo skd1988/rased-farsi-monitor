@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -518,110 +519,110 @@ const PsyOpDetection = () => {
       </div>
 
       {/* Quick Stats Bar */}
-      <div className="border border-slate-700 rounded-xl p-3 bg-slate-900/60 space-y-3 text-xs">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-primary">{stats.total}</div>
-            <div className="text-sm text-muted-foreground">مجموع جنگ روانی</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-danger">{stats.critical}</div>
-            <div className="text-sm text-muted-foreground">بحرانی</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-600">{stats.high}</div>
-            <div className="text-sm text-muted-foreground">بالا</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-success">{stats.avgConfidence}%</div>
-            <div className="text-sm text-muted-foreground">میانگین اطمینان</div>
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-primary">{stats.total}</div>
+          <div className="text-sm text-muted-foreground">مجموع جنگ روانی</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-danger">{stats.critical}</div>
+          <div className="text-sm text-muted-foreground">بحرانی</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-orange-600">{stats.high}</div>
+          <div className="text-sm text-muted-foreground">بالا</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-success">{stats.avgConfidence}%</div>
+          <div className="text-sm text-muted-foreground">میانگین اطمینان</div>
         </div>
       </div>
 
       {/* Filters */}
       <div className="space-y-4">
         {user?.role === 'super_admin' && (
-          <div className="border border-slate-700 rounded-xl p-3 bg-slate-900/60 space-y-3 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <div className="font-semibold text-slate-100 text-sm">پردازش گروهی (Batch)</div>
-              {isBatchRunning && (
-                <span className="text-[11px] text-amber-400">در حال اجرا...</span>
-              )}
-            </div>
+          <Card className="relative overflow-hidden">
+            <div className="p-4 space-y-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold text-sm">پردازش گروهی (Batch)</div>
+                {isBatchRunning && (
+                  <span className="text-[11px] text-amber-600">در حال اجرا...</span>
+                )}
+              </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <label className="flex items-center gap-1">
-                <span>حداکثر پست:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={batchMaxPosts}
-                  onChange={(e) => setBatchMaxPosts(Number(e.target.value) || 1)}
-                  className="w-16 bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-right text-xs"
-                />
-              </label>
-            </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="flex items-center gap-1">
+                  <span>حداکثر پست:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={batchMaxPosts}
+                    onChange={(e) => setBatchMaxPosts(Number(e.target.value) || 1)}
+                    className="w-16 border rounded px-1 py-0.5 text-right text-xs bg-background"
+                  />
+                </label>
+              </div>
 
-            <div className="flex flex-wrap gap-2">
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={batchRunSummarize}
-                  onChange={(e) => setBatchRunSummarize(e.target.checked)}
-                />
-                <span>خلاصه‌سازی</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={batchRunQuick}
-                  onChange={(e) => setBatchRunQuick(e.target.checked)}
-                />
-                <span>تشخیص سریع</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={batchRunDeep}
-                  onChange={(e) => setBatchRunDeep(e.target.checked)}
-                />
-                <span>تحلیل عمیق</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={batchRunDeepest}
-                  onChange={(e) => setBatchRunDeepest(e.target.checked)}
-                />
-                <span>تحلیل بحران (Deepest)</span>
-              </label>
-            </div>
+              <div className="flex flex-wrap gap-2">
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={batchRunSummarize}
+                    onChange={(e) => setBatchRunSummarize(e.target.checked)}
+                  />
+                  <span>خلاصه‌سازی</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={batchRunQuick}
+                    onChange={(e) => setBatchRunQuick(e.target.checked)}
+                  />
+                  <span>تشخیص سریع</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={batchRunDeep}
+                    onChange={(e) => setBatchRunDeep(e.target.checked)}
+                  />
+                  <span>تحلیل عمیق</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={batchRunDeepest}
+                    onChange={(e) => setBatchRunDeepest(e.target.checked)}
+                  />
+                  <span>تحلیل بحران (Deepest)</span>
+                </label>
+              </div>
 
-            <div className="flex items-center justify-between gap-2">
-              <Button
-                type="button"
-                onClick={handleRunBatchPipeline}
-                disabled={isBatchRunning}
-                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-xs font-semibold"
-              >
-                {isBatchRunning ? 'در حال پردازش...' : 'اجرای پردازش گروهی'}
-              </Button>
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  onClick={handleRunBatchPipeline}
+                  disabled={isBatchRunning}
+                  className="px-3 py-1 rounded-lg text-xs font-semibold"
+                >
+                  {isBatchRunning ? 'در حال پردازش...' : 'اجرای پردازش گروهی'}
+                </Button>
 
-              {batchResult && (
-                <div className="text-[11px] text-slate-300 text-left space-y-0.5">
-                  <div>مرحله: {batchResult.stage ?? 'batch_pipeline'}</div>
-                  <div>پست‌های پردازش‌شده: {batchResult.processed_posts ?? 0}</div>
-                  <div>خلاصه‌سازی: {batchResult.summarize_calls ?? 0}</div>
-                  <div>تشخیص سریع: {batchResult.quick_calls ?? 0}</div>
-                  <div>تحلیل عمیق: {batchResult.deep_calls ?? 0}</div>
-                  <div>تحلیل بحران: {batchResult.deepest_calls ?? 0}</div>
-                  <div>خطاها: {batchResult.errors ?? 0}</div>
-                </div>
-              )}
+                {batchResult && (
+                  <div className="text-[11px] text-muted-foreground text-left space-y-0.5">
+                    <div>مرحله: {batchResult.stage ?? 'batch_pipeline'}</div>
+                    <div>پست‌های پردازش‌شده: {batchResult.processed_posts ?? 0}</div>
+                    <div>خلاصه‌سازی: {batchResult.summarize_calls ?? 0}</div>
+                    <div>تشخیص سریع: {batchResult.quick_calls ?? 0}</div>
+                    <div>تحلیل عمیق: {batchResult.deep_calls ?? 0}</div>
+                    <div>تحلیل بحران: {batchResult.deepest_calls ?? 0}</div>
+                    <div>خطاها: {batchResult.errors ?? 0}</div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {/* Search */}
