@@ -31,10 +31,29 @@ interface SourceProfile {
   active: boolean;
 }
 
+interface SourcePost {
+  id: string;
+  source: string | null;
+  published_at: string | null;
+  is_psyop: boolean | null;
+  psyop_risk_score: number | null;
+  threat_level: string | null;
+}
+
+interface SourceRiskStats {
+  source: string;
+  total_posts: number;
+  psyop_posts: number;
+  max_risk: number;
+  avg_risk: number;
+  last_psyop_at: string | null;
+}
+
 export default function SourceIntelligence() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [sources, setSources] = useState<SourceProfile[]>([]);
+  const [posts, setPosts] = useState<SourcePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [alignmentFilter, setAlignmentFilter] = useState('all');
@@ -53,6 +72,16 @@ export default function SourceIntelligence() {
 
       if (error) throw error;
       setSources(data || []);
+
+      const { data: postRows, error: postError } = await supabase
+        .from('posts')
+        .select('id, source, published_at, is_psyop, psyop_risk_score, threat_level')
+        .not('source', 'is', null)
+        .not('published_at', 'is', null)
+        .limit(1000);
+
+      if (postError) throw postError;
+      setPosts(postRows || []);
     } catch (error) {
       console.error('Error fetching sources:', error);
       toast({
@@ -64,20 +93,68 @@ export default function SourceIntelligence() {
     }
   };
 
+  const sourceRiskStats: SourceRiskStats[] = useMemo(() => {
+    const statsMap = new Map<string, {
+      source: string;
+      total_posts: number;
+      psyop_posts: number;
+      risk_sum: number;
+      max_risk: number;
+      last_psyop_at: string | null;
+    }>();
+
+    posts.forEach(post => {
+      if (!post.source) return;
+      const source = post.source;
+      if (!statsMap.has(source)) {
+        statsMap.set(source, {
+          source,
+          total_posts: 0,
+          psyop_posts: 0,
+          risk_sum: 0,
+          max_risk: 0,
+          last_psyop_at: null
+        });
+      }
+
+      const entry = statsMap.get(source)!;
+      entry.total_posts += 1;
+
+      if (post.is_psyop === true && post.psyop_risk_score != null) {
+        entry.psyop_posts += 1;
+        entry.risk_sum += post.psyop_risk_score;
+        entry.max_risk = Math.max(entry.max_risk, post.psyop_risk_score);
+        if (post.published_at) {
+          if (!entry.last_psyop_at || new Date(post.published_at) > new Date(entry.last_psyop_at)) {
+            entry.last_psyop_at = post.published_at;
+          }
+        }
+      }
+    });
+
+    return Array.from(statsMap.values()).map(stat => ({
+      source: stat.source,
+      total_posts: stat.total_posts,
+      psyop_posts: stat.psyop_posts,
+      max_risk: stat.max_risk,
+      avg_risk: stat.psyop_posts > 0 ? stat.risk_sum / stat.psyop_posts : 0,
+      last_psyop_at: stat.last_psyop_at
+    }));
+  }, [posts]);
+
   // KPI Calculations
   const kpis = useMemo(() => {
-    const critical = sources.filter(s => s.threat_multiplier >= 2.0).length;
-    const avgViral = sources.length > 0
-      ? (sources.reduce((sum, s) => sum + s.virality_coefficient, 0) / sources.length).toFixed(1)
+    const critical = sourceRiskStats.filter(s => s.max_risk >= 70).length;
+    const avgViral = sourceRiskStats.length > 0
+      ? (sourceRiskStats.reduce((sum, s) => sum + s.avg_risk, 0) / sourceRiskStats.length).toFixed(1)
       : '0';
-    const enemySources = sources.filter(s =>
-      ['Anti-Resistance', 'Western-Aligned', 'Israeli-Affiliated', 'Saudi-Aligned']
-        .includes(s.political_alignment)
-    ).length;
-    const total30d = sources.reduce((sum, s) => sum + s.last_30days_psyop_count, 0);
+    const enemySources = sourceRiskStats.filter(s => s.max_risk >= 40).length;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const total30d = posts.filter(p => p.is_psyop && p.published_at && new Date(p.published_at) >= thirtyDaysAgo).length;
 
     return { critical, avgViral, enemySources, total30d };
-  }, [sources]);
+  }, [posts, sourceRiskStats]);
 
   // Filtered sources
   const filteredSources = useMemo(() => {
@@ -90,19 +167,20 @@ export default function SourceIntelligence() {
 
   // Top threat sources for bar chart
   const topThreatSources = useMemo(() => {
-    return [...sources]
-      .sort((a, b) => b.threat_multiplier - a.threat_multiplier)
+    return [...sourceRiskStats]
+      .sort((a, b) => b.max_risk - a.max_risk)
       .slice(0, 15)
       .map(s => ({
-        source_name: s.source_name,
-        threat_score: Math.round(s.threat_multiplier * s.reach_score * s.virality_coefficient)
+        source_name: s.source,
+        threat_score: Math.round(s.max_risk),
+        threat_multiplier: s.max_risk
       }));
-  }, [sources]);
+  }, [sourceRiskStats]);
 
   const getThreatColor = (multiplier: number) => {
-    if (multiplier >= 2.0) return 'hsl(var(--destructive))';
-    if (multiplier >= 1.5) return 'hsl(var(--warning))';
-    if (multiplier >= 1.0) return 'hsl(var(--primary))';
+    if (multiplier >= 70) return 'hsl(var(--destructive))';
+    if (multiplier >= 50) return 'hsl(var(--warning))';
+    if (multiplier >= 30) return 'hsl(var(--primary))';
     return 'hsl(var(--success))';
   };
 
@@ -204,11 +282,10 @@ export default function SourceIntelligence() {
               <Tooltip />
               <Bar dataKey="threat_score" fill="hsl(var(--destructive))">
                 {topThreatSources.map((entry, index) => {
-                  const source = sources.find(s => s.source_name === entry.source_name);
                   return (
                     <Cell
                       key={`cell-${index}`}
-                      fill={getThreatColor(source?.threat_multiplier || 1.0)}
+                      fill={getThreatColor(entry.threat_multiplier || 1.0)}
                     />
                   );
                 })}
