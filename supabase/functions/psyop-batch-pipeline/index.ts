@@ -33,12 +33,23 @@ type NeededStages = {
   deepest: boolean;
 };
 
-function computeNeededStages(post: PostRecord, opts: PipelineOptions): NeededStages {
+type PsyopThresholds = {
+  riskThreshold: number;      // base risk decision (psyop vs not)
+  deepThreshold: number;      // when to trigger deep analysis
+  deepestThreshold: number;   // when to trigger deepest analysis / crisis
+};
+
+function computeNeededStages(
+  post: PostRecord,
+  opts: PipelineOptions,
+  thresholds: PsyopThresholds,
+): NeededStages {
   const needsSummarize = opts.runSummarize && (!post.summary || post.summary.trim().length === 0);
   const needsQuick = opts.runQuick && post.psyop_risk_score == null;
   const needsDeep =
     opts.runDeep && post.needs_deep_analysis === true && (post.analysis_summary == null || post.analysis_summary === "");
-  const highRisk = typeof post.psyop_risk_score === "number" && post.psyop_risk_score >= 80;
+  const highRisk =
+    typeof post.psyop_risk_score === "number" && post.psyop_risk_score >= thresholds.deepestThreshold;
   const confirmed = post.is_psyop === true || post.psyop_category === "confirmed_psyop";
   const needsDeepest = opts.runDeepest && highRisk && confirmed && !post.deepest_escalation_level;
 
@@ -193,6 +204,9 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  const thresholds = await loadPsyopThresholds(supabase);
+  console.log("Batch pipeline using psyop thresholds:", thresholds);
+
   try {
     const { posts, error } = await fetchCandidatePosts(supabase, options.maxPosts);
     if (error) {
@@ -202,7 +216,7 @@ serve(async (req) => {
     const selected: { post: PostRecord; stages: NeededStages }[] = [];
 
     for (const post of posts) {
-      const stages = computeNeededStages(post, options);
+      const stages = computeNeededStages(post, options, thresholds);
       if (!stages.summarize && !stages.quick && !stages.deep && !stages.deepest) {
         continue;
       }
@@ -248,3 +262,43 @@ serve(async (req) => {
     );
   }
 });
+
+async function loadPsyopThresholds(supabase: SupabaseClient): Promise<PsyopThresholds> {
+  // default fallback thresholds
+  let thresholds: PsyopThresholds = {
+    riskThreshold: 70,
+    deepThreshold: 75,
+    deepestThreshold: 85,
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from("psyop_calibration_metrics")
+      .select("recommended_risk_threshold, recommended_deep_threshold, recommended_deepest_threshold")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn("Failed to load calibration thresholds, using defaults:", error);
+      return thresholds;
+    }
+
+    const row = data?.[0];
+    if (!row) return thresholds;
+
+    const risk = row.recommended_risk_threshold ?? thresholds.riskThreshold;
+    const deep = row.recommended_deep_threshold ?? thresholds.deepThreshold;
+    const deepest = row.recommended_deepest_threshold ?? thresholds.deepestThreshold;
+
+    thresholds = {
+      riskThreshold: Number.isFinite(risk) ? risk : thresholds.riskThreshold,
+      deepThreshold: Number.isFinite(deep) ? deep : thresholds.deepThreshold,
+      deepestThreshold: Number.isFinite(deepest) ? deepest : thresholds.deepestThreshold,
+    };
+
+    return thresholds;
+  } catch (err) {
+    console.warn("Unexpected error loading thresholds, using defaults:", err);
+    return thresholds;
+  }
+}

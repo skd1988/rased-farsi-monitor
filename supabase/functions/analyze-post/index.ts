@@ -13,6 +13,12 @@ interface ChatRequest {
   conversationHistory?: Array<{ role: string; content: string }>;
 }
 
+type PsyopThresholds = {
+  riskThreshold: number;      // base risk decision (psyop vs not)
+  deepThreshold: number;      // when to trigger deep analysis
+  deepestThreshold: number;   // when to trigger deepest analysis / crisis
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -82,6 +88,9 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const thresholds = await loadPsyopThresholds(supabase);
+    console.log("Deep analysis using psyop thresholds:", thresholds);
 
     console.log(`Processing question: "${question}"`);
 
@@ -367,5 +376,45 @@ async function logAPIUsage(supabase: any, question: string, usage: any) {
   } catch (error) {
     console.error("Error logging API usage:", error);
     // Don't throw - logging failure shouldn't break the chat
+  }
+}
+
+async function loadPsyopThresholds(supabase: any): Promise<PsyopThresholds> {
+  // default fallback thresholds
+  let thresholds: PsyopThresholds = {
+    riskThreshold: 70,
+    deepThreshold: 75,
+    deepestThreshold: 85,
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from("psyop_calibration_metrics")
+      .select("recommended_risk_threshold, recommended_deep_threshold, recommended_deepest_threshold")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn("Failed to load calibration thresholds, using defaults:", error);
+      return thresholds;
+    }
+
+    const row = data?.[0];
+    if (!row) return thresholds;
+
+    const risk = row.recommended_risk_threshold ?? thresholds.riskThreshold;
+    const deep = row.recommended_deep_threshold ?? thresholds.deepThreshold;
+    const deepest = row.recommended_deepest_threshold ?? thresholds.deepestThreshold;
+
+    thresholds = {
+      riskThreshold: Number.isFinite(risk) ? risk : thresholds.riskThreshold,
+      deepThreshold: Number.isFinite(deep) ? deep : thresholds.deepThreshold,
+      deepestThreshold: Number.isFinite(deepest) ? deepest : thresholds.deepestThreshold,
+    };
+
+    return thresholds;
+  } catch (err) {
+    console.warn("Unexpected error loading thresholds, using defaults:", err);
+    return thresholds;
   }
 }
