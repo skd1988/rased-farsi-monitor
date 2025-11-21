@@ -518,22 +518,24 @@ const PsyOpDetection = () => {
       </div>
 
       {/* Quick Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-primary">{stats.total}</div>
-          <div className="text-sm text-muted-foreground">مجموع جنگ روانی</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-danger">{stats.critical}</div>
-          <div className="text-sm text-muted-foreground">بحرانی</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-orange-600">{stats.high}</div>
-          <div className="text-sm text-muted-foreground">بالا</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-success">{stats.avgConfidence}%</div>
-          <div className="text-sm text-muted-foreground">میانگین اطمینان</div>
+      <div className="border border-slate-700 rounded-xl p-3 bg-slate-900/60 space-y-3 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-primary">{stats.total}</div>
+            <div className="text-sm text-muted-foreground">مجموع جنگ روانی</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-danger">{stats.critical}</div>
+            <div className="text-sm text-muted-foreground">بحرانی</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">{stats.high}</div>
+            <div className="text-sm text-muted-foreground">بالا</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-success">{stats.avgConfidence}%</div>
+            <div className="text-sm text-muted-foreground">میانگین اطمینان</div>
+          </div>
         </div>
       </div>
 
