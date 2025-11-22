@@ -26,6 +26,8 @@ interface AnalyzedPost {
   source: string;
   author: string;
   published_at: string;
+
+  // General AI analysis
   analysis_summary: string | null;
   sentiment: string | null;
   sentiment_score: number | null;
@@ -43,6 +45,28 @@ interface AnalyzedPost {
   created_at: string;
   updated_at: string;
   analysis_model: string | null;
+
+  // PsyOp quick / deep fields
+  is_psyop?: boolean | null;
+  psyop_confidence?: number | null;
+  psyop_risk_score?: number | null;
+  stance_type?: string | null;
+  psyop_category?: string | null;
+  psyop_techniques?: string[] | null;
+
+  // 3-level analysis stage
+  analysis_stage?: "quick" | "deep" | "deepest" | null;
+  quick_analyzed_at?: string | null;
+  deep_analyzed_at?: string | null;
+  deepest_analysis_completed_at?: string | null;
+
+  // Deepest (crisis) analysis fields
+  deepest_escalation_level?: string | null;
+  deepest_strategic_summary?: string | null;
+  deepest_key_risks?: string[] | null;
+  deepest_audience_segments?: string[] | null;
+  deepest_recommended_actions?: string[] | null;
+  deepest_monitoring_indicators?: string[] | null;
 }
 
 const AIAnalysis = () => {
@@ -54,6 +78,9 @@ const AIAnalysis = () => {
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
   const [topicFilter, setTopicFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("threat");
+  const [psyopFilter, setPsyopFilter] = useState<"all" | "psyop" | "non_psyop">("all");
+  const [stageFilter, setStageFilter] = useState<"all" | "quick" | "deep" | "deepest">("all");
+  const [deepestOnly, setDeepestOnly] = useState<boolean>(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState<AnalyzedPost | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -67,7 +94,7 @@ const AIAnalysis = () => {
   useEffect(() => {
     applyFilters();
     setCurrentPage(1); // Reset to first page when filters change
-  }, [posts, searchQuery, threatFilter, sentimentFilter, topicFilter, sortBy]);
+  }, [posts, searchQuery, threatFilter, sentimentFilter, topicFilter, sortBy, psyopFilter, stageFilter, deepestOnly]);
 
   const fetchAnalyzedPosts = async () => {
     try {
@@ -82,7 +109,47 @@ const AIAnalysis = () => {
       while (hasMore) {
         const { data, error } = await supabase
           .from("posts")
-          .select("*")
+          .select(`
+            id,
+            title,
+            contents,
+            source,
+            author,
+            published_at,
+            analysis_summary,
+            sentiment,
+            sentiment_score,
+            main_topic,
+            threat_level,
+            confidence,
+            key_points,
+            recommended_action,
+            analyzed_at,
+            processing_time,
+            article_url,
+            keywords,
+            language,
+            status,
+            created_at,
+            updated_at,
+            analysis_model,
+            is_psyop,
+            psyop_confidence,
+            psyop_risk_score,
+            stance_type,
+            psyop_category,
+            psyop_techniques,
+            analysis_stage,
+            quick_analyzed_at,
+            deep_analyzed_at,
+            deepest_analysis_completed_at,
+            deepest_escalation_level,
+            deepest_strategic_summary,
+            deepest_key_risks,
+            deepest_audience_segments,
+            deepest_recommended_actions,
+            deepest_monitoring_indicators
+          `)
           .not("analyzed_at", "is", null)
           .order("analyzed_at", { ascending: false })
           .range(from, from + batchSize - 1);
@@ -119,34 +186,66 @@ const AIAnalysis = () => {
   const applyFilters = () => {
     let filtered = [...posts];
 
+    // Text search on title and analysis summary
     if (searchQuery) {
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (post) =>
-          post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          post.analysis_summary?.toLowerCase().includes(searchQuery.toLowerCase()),
+          post.title.toLowerCase().includes(q) ||
+          post.analysis_summary?.toLowerCase().includes(q),
       );
     }
 
+    // Threat level filter
     if (threatFilter !== "all") {
       filtered = filtered.filter((post) => post.threat_level === threatFilter);
     }
 
+    // Sentiment filter
     if (sentimentFilter !== "all") {
       filtered = filtered.filter((post) => post.sentiment === sentimentFilter);
     }
 
+    // Topic filter
     if (topicFilter !== "all") {
       filtered = filtered.filter((post) => post.main_topic === topicFilter);
     }
 
+    // NEW: PsyOp filter (all / psyop / non-psyop)
+    if (psyopFilter === "psyop") {
+      filtered = filtered.filter((post) => post.is_psyop === true);
+    } else if (psyopFilter === "non_psyop") {
+      filtered = filtered.filter((post) => !post.is_psyop);
+    }
+
+    // NEW: Stage filter (all / quick / deep / deepest)
+    if (stageFilter !== "all") {
+      filtered = filtered.filter((post) => post.analysis_stage === stageFilter);
+    }
+
+    // NEW: Deepest-only (crisis) filter
+    if (deepestOnly) {
+      filtered = filtered.filter((post) => !!post.deepest_analysis_completed_at);
+    }
+
+    // Sorting
     filtered.sort((a, b) => {
       if (sortBy === "threat") {
-        const threatOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-        return threatOrder[a.threat_level] - threatOrder[b.threat_level];
+        const threatOrder: Record<string, number> = {
+          Critical: 0,
+          High: 1,
+          Medium: 2,
+          Low: 3,
+        };
+        const aRank = threatOrder[a.threat_level || "Low"] ?? 3;
+        const bRank = threatOrder[b.threat_level || "Low"] ?? 3;
+        return aRank - bRank;
       } else if (sortBy === "newest") {
-        return new Date(b.analyzed_at).getTime() - new Date(a.analyzed_at).getTime();
+        return new Date(b.analyzed_at || b.published_at).getTime() -
+          new Date(a.analyzed_at || a.published_at).getTime();
       } else if (sortBy === "oldest") {
-        return new Date(a.analyzed_at).getTime() - new Date(b.analyzed_at).getTime();
+        return new Date(a.analyzed_at || a.published_at).getTime() -
+          new Date(b.analyzed_at || b.published_at).getTime();
       }
       return 0;
     });
@@ -159,6 +258,12 @@ const AIAnalysis = () => {
     critical: posts.filter((p) => p.threat_level === "Critical").length,
     high: posts.filter((p) => p.threat_level === "High").length,
     negative: posts.filter((p) => p.sentiment === "Negative").length,
+    psyopCount: posts.filter((p) => p.is_psyop).length,
+    quickOnly: posts.filter((p) => p.analysis_stage === "quick").length,
+    deepDone: posts.filter((p) => p.analysis_stage === "deep").length,
+    deepestDone: posts.filter(
+      (p) => p.analysis_stage === "deepest" || p.deepest_analysis_completed_at,
+    ).length,
   };
 
   const allTopics = Array.from(new Set(posts.map((p) => p.main_topic).filter(Boolean)));
@@ -277,11 +382,16 @@ const AIAnalysis = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <StatsCard title="تحلیل شده" value={stats.analyzed} icon="🤖" color="blue" />
           <StatsCard title="تهدید بحرانی" value={stats.critical} icon="🔴" color="red" pulse={stats.critical > 0} />
           <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
           <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
+
+          <StatsCard title="محتوای جنگ روانی (PsyOp)" value={stats.psyopCount} icon="🎯" color="purple" />
+          <StatsCard title="فقط Quick" value={stats.quickOnly} icon="⚡" color="cyan" />
+          <StatsCard title="تحلیل عمیق (Deep)" value={stats.deepDone} icon="🔬" color="emerald" />
+          <StatsCard title="تحلیل بحران (Deepest)" value={stats.deepestDone} icon="🔥" color="rose" pulse={stats.deepestDone > 0} />
         </div>
 
         {/* Filters */}
@@ -334,16 +444,42 @@ const AIAnalysis = () => {
               </SelectContent>
             </Select>
 
-            <Select value={sortBy} onValueChange={setSortBy}>
+            {/* NEW: PsyOp filter */}
+            <Select value={psyopFilter} onValueChange={(value) => setPsyopFilter(value as "all" | "psyop" | "non_psyop")}>
               <SelectTrigger>
-                <SelectValue placeholder="مرتب‌سازی" />
+                <SelectValue placeholder="نوع محتوا" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="threat">تهدید بحرانی → پایین</SelectItem>
-                <SelectItem value="newest">جدیدترین</SelectItem>
-                <SelectItem value="oldest">قدیمی‌ترین</SelectItem>
+                <SelectItem value="all">همه محتواها</SelectItem>
+                <SelectItem value="psyop">فقط جنگ روانی (PsyOp)</SelectItem>
+                <SelectItem value="non_psyop">محتوای غیر PsyOp</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* NEW: Stage filter */}
+            <Select value={stageFilter} onValueChange={(value) => setStageFilter(value as "all" | "quick" | "deep" | "deepest")}>
+              <SelectTrigger>
+                <SelectValue placeholder="مرحله تحلیل" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">همه مراحل</SelectItem>
+                <SelectItem value="quick">Quick</SelectItem>
+                <SelectItem value="deep">Deep</SelectItem>
+                <SelectItem value="deepest">Deepest</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="mt-3 flex justify-end">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={deepestOnly}
+                onChange={(e) => setDeepestOnly(e.target.checked)}
+              />
+              فقط موارد دارای تحلیل بحران (Deepest)
+            </label>
           </div>
         </div>
 
