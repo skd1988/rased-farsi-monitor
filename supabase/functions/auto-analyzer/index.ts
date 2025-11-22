@@ -141,23 +141,53 @@ serve(async (req) => {
         }
 
         const quickData = await quickResponse.json();
-        console.log(`✅ Quick analysis: is_psyop=${quickData.result?.is_psyop ?? quickData.is_psyop}, threat=${quickData.result?.threat_level ?? quickData.threat_level}`);
+        const quick = quickData.result || quickData;
+
+        const isPsyop = quick.is_psyop === true;
+        const threatLevel = quick.threat_level || "Low";
+        const riskScore =
+          typeof quick.psyop_risk_score === "number"
+            ? quick.psyop_risk_score
+            : typeof quick.riskScore === "number"
+              ? quick.riskScore
+              : 0;
+
+        const needsDeep = quick.needs_deep_analysis === true;
+        const needsDeepest = quick.needs_deepest_analysis === true;
+
+        const isHighThreat = threatLevel === "High" || threatLevel === "Critical";
+
+        let runDeepest = false;
+        let runDeep = false;
+
+        if (needsDeepest) {
+          runDeepest = true;
+        } else if (needsDeep) {
+          runDeep = true;
+        } else {
+          if (isPsyop && isHighThreat) {
+            runDeep = true;
+          } else if (isPsyop && riskScore >= 50) {
+            runDeep = true;
+          } else if (isHighThreat && riskScore >= 50) {
+            runDeep = true;
+          }
+        }
+
+        console.log(`✅ Quick analysis: is_psyop=${isPsyop}, threat=${threatLevel}, riskScore=${riskScore}`);
 
         // Update post with quick analysis results
         await supabase
           .from('posts')
           .update({
-            is_psyop: quickData.result.is_psyop,
-            threat_level: quickData.result.threat_level,
+            is_psyop: quick.is_psyop,
+            threat_level: threatLevel,
             analysis_stage: 'quick',
             analyzed_at: new Date().toISOString()
           })
           .eq('id', item.post_id);
 
-        const needsDeepest = quickData.needs_deepest_analysis ?? quickData.result?.needs_deepest_analysis;
-        const needsDeep = quickData.needs_deep_analysis ?? quickData.result?.needs_deep_analysis;
-
-        if (needsDeepest) {
+        if (runDeepest) {
           console.log(`🧠 [AutoAnalyzer] Running DEEPEST analysis for post ${item.post_id}...`);
 
           const deepestResponse = await fetch(
@@ -178,9 +208,9 @@ serve(async (req) => {
           if (!deepestResponse.ok) {
             console.error("Deepest analysis failed for post:", item.post_id, await deepestResponse.text());
           } else {
-            console.log(`✅ [AutoAnalyzer] Deepest analysis completed for post ${item.post_id}`);
+            console.log(`✅ [AutoAnalyzer] Deepest-level analysis completed for post ${item.post_id}`);
           }
-        } else if (needsDeep) {
+        } else if (runDeep) {
           console.log(`🔬 [AutoAnalyzer] Running deep analysis for post ${item.post_id}...`);
 
           const deepResponse = await fetch(
@@ -208,6 +238,10 @@ serve(async (req) => {
           } else {
             console.log(`✅ Deep analysis completed`);
           }
+        } else {
+          console.log(
+            `ℹ️ [AutoAnalyzer] Skipping deep analysis for post ${item.post_id} (low risk according to quick).`
+          );
         }
 
         // Mark queue item as completed
