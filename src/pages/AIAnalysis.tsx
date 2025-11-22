@@ -388,10 +388,16 @@ const AIAnalysis = () => {
           <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
           <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
 
-          <StatsCard title="محتوای جنگ روانی (PsyOp)" value={stats.psyopCount} icon="🎯" color="purple" />
-          <StatsCard title="فقط Quick" value={stats.quickOnly} icon="⚡" color="cyan" />
-          <StatsCard title="تحلیل عمیق (Deep)" value={stats.deepDone} icon="🔬" color="emerald" />
-          <StatsCard title="تحلیل بحران (Deepest)" value={stats.deepestDone} icon="🔥" color="rose" pulse={stats.deepestDone > 0} />
+          <StatsCard title="محتوای جنگ روانی (PsyOp)" value={stats.psyopCount} icon="🎯" color="red" />
+          <StatsCard title="فقط Quick" value={stats.quickOnly} icon="⚡" color="blue" />
+          <StatsCard title="تحلیل عمیق (Deep)" value={stats.deepDone} icon="🔬" color="orange" />
+          <StatsCard
+            title="تحلیل بحران (Deepest)"
+            value={stats.deepestDone}
+            icon="🔥"
+            color="red"
+            pulse={stats.deepestDone > 0}
+          />
         </div>
 
         {/* Filters */}
