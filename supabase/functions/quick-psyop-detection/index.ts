@@ -50,8 +50,34 @@ serve(async (req) => {
       .eq("id", postId)
       .single();
 
-    const snippetRaw = postContent?.summary || postContent?.contents || "";
-    const snippet = snippetRaw.slice(0, 500);
+    const rawSummary = (postContent?.summary || "").trim();
+    const rawContents = (postContent?.contents || "").trim();
+
+    // Build a richer composite snippet to give the LLM more representative context
+    const MAX_CHARS = 4000;
+    let combined = "";
+
+    if (rawSummary.length > 0) {
+      combined += `Summary:\n${rawSummary}\n\n`;
+    }
+
+    if (rawContents.length <= MAX_CHARS) {
+      combined += `Full content:\n${rawContents}`;
+    } else {
+      const len = rawContents.length;
+      const segmentSize = Math.floor((MAX_CHARS - combined.length) / 3);
+
+      const start = rawContents.slice(0, segmentSize);
+      const middleStart = Math.max(Math.floor(len / 2) - Math.floor(segmentSize / 2), 0);
+      const middle = rawContents.slice(middleStart, middleStart + segmentSize);
+      const end = rawContents.slice(-segmentSize);
+
+      combined += `Content (start):\n${start}\n\n`;
+      combined += `Content (middle):\n${middle}\n\n`;
+      combined += `Content (end):\n${end}`;
+    }
+
+    const snippet = combined.slice(0, MAX_CHARS);
 
     // Build quick screening prompt
     const prompt = buildQuickPrompt(title, source, language, entityList, snippet);
@@ -303,8 +329,8 @@ INPUT CONTENT
 - Language: ${language}
 - Axis of Resistance entities (possible targets): ${entityList}
 
-Content excerpt (may be empty if not available):
-${snippet || '[no excerpt available]'}
+Content excerpts (summary + key segments of the post):
+${snippet || '[no content available]'}
 
 =====================
 KEY DEFINITIONS
@@ -417,10 +443,12 @@ function shouldDoDeepAnalysis(
     typeof result.confidence === "number" ? result.confidence : 50;
 
   const highRisk = riskScore >= thresholds.deepThreshold;
+  const highThreat = level === "High" || level === "Critical";
 
   return (
     result.is_psyop === true ||
-    (highRisk && (level === "High" || level === "Critical")) ||
+    (highRisk && highThreat) ||
+    (highRisk && confidence >= 60) ||
     (confidence >= 70 && level === "Medium")
   );
 }
@@ -557,9 +585,9 @@ type PsyopThresholds = {
 
 async function loadPsyopThresholds(supabase: any): Promise<PsyopThresholds> {
   let thresholds: PsyopThresholds = {
-    riskThreshold: 70,
-    deepThreshold: 75,
-    deepestThreshold: 85,
+    riskThreshold: 60,
+    deepThreshold: 65,
+    deepestThreshold: 80,
   };
 
   try {

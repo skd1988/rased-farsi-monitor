@@ -169,8 +169,12 @@ serve(async (req) => {
           console.log(`  📊 Starting quick detection...`);
           quickResult = await performQuickDetection(post);
           const quickTime = Date.now() - postStartTime;
-          
-          console.log(`  ✅ Quick result - PsyOp: ${quickResult.is_psyop}, Threat: ${quickResult.threat_level}, Time: ${quickTime}ms`);
+
+          const quick = quickResult.result || quickResult;
+          const quickIsPsyop = quick.is_psyop === true;
+          const quickThreat = quick.threat_level || 'Low';
+
+          console.log(`  ✅ Quick result - PsyOp: ${quickIsPsyop}, Threat: ${quickThreat}, Time: ${quickTime}ms`);
           
         } catch (error) {
           console.error(`  ❌ Quick detection failed for post ${post.id}:`, error);
@@ -212,8 +216,41 @@ serve(async (req) => {
           continue;
         }
         
+        const quick = quickResult.result || quickResult;
+
+        const isPsyop = quick.is_psyop === true;
+        const threatLevel = quick.threat_level || 'Low';
+        const riskScore =
+          typeof quick.psyop_risk_score === 'number'
+            ? quick.psyop_risk_score
+            : typeof quick.riskScore === 'number'
+              ? quick.riskScore
+              : 0;
+
+        const needsDeepest = quick.needs_deepest_analysis === true;
+        const needsDeep = quick.needs_deep_analysis === true;
+
+        const isHighThreat = threatLevel === 'High' || threatLevel === 'Critical';
+
+        let runDeepest = false;
+        let runDeep = false;
+
+        if (needsDeepest) {
+          runDeepest = true;
+        } else if (needsDeep) {
+          runDeep = true;
+        } else {
+          if (isPsyop && isHighThreat) {
+            runDeep = true;
+          } else if (isPsyop && riskScore >= 50) {
+            runDeep = true;
+          } else if (isHighThreat && riskScore >= 50) {
+            runDeep = true;
+          }
+        }
+
         // STAGE 2: Deep / Deepest Analysis (if needed)
-        if (quickResult.needs_deepest_analysis) {
+        if (runDeepest) {
           try {
             await supabase
               .from('batch_analysis_progress')
@@ -271,7 +308,7 @@ serve(async (req) => {
             });
           }
 
-        } else if (quickResult.needs_deep_analysis) {
+        } else if (runDeep) {
           try {
             await supabase
               .from('batch_analysis_progress')
