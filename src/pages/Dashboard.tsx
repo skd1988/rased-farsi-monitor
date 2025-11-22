@@ -238,17 +238,33 @@ const Dashboard = () => {
 
   // Two-stage analysis breakdown
   const analysisBreakdown = useMemo(() => {
-    const analyzed = posts.filter(post => post.analyzed_at);
-    const quickCount = analyzed.filter(post => post.analysis_stage === 'quick').length;
-    const deepCount = analyzed.filter(post => post.analysis_stage === 'deep').length;
+    const analyzed = posts.filter((post) => post.analyzed_at);
+
+    const quickCount = analyzed.filter(
+      (post) => post.analysis_stage === 'quick'
+    ).length;
+
+    const deepCount = analyzed.filter(
+      (post) => post.analysis_stage === 'deep'
+    ).length;
+
+    const deepestCount = analyzed.filter(
+      (post) => post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at
+    ).length;
+
     const totalAnalyzed = analyzed.length;
-    
+
+    const toPercent = (value: number) =>
+      totalAnalyzed > 0 ? Math.round((value / totalAnalyzed) * 100) : 0;
+
     return {
       total: totalAnalyzed,
       quick: quickCount,
       deep: deepCount,
-      quickPercentage: totalAnalyzed > 0 ? Math.round((quickCount / totalAnalyzed) * 100) : 0,
-      deepPercentage: totalAnalyzed > 0 ? Math.round((deepCount / totalAnalyzed) * 100) : 0
+      deepest: deepestCount,
+      quickPercentage: toPercent(quickCount),
+      deepPercentage: toPercent(deepCount),
+      deepestPercentage: toPercent(deepestCount),
     };
   }, [posts]);
 
@@ -861,23 +877,37 @@ const Dashboard = () => {
         <KPICard
           title="پست‌های تحلیل شده"
           value={analysisBreakdown.total}
-          subtitle="روش دومرحله‌ای فعال است ✅"
+          subtitle="سیستم تحلیل سه‌سطحی فعال است ✅"
           icon={Brain}
           gradient="purple"
           onClick={() => navigate('/posts')}
           tooltip={
             <div className="text-xs space-y-2">
-              <div className="font-bold mb-2">تفکیک تحلیل:</div>
+              <div className="font-bold mb-2">تفکیک مراحل تحلیل:</div>
+
               <div className="flex items-center justify-between gap-4">
-                <span>تحلیل سریع:</span>
-                <span className="font-bold text-green-400">{analysisBreakdown.quick} ({analysisBreakdown.quickPercentage}%)</span>
+                <span>تحلیل سریع (Quick):</span>
+                <span className="font-bold text-green-400">
+                  {analysisBreakdown.quick} ({analysisBreakdown.quickPercentage}%)
+                </span>
               </div>
+
               <div className="flex items-center justify-between gap-4">
-                <span>تحلیل عمیق:</span>
-                <span className="font-bold text-red-400">{analysisBreakdown.deep} ({analysisBreakdown.deepPercentage}%)</span>
+                <span>تحلیل عمیق (Deep):</span>
+                <span className="font-bold text-yellow-400">
+                  {analysisBreakdown.deep} ({analysisBreakdown.deepPercentage}%)
+                </span>
               </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span>تحلیل بحران (Deepest):</span>
+                <span className="font-bold text-red-400">
+                  {analysisBreakdown.deepest} ({analysisBreakdown.deepestPercentage}%)
+                </span>
+              </div>
+
               <div className="pt-2 border-t border-gray-600 text-gray-300">
-                روش دومرحله‌ای 70% سریع‌تر است
+                سیستم تحلیل سه‌سطحی (Quick / Deep / Deepest) برای پایش مداوم محتوای حساس فعال است.
               </div>
             </div>
           }
