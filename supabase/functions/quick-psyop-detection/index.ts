@@ -32,7 +32,7 @@ serve(async (req) => {
     );
     
     const thresholds = await loadPsyopThresholds(supabase);
-    console.log("Using psyop thresholds:", thresholds);
+    console.log("Quick detection thresholds:", thresholds);
 
     // Load entity list for reference
     const { data: entities } = await supabase
@@ -202,6 +202,7 @@ serve(async (req) => {
     // Validate and normalize result
     const riskScore = calculateRiskScore(result);
     const needsDeep = shouldDoDeepAnalysis(result, thresholds, riskScore);
+    const needsDeepest = shouldDoDeepestAnalysis(result, thresholds, riskScore);
 
     const normalizedResult = {
       is_psyop: result.is_psyop === true || result.is_psyop === "true" || result.is_psyop === "Yes",
@@ -211,7 +212,9 @@ serve(async (req) => {
       stance_type: stanceType,
       psyop_category: psyopCategory,
       psyop_techniques: psyopTechniques,
+      psyop_risk_score: riskScore,
       needs_deep_analysis: needsDeep,
+      needs_deepest_analysis: needsDeepest,
       stage: "quick_detection",
       parsing_status: parsingStatus
     };
@@ -407,41 +410,48 @@ Do NOT include any explanation, commentary, or extra text. Return only valid JSO
 function shouldDoDeepAnalysis(
   result: any,
   thresholds: PsyopThresholds,
-  riskScore: number,
+  riskScore: number
 ): boolean {
-  if (!result) return false;
-
   const level = (result.threat_level || "Low") as string;
   const confidence =
-    typeof result.confidence === "number" ? result.confidence :
-    typeof result.confidence === "string" ? parseInt(result.confidence, 10) :
-    50;
+    typeof result.confidence === "number" ? result.confidence : 50;
 
-  const techniques = Array.isArray(result.psyop_techniques)
-    ? (result.psyop_techniques as string[])
-    : [];
-
-  const isPsyop =
-    result.is_psyop === true ||
-    result.is_psyop === "true" ||
-    result.psyop_category === "confirmed_psyop";
-
-  const category = (result.psyop_category || "none") as string;
-  const severe = ["demonization", "fear_mongering", "disinformation", "character_assassination"];
-  const hasSevere = techniques.some((t) => severe.includes(t));
-
-  const normalizedConfidence = Math.min(100, Math.max(0, confidence));
   const highRisk = riskScore >= thresholds.deepThreshold;
-  const crisisRisk = riskScore >= thresholds.deepestThreshold;
 
   return (
-    isPsyop === true ||
+    result.is_psyop === true ||
+    (highRisk && (level === "High" || level === "Critical")) ||
+    (confidence >= 70 && level === "Medium")
+  );
+}
+
+function shouldDoDeepestAnalysis(
+  result: any,
+  thresholds: PsyopThresholds,
+  riskScore: number
+): boolean {
+  const level = (result.threat_level || "Low") as string;
+  const confidence =
+    typeof result.confidence === "number" ? result.confidence : 50;
+
+  const category = result.psyop_category || "none";
+  const techniques: string[] = Array.isArray(result.psyop_techniques)
+    ? result.psyop_techniques
+    : [];
+
+  const crisisRisk = riskScore >= thresholds.deepestThreshold;
+
+  const hasSevereTechniques = techniques.some((t) =>
+    ["disinformation", "fear_mongering", "division_creation"].includes(t)
+  );
+
+  return (
     crisisRisk ||
-    (highRisk && (category === "confirmed_psyop" || category === "potential_psyop")) ||
-    (isPsyop && (level === "High" || level === "Critical") && normalizedConfidence >= 70 && riskScore >= thresholds.riskThreshold) ||
-    (hasSevere && highRisk) ||
-    (highRisk && level === "High") ||
-    (normalizedConfidence >= 70 && level === "Medium")
+    (result.is_psyop === true &&
+      (level === "Critical" ||
+        (level === "High" && confidence >= 80) ||
+        category === "confirmed_psyop" ||
+        (category === "potential_psyop" && hasSevereTechniques)))
   );
 }
 
@@ -540,13 +550,12 @@ function calculateCost(inputTokens: number, outputTokens: number): number {
 }
 
 type PsyopThresholds = {
-  riskThreshold: number;      // base risk decision (psyop vs not)
-  deepThreshold: number;      // when to trigger deep analysis
-  deepestThreshold: number;   // when to trigger deepest analysis / crisis
+  riskThreshold: number;
+  deepThreshold: number;
+  deepestThreshold: number;
 };
 
 async function loadPsyopThresholds(supabase: any): Promise<PsyopThresholds> {
-  // default fallback thresholds
   let thresholds: PsyopThresholds = {
     riskThreshold: 70,
     deepThreshold: 75,
@@ -556,12 +565,14 @@ async function loadPsyopThresholds(supabase: any): Promise<PsyopThresholds> {
   try {
     const { data, error } = await supabase
       .from("psyop_calibration_metrics")
-      .select("recommended_risk_threshold, recommended_deep_threshold, recommended_deepest_threshold")
+      .select(
+        "recommended_risk_threshold, recommended_deep_threshold, recommended_deepest_threshold"
+      )
       .order("created_at", { ascending: false })
       .limit(1);
 
     if (error) {
-      console.warn("Failed to load calibration thresholds, using defaults:", error);
+      console.warn("Failed to load psyop thresholds, using defaults:", error);
       return thresholds;
     }
 
