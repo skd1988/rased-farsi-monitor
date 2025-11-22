@@ -141,7 +141,7 @@ serve(async (req) => {
         }
 
         const quickData = await quickResponse.json();
-        console.log(`✅ Quick analysis: is_psyop=${quickData.result.is_psyop}, threat=${quickData.result.threat_level}`);
+        console.log(`✅ Quick analysis: is_psyop=${quickData.result?.is_psyop ?? quickData.is_psyop}, threat=${quickData.result?.threat_level ?? quickData.threat_level}`);
 
         // Update post with quick analysis results
         await supabase
@@ -154,10 +154,35 @@ serve(async (req) => {
           })
           .eq('id', item.post_id);
 
-        // If needs deep analysis, call analyze-post-deepseek
-        if (quickData.result.needs_deep_analysis) {
-          console.log(`🔬 Running deep analysis...`);
-          
+        const needsDeepest = quickData.needs_deepest_analysis ?? quickData.result?.needs_deepest_analysis;
+        const needsDeep = quickData.needs_deep_analysis ?? quickData.result?.needs_deep_analysis;
+
+        if (needsDeepest) {
+          console.log(`🧠 [AutoAnalyzer] Running DEEPEST analysis for post ${item.post_id}...`);
+
+          const deepestResponse = await fetch(
+            `${supabaseUrl}/functions/v1/analyze-post-deepest`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`
+              },
+              body: JSON.stringify({
+                postId: item.post_id,
+                quickResult: quickData
+              })
+            }
+          );
+
+          if (!deepestResponse.ok) {
+            console.error("Deepest analysis failed for post:", item.post_id, await deepestResponse.text());
+          } else {
+            console.log(`✅ [AutoAnalyzer] Deepest analysis completed for post ${item.post_id}`);
+          }
+        } else if (needsDeep) {
+          console.log(`🔬 [AutoAnalyzer] Running deep analysis for post ${item.post_id}...`);
+
           const deepResponse = await fetch(
             `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
             {
