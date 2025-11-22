@@ -32,33 +32,48 @@ import { useNewAuth } from '@/contexts/NewAuthContext';
 interface PsyOpPost {
   id: string;
   title: string;
-  source: string | null;
-  published_at: string | null;
-  threat_level: string | null;
-  psyop_confidence: number | null;
-  narrative_theme: string | null;
-  psyop_technique: string[] | null;
-  target_entity: string | null;
-  analysis_summary: string | null;
-  sentiment: string | null;
-  keywords: string[] | null;
+  contents: string;
+  source: string;
+  author?: string | null;
+  published_at: string;
+
+  // Core PsyOp fields
+  is_psyop: boolean;
+  psyop_confidence?: number | null;
   psyop_risk_score?: number | null;
-  is_psyop?: boolean | null;
-  urgency_level?: string | null;
-  virality_potential?: number | null;
+  threat_level?: "Critical" | "High" | "Medium" | "Low" | null;
   stance_type?: string | null;
   psyop_category?: string | null;
   psyop_techniques?: string[] | null;
+
   psyop_review_status?: string | null;
-  psyop_reviewed_at?: string | null;
-  psyop_review_notes?: string | null;
+  psyop_notes?: string | null;
+
+  // 3-level analysis stage
+  analysis_stage?: "quick" | "deep" | "deepest" | null;
+  quick_analyzed_at?: string | null;
+  deep_analyzed_at?: string | null;
+  deepest_analysis_completed_at?: string | null;
+
+  // Deepest (crisis) analysis fields
   deepest_escalation_level?: string | null;
   deepest_strategic_summary?: string | null;
   deepest_key_risks?: string[] | null;
   deepest_audience_segments?: string[] | null;
   deepest_recommended_actions?: string[] | null;
   deepest_monitoring_indicators?: string[] | null;
-  deepest_analysis_completed_at?: string | null;
+
+  // Additional fields preserved from previous interface
+  narrative_theme: string | null;
+  psyop_technique: string[] | null;
+  target_entity: string | null;
+  analysis_summary: string | null;
+  sentiment: string | null;
+  keywords: string[] | null;
+  urgency_level?: string | null;
+  virality_potential?: number | null;
+  psyop_reviewed_at?: string | null;
+  psyop_review_notes?: string | null;
 }
 
 type BatchResult = {
@@ -102,6 +117,7 @@ const PsyOpDetection = () => {
     to: new Date(),
   });
   const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [stageFilter, setStageFilter] = useState<'all' | 'quick' | 'deep' | 'deepest'>('all');
 
   // View and sort
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -146,7 +162,43 @@ const PsyOpDetection = () => {
       // Build query with filters
       let query = supabase
         .from('posts')
-        .select('id, title, source, published_at, threat_level, psyop_confidence, narrative_theme, psyop_technique, target_entity, analysis_summary, sentiment, keywords, psyop_risk_score, is_psyop, urgency_level, virality_potential, stance_type, psyop_category, psyop_techniques, psyop_review_status, psyop_reviewed_at, psyop_review_notes, deepest_escalation_level, deepest_strategic_summary, deepest_key_risks, deepest_audience_segments, deepest_recommended_actions, deepest_monitoring_indicators, deepest_analysis_completed_at', { count: 'exact' })
+        .select(`
+      id,
+      title,
+      contents,
+      source,
+      author,
+      published_at,
+      is_psyop,
+      psyop_confidence,
+      psyop_risk_score,
+      threat_level,
+      stance_type,
+      psyop_category,
+      psyop_techniques,
+      psyop_review_status,
+      psyop_notes,
+      analysis_stage,
+      quick_analyzed_at,
+      deep_analyzed_at,
+      deepest_analysis_completed_at,
+      deepest_escalation_level,
+      deepest_strategic_summary,
+      deepest_key_risks,
+      deepest_audience_segments,
+      deepest_recommended_actions,
+      deepest_monitoring_indicators,
+      narrative_theme,
+      psyop_technique,
+      target_entity,
+      analysis_summary,
+      sentiment,
+      keywords,
+      urgency_level,
+      virality_potential,
+      psyop_reviewed_at,
+      psyop_review_notes
+    `, { count: 'exact' })
         .eq('is_psyop', true);
 
       if (riskFilter === 'high') {
@@ -294,6 +346,10 @@ const PsyOpDetection = () => {
       filtered = filtered.filter(p => (p.psyop_category ?? 'none') === categoryFilter);
     }
 
+    if (stageFilter !== 'all') {
+      filtered = filtered.filter(p => p.analysis_stage === stageFilter);
+    }
+
     if (riskFilter === 'high') {
       filtered = filtered.filter(p => (p.psyop_risk_score ?? 0) >= 70);
     } else if (riskFilter === 'medium') {
@@ -316,7 +372,7 @@ const PsyOpDetection = () => {
     }
 
     return filtered;
-  }, [posts, searchQuery, riskFilter, stanceFilter, categoryFilter, reviewFilter]);
+  }, [posts, searchQuery, riskFilter, stanceFilter, categoryFilter, reviewFilter, stageFilter]);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
@@ -358,9 +414,14 @@ const PsyOpDetection = () => {
       total: psyops.length,
       critical: psyops.filter(p => p.threat_level === 'Critical').length,
       high: psyops.filter(p => p.threat_level === 'High').length,
-      avgConfidence: psyops.length > 0 
+      avgConfidence: psyops.length > 0
         ? Math.round(psyops.reduce((sum, p) => sum + (p.psyop_confidence || 0), 0) / psyops.length)
         : 0,
+      quickOnly: psyops.filter(p => p.analysis_stage === 'quick').length,
+      deepCount: psyops.filter(p => p.analysis_stage === 'deep').length,
+      deepestCount: psyops.filter(
+        p => p.analysis_stage === 'deepest' || p.deepest_analysis_completed_at
+      ).length,
     };
   }, [filteredPosts]);
 
@@ -519,7 +580,7 @@ const PsyOpDetection = () => {
       </div>
 
       {/* Quick Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 p-4 bg-muted/30 rounded-lg">
         <div className="text-center">
           <div className="text-2xl font-bold text-primary">{stats.total}</div>
           <div className="text-sm text-muted-foreground">مجموع جنگ روانی</div>
@@ -535,6 +596,20 @@ const PsyOpDetection = () => {
         <div className="text-center">
           <div className="text-2xl font-bold text-success">{stats.avgConfidence}%</div>
           <div className="text-sm text-muted-foreground">میانگین اطمینان</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-cyan-500">{stats.quickOnly}</div>
+          <div className="text-sm text-muted-foreground">فقط Quick</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-emerald-500">{stats.deepCount}</div>
+          <div className="text-sm text-muted-foreground">تحلیل عمیق (Deep)</div>
+        </div>
+        <div className="text-center">
+          <div className={cn('text-2xl font-bold', stats.deepestCount > 0 ? 'text-rose-500 animate-pulse' : 'text-rose-500')}>
+            {stats.deepestCount}
+          </div>
+          <div className="text-sm text-muted-foreground">تحلیل بحران (Deepest)</div>
         </div>
       </div>
 
@@ -776,6 +851,18 @@ const PsyOpDetection = () => {
             </SelectContent>
           </Select>
 
+          <Select value={stageFilter} onValueChange={(value) => setStageFilter(value as typeof stageFilter)}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="مرحله تحلیل" />
+            </SelectTrigger>
+            <SelectContent className="bg-card z-50">
+              <SelectItem value="all">همه مراحل</SelectItem>
+              <SelectItem value="quick">Quick</SelectItem>
+              <SelectItem value="deep">Deep</SelectItem>
+              <SelectItem value="deepest">Deepest</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-60">
@@ -924,6 +1011,25 @@ const PsyOpDetection = () => {
                   }}
                 />
 
+                <div className="mt-2 flex flex-wrap gap-2 text-xs justify-end">
+                  {post.threat_level && (
+                    <Badge variant="destructive">سطح تهدید: {post.threat_level}</Badge>
+                  )}
+                  {post.psyop_risk_score != null && (
+                    <Badge variant="outline">ریسک: {post.psyop_risk_score}</Badge>
+                  )}
+                  {post.analysis_stage && (
+                    <Badge variant="secondary">
+                      {post.analysis_stage === 'quick' && 'Quick'}
+                      {post.analysis_stage === 'deep' && 'Deep'}
+                      {post.analysis_stage === 'deepest' && 'Deepest'}
+                    </Badge>
+                  )}
+                  {post.deepest_analysis_completed_at && (
+                    <Badge variant="outline">تحلیل بحران انجام شده</Badge>
+                  )}
+                </div>
+
                 <div className="flex gap-2 mt-2 justify-end">
                   <Button
                     variant="outline"
@@ -987,6 +1093,70 @@ const PsyOpDetection = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
+
+      {selectedPost?.deepest_analysis_completed_at && isModalOpen && (
+        <Card className="mt-4 border border-rose-500/30 bg-card">
+          <div className="p-4" dir="rtl">
+            <h3 className="text-sm font-bold mb-2">تحلیل بحران (Deepest)</h3>
+
+            {selectedPost.deepest_escalation_level && (
+              <p className="text-xs mb-2">
+                سطح تشدید: <span className="font-semibold">{selectedPost.deepest_escalation_level}</span>
+              </p>
+            )}
+
+            {selectedPost.deepest_strategic_summary && (
+              <p className="text-xs mb-3 leading-relaxed">
+                {selectedPost.deepest_strategic_summary}
+              </p>
+            )}
+
+            {selectedPost.deepest_key_risks && selectedPost.deepest_key_risks.length > 0 && (
+              <div className="mb-3">
+                <h4 className="text-xs font-semibold mb-1">مهم‌ترین ریسک‌ها:</h4>
+                <ul className="list-disc list-inside text-xs space-y-1">
+                  {selectedPost.deepest_key_risks.map((item: string, idx: number) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {selectedPost.deepest_audience_segments && selectedPost.deepest_audience_segments.length > 0 && (
+              <div className="mb-3">
+                <h4 className="text-xs font-semibold mb-1">گروه‌های مخاطب هدف:</h4>
+                <ul className="list-disc list-inside text-xs space-y-1">
+                  {selectedPost.deepest_audience_segments.map((item: string, idx: number) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {selectedPost.deepest_recommended_actions && selectedPost.deepest_recommended_actions.length > 0 && (
+              <div className="mb-3">
+                <h4 className="text-xs font-semibold mb-1">اقدامات پیشنهادی:</h4>
+                <ul className="list-disc list-inside text-xs space-y-1">
+                  {selectedPost.deepest_recommended_actions.map((item: string, idx: number) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {selectedPost.deepest_monitoring_indicators && selectedPost.deepest_monitoring_indicators.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold mb-1">شاخص‌های پایش:</h4>
+                <ul className="list-disc list-inside text-xs space-y-1">
+                  {selectedPost.deepest_monitoring_indicators.map((item: string, idx: number) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 };
