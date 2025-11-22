@@ -177,7 +177,6 @@ const PsyOpDetection = () => {
       psyop_category,
       psyop_techniques,
       psyop_review_status,
-      psyop_notes,
       analysis_stage,
       quick_analyzed_at,
       deep_analyzed_at,
