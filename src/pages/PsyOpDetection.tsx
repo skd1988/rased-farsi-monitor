@@ -438,47 +438,73 @@ const PsyOpDetection = () => {
     try {
       setDeepestLoadingId(postId);
 
-      const { data, error } = await supabase.functions.invoke('deepest-analysis', {
+      const { data, error } = await supabase.functions.invoke("deepest-analysis", {
         body: { postId },
       });
 
       if (error) {
-        console.error('Deepest analysis error', error);
+        console.error("Deepest analysis error", error);
+
+        const anyError = error as any;
+        const contextResponse = anyError?.context?.response;
+        const detailedMessage =
+          typeof contextResponse === "string"
+            ? contextResponse
+            : contextResponse?.error ||
+              contextResponse?.message ||
+              anyError?.message ||
+              "لطفاً دوباره تلاش کنید";
+
         toast({
-          title: 'خطا در تحلیل بحران',
-          description: 'لطفاً دوباره تلاش کنید',
-          variant: 'destructive',
+          title: "خطا در تحلیل بحران",
+          description: detailedMessage,
+          variant: "destructive",
         });
         return;
       }
 
-      setPosts(prev =>
-        prev.map(p =>
-          p.id === postId
-            ? {
-                ...p,
-                deepest_escalation_level: data?.escalation_level ?? p.deepest_escalation_level ?? null,
-                deepest_strategic_summary: data?.strategic_summary ?? p.deepest_strategic_summary ?? null,
-                deepest_key_risks: data?.key_risks ?? p.deepest_key_risks ?? null,
-                deepest_audience_segments: data?.audience_segments ?? p.deepest_audience_segments ?? null,
-                deepest_recommended_actions: data?.recommended_actions ?? p.deepest_recommended_actions ?? null,
-                deepest_monitoring_indicators: data?.monitoring_indicators ?? p.deepest_monitoring_indicators ?? null,
-                deepest_analysis_completed_at: new Date().toISOString(),
-              }
-            : p
-        )
-      );
+      // Expecting payload from deepest-analysis Edge Function:
+      // {
+      //   post_id: string;
+      //   stage: "deepest_analysis";
+      //   escalation_level: string | null;
+      //   strategic_summary: string | null;
+      //   key_risks: string[] | null;
+      //   audience_segments: string[] | null;
+      //   recommended_actions: string[] | null;
+      //   monitoring_indicators: string[] | null;
+      // }
+
+      const payload = data as any;
+
+      const updatedPosts = posts.map((post) => {
+        if (post.id !== postId) return post;
+
+        return {
+          ...post,
+          analysis_stage: "deepest",
+          deepest_escalation_level: payload.escalation_level ?? post.deepest_escalation_level ?? null,
+          deepest_strategic_summary: payload.strategic_summary ?? post.deepest_strategic_summary ?? null,
+          deepest_key_risks: payload.key_risks ?? post.deepest_key_risks ?? [],
+          deepest_audience_segments: payload.audience_segments ?? post.deepest_audience_segments ?? [],
+          deepest_recommended_actions: payload.recommended_actions ?? post.deepest_recommended_actions ?? [],
+          deepest_monitoring_indicators: payload.monitoring_indicators ?? post.deepest_monitoring_indicators ?? [],
+          deepest_analysis_completed_at: new Date().toISOString(),
+        };
+      });
+
+      setPosts(updatedPosts);
 
       toast({
-        title: 'تحلیل بحران ثبت شد',
-        description: 'نتایج تحلیل عمیق به‌روز شد',
+        title: "تحلیل بحران انجام شد",
+        description: "نتیجه تحلیل سطح بحران برای این پست ثبت شد.",
       });
     } catch (err) {
-      console.error('Unexpected deepest-analysis error', err);
+      console.error("Unexpected deepest-analysis error", err);
       toast({
-        title: 'خطای غیرمنتظره',
-        description: 'لطفاً دوباره تلاش کنید',
-        variant: 'destructive',
+        title: "خطای غیرمنتظره",
+        description: "لطفاً دوباره تلاش کنید",
+        variant: "destructive",
       });
     } finally {
       setDeepestLoadingId(null);
