@@ -22,6 +22,105 @@ interface QueueItem {
   posts: Post;
 }
 
+interface QuickAnalysisResult {
+  is_psyop?: boolean | null;
+  psyop_confidence?: number | null;
+  threat_level?: string | null;
+  psyop_risk_score?: number | null;
+  stance_type?: string | null;
+  psyop_category?: string | null;
+  psyop_techniques?: unknown;
+  primary_target?: string | null;
+}
+
+function normalizeQuickResult(raw: any): QuickAnalysisResult {
+  const psyopRiskScore = typeof raw?.psyop_risk_score === "number"
+    ? raw.psyop_risk_score
+    : typeof raw?.riskScore === "number"
+      ? raw.riskScore
+      : null;
+
+  const psyopConfidence = typeof raw?.psyop_confidence === "number"
+    ? raw.psyop_confidence
+    : typeof raw?.confidence === "number"
+      ? raw.confidence
+      : null;
+
+  return {
+    is_psyop: raw?.is_psyop ?? null,
+    psyop_confidence: psyopConfidence,
+    threat_level: raw?.threat_level ?? raw?.threatLevel ?? null,
+    psyop_risk_score: psyopRiskScore,
+    stance_type: raw?.stance_type ?? raw?.stanceType ?? null,
+    psyop_category: raw?.psyop_category ?? raw?.psyopCategory ?? null,
+    psyop_techniques: raw?.psyop_techniques ?? raw?.psyopTechniques,
+    primary_target: raw?.primary_target ?? raw?.primaryTarget ?? null,
+  };
+}
+
+function needsDeepAnalysis(
+  post: QuickAnalysisResult & { postId: string }
+): boolean {
+  const threatLevel = post.threat_level;
+  const psyopConfidence = post.psyop_confidence ?? 0;
+  const psyopCategory = post.psyop_category;
+  const isPsyop = post.is_psyop === true;
+
+  const result = Boolean(
+    isPsyop ||
+    (threatLevel === "High" || threatLevel === "Critical") ||
+    (threatLevel === "Medium" && psyopConfidence >= 70) ||
+    (psyopCategory === "potential_psyop" || psyopCategory === "confirmed_psyop")
+  );
+
+  console.log("⚠️ [AutoAnalyzer] needsDeepAnalysis?", {
+    postId: post.postId,
+    is_psyop: post.is_psyop,
+    threat_level: threatLevel,
+    psyop_confidence: post.psyop_confidence,
+    psyop_category: psyopCategory,
+    result,
+  });
+
+  return result;
+}
+
+function shouldRunDeepest(
+  post: QuickAnalysisResult & { postId: string }
+): boolean {
+  const threatLevel = post.threat_level;
+  const psyopCategory = post.psyop_category;
+  const stanceType = post.stance_type;
+  const riskScore = post.psyop_risk_score ?? 0;
+  const isPsyop = post.is_psyop === true;
+
+  const meetsRiskThreshold = riskScore >= 80;
+  const meetsThreatOrCategory =
+    threatLevel === "High" ||
+    threatLevel === "Critical" ||
+    psyopCategory === "confirmed_psyop" ||
+    psyopCategory === "suspected_psyop";
+
+  const result = Boolean(
+    isPsyop &&
+    meetsRiskThreshold &&
+    meetsThreatOrCategory &&
+    stanceType === "hostile_propaganda"
+  );
+
+  console.log("⚠️ [AutoAnalyzer] shouldRunDeepest?", {
+    postId: post.postId,
+    is_psyop: post.is_psyop,
+    threat_level: threatLevel,
+    psyop_risk_score: post.psyop_risk_score,
+    stance_type: stanceType,
+    psyop_category: psyopCategory,
+    result,
+  });
+
+  return result;
+}
+
 serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -111,13 +210,13 @@ serve(async (req) => {
         // Mark as processing
         await supabase
           .from('analysis_queue')
-          .update({ 
+          .update({
             status: 'processing',
             started_at: new Date().toISOString()
           })
           .eq('id', item.id);
 
-        console.log(`🔍 Analyzing post: ${item.posts.title.substring(0, 50)}...`);
+        console.log(`🔍 [AutoAnalyzer] Running QUICK analysis for post ${item.post_id}...`);
 
         // Call quick-psyop-detection first
         const quickResponse = await fetch(
@@ -131,7 +230,8 @@ serve(async (req) => {
             body: JSON.stringify({
               title: item.posts.title,
               contents: item.posts.contents,
-              source: item.posts.source
+              source: item.posts.source,
+              language: item.posts.language
             })
           }
         );
@@ -141,77 +241,39 @@ serve(async (req) => {
         }
 
         const quickData = await quickResponse.json();
-        const quick = quickData.result || quickData;
+        const quick = normalizeQuickResult(quickData.result || quickData);
 
-        const isPsyop = quick.is_psyop === true;
-        const threatLevel = quick.threat_level || "Low";
-        const riskScore =
-          typeof quick.psyop_risk_score === "number"
-            ? quick.psyop_risk_score
-            : typeof quick.riskScore === "number"
-              ? quick.riskScore
-              : 0;
+        console.log(`✅ [AutoAnalyzer] Quick analysis completed for post ${item.post_id}`);
 
-        const needsDeep = quick.needs_deep_analysis === true;
-        const needsDeepest = quick.needs_deepest_analysis === true;
+        const quickUpdate = {
+          is_psyop: quick.is_psyop,
+          psyop_confidence: quick.psyop_confidence,
+          threat_level: quick.threat_level ?? "Low",
+          psyop_risk_score: quick.psyop_risk_score,
+          stance_type: quick.stance_type,
+          psyop_category: quick.psyop_category,
+          psyop_techniques: quick.psyop_techniques,
+          analysis_stage: 'quick',
+          quick_analyzed_at: new Date().toISOString()
+        } as const;
 
-        const isHighThreat = threatLevel === "High" || threatLevel === "Critical";
-
-        let runDeepest = false;
-        let runDeep = false;
-
-        if (needsDeepest) {
-          runDeepest = true;
-        } else if (needsDeep) {
-          runDeep = true;
-        } else {
-          if (isPsyop && isHighThreat) {
-            runDeep = true;
-          } else if (isPsyop && riskScore >= 50) {
-            runDeep = true;
-          } else if (isHighThreat && riskScore >= 50) {
-            runDeep = true;
-          }
-        }
-
-        console.log(`✅ Quick analysis: is_psyop=${isPsyop}, threat=${threatLevel}, riskScore=${riskScore}`);
-
-        // Update post with quick analysis results
         await supabase
           .from('posts')
-          .update({
-            is_psyop: quick.is_psyop,
-            threat_level: threatLevel,
-            analysis_stage: 'quick',
-            analyzed_at: new Date().toISOString()
-          })
+          .update(quickUpdate)
           .eq('id', item.post_id);
 
-        if (runDeepest) {
-          console.log(`🧠 [AutoAnalyzer] Running DEEPEST analysis for post ${item.post_id}...`);
+        const shouldRunDeep = needsDeepAnalysis({
+          postId: item.post_id,
+          ...quick,
+        });
 
-          const deepestResponse = await fetch(
-            `${supabaseUrl}/functions/v1/analyze-post-deepest`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}`
-              },
-              body: JSON.stringify({
-                postId: item.post_id,
-                quickResult: quickData
-              })
-            }
-          );
+        const shouldDeepest = shouldRunDeepest({
+          postId: item.post_id,
+          ...quick,
+        });
 
-          if (!deepestResponse.ok) {
-            console.error("Deepest analysis failed for post:", item.post_id, await deepestResponse.text());
-          } else {
-            console.log(`✅ [AutoAnalyzer] Deepest-level analysis completed for post ${item.post_id}`);
-          }
-        } else if (runDeep) {
-          console.log(`🔬 [AutoAnalyzer] Running deep analysis for post ${item.post_id}...`);
+        if (shouldRunDeep) {
+          console.log(`🧠 [AutoAnalyzer] Running DEEP analysis for post ${item.post_id}...`);
 
           const deepResponse = await fetch(
             `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
@@ -233,15 +295,47 @@ serve(async (req) => {
           );
 
           if (!deepResponse.ok) {
-            console.warn(`⚠️ Deep analysis failed: ${deepResponse.status}`);
-            // Continue anyway, quick analysis is done
+            console.error(`❌ [AutoAnalyzer] Deep analysis failed for post ${item.post_id}: ${deepResponse.status}`);
           } else {
-            console.log(`✅ Deep analysis completed`);
+            await supabase
+              .from('posts')
+              .update({
+                analysis_stage: 'deep',
+                deep_analyzed_at: new Date().toISOString()
+              })
+              .eq('id', item.post_id);
+
+            console.log(`✅ [AutoAnalyzer] Deep analysis completed for post ${item.post_id}`);
           }
         } else {
           console.log(
             `ℹ️ [AutoAnalyzer] Skipping deep analysis for post ${item.post_id} (low risk according to quick).`
           );
+        }
+
+        if (shouldDeepest) {
+          console.log(`🧠 [AutoAnalyzer] Running DEEPEST analysis for post ${item.post_id}...`);
+
+          const deepestResponse = await fetch(
+            `${supabaseUrl}/functions/v1/analyze-post-deepest`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`
+              },
+              body: JSON.stringify({
+                postId: item.post_id,
+                quickResult: quick,
+              })
+            }
+          );
+
+          if (!deepestResponse.ok) {
+            console.error("❌ [AutoAnalyzer] Deepest analysis failed for post:", item.post_id, await deepestResponse.text());
+          } else {
+            console.log(`✅ [AutoAnalyzer] Deepest analysis completed for post ${item.post_id}`);
+          }
         }
 
         // Mark queue item as completed
