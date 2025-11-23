@@ -53,6 +53,11 @@ const IntelligenceAndTrends = () => {
   const [fixProgress, setFixProgress] = useState({ current: 0, total: 0, status: '' });
   const [narrativesLoading, setNarrativesLoading] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [deepestInsights, setDeepestInsights] = useState<{
+    keyRisks: { label: string; count: number }[];
+    audienceSegments: { label: string; count: number }[];
+    recommendedActions: { label: string; count: number }[];
+  } | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -84,7 +89,8 @@ const IntelligenceAndTrends = () => {
         fetchTemporalIntelligence(),
         fetchPlatformIntelligence(),
         fetchGeographicIntelligence(),
-        fetchNarratives()
+        fetchNarratives(),
+        fetchDeepestInsights()
       ]);
     } catch (error) {
       console.error('Error fetching intelligence data:', error);
@@ -636,7 +642,7 @@ const IntelligenceAndTrends = () => {
 
   const fetchNarratives = async () => {
     setNarrativesLoading(true);
-    
+
     try {
       const days = getDaysFromRange();
       const timeStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -702,6 +708,83 @@ const IntelligenceAndTrends = () => {
       });
     } finally {
       setNarrativesLoading(false);
+    }
+  };
+
+  const fetchDeepestInsights = async () => {
+    try {
+      const days = getDaysFromRange();
+      const timeStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      let query = supabase
+        .from('posts')
+        .select(
+          'deepest_key_risks, deepest_audience_segments, deepest_recommended_actions, threat_level, published_at'
+        )
+        .eq('is_psyop', true)
+        .not('deepest_analysis_completed_at', 'is', null)
+        .gte('published_at', timeStart);
+
+      if (threatFilter !== 'all') {
+        query = query.eq('threat_level', threatFilter);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Failed to fetch deepest insights:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setDeepestInsights({
+          keyRisks: [],
+          audienceSegments: [],
+          recommendedActions: [],
+        });
+        return;
+      }
+
+      const riskMap: Record<string, number> = {};
+      const audienceMap: Record<string, number> = {};
+      const actionsMap: Record<string, number> = {};
+
+      data.forEach((post: any) => {
+        if (Array.isArray(post.deepest_key_risks)) {
+          post.deepest_key_risks.forEach((item: string) => {
+            if (!item) return;
+            riskMap[item] = (riskMap[item] || 0) + 1;
+          });
+        }
+
+        if (Array.isArray(post.deepest_audience_segments)) {
+          post.deepest_audience_segments.forEach((item: string) => {
+            if (!item) return;
+            audienceMap[item] = (audienceMap[item] || 0) + 1;
+          });
+        }
+
+        if (Array.isArray(post.deepest_recommended_actions)) {
+          post.deepest_recommended_actions.forEach((item: string) => {
+            if (!item) return;
+            actionsMap[item] = (actionsMap[item] || 0) + 1;
+          });
+        }
+      });
+
+      const toSortedList = (map: Record<string, number>) =>
+        Object.entries(map)
+          .map(([label, count]) => ({ label, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 15);
+
+      setDeepestInsights({
+        keyRisks: toSortedList(riskMap),
+        audienceSegments: toSortedList(audienceMap),
+        recommendedActions: toSortedList(actionsMap),
+      });
+    } catch (error) {
+      console.error('Failed to fetch deepest insights:', error);
     }
   };
 
@@ -777,12 +860,13 @@ const IntelligenceAndTrends = () => {
       </div>
 
       <Tabs defaultValue="keywords" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="keywords">کلیدواژه‌ها</TabsTrigger>
           <TabsTrigger value="temporal">زمان‌بندی</TabsTrigger>
           <TabsTrigger value="platforms">پلتفرم‌ها</TabsTrigger>
           <TabsTrigger value="geographic">جغرافیا</TabsTrigger>
           <TabsTrigger value="narratives">روایت‌ها</TabsTrigger>
+          <TabsTrigger value="deepest">بحران / Deepest</TabsTrigger>
         </TabsList>
 
         {/* SECTION 1: KEYWORD INTELLIGENCE */}
@@ -1325,6 +1409,109 @@ const IntelligenceAndTrends = () => {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="deepest" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Key Risks */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span>مهم‌ترین ریسک‌های استراتژیک (Deepest)</span>
+                </CardTitle>
+                <CardDescription>
+                  ریسک‌هایی که در تحلیل بحران سطح سوم بیشترین تکرار را داشته‌اند
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {deepestInsights && deepestInsights.keyRisks.length > 0 ? (
+                  <ul className="space-y-2">
+                    {deepestInsights.keyRisks.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className="flex items-center justify-between text-xs gap-3"
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <span className="font-mono text-muted-foreground">
+                          ×{item.count}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    هنوز داده‌ای از تحلیل بحران (Deepest) در این بازه در دسترس نیست.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Audience Segments */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span>گروه‌های مخاطب هدف در بحران</span>
+                </CardTitle>
+                <CardDescription>
+                  مخاطبانی که در سطح Deepest بیشترین هدف قرار گرفته‌اند
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {deepestInsights && deepestInsights.audienceSegments.length > 0 ? (
+                  <ul className="space-y-2">
+                    {deepestInsights.audienceSegments.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className="flex items-center justify-between text-xs gap-3"
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <span className="font-mono text-muted-foreground">
+                          ×{item.count}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    هنوز الگوی مشخصی از مخاطبان هدف در سطح Deepest شناسایی نشده است.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Recommended Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center justify-between">
+                  <span>اقدامات پیشنهادی در سطح بحران</span>
+                </CardTitle>
+                <CardDescription>
+                  اقداماتی که در تحلیل Deepest به‌عنوان پاسخ راهبردی پیشنهاد شده‌اند
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {deepestInsights && deepestInsights.recommendedActions.length > 0 ? (
+                  <ul className="space-y-2">
+                    {deepestInsights.recommendedActions.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className="flex items-center justify-between text-xs gap-3"
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <span className="font-mono text-muted-foreground">
+                          ×{item.count}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    هنوز الگوی پایداری از اقدامات پیشنهادی سطح سوم در این بازه دیده نمی‌شود.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
       
