@@ -39,6 +39,11 @@ interface ChannelPost {
   published_at: string;
   // NEW optional fields from posts:
   psyop_risk_score?: number | null;
+  analysis_stage?: string | null;
+  quick_analyzed_at?: string | null;
+  deep_analyzed_at?: string | null;
+  deepest_analysis_completed_at?: string | null;
+  account?: string | null;
 }
 
 interface ChannelRiskStats {
@@ -58,6 +63,7 @@ const ChannelAnalytics = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [alignmentFilter, setAlignmentFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState('all');
   const [sortBy, setSortBy] = useState<'threat' | 'psyops' | 'impact'>('threat');
 
   useEffect(() => {
@@ -140,7 +146,21 @@ const ChannelAnalytics = () => {
       // Fetch posts with channel_name
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
-        .select('id, title, source, channel_name, is_psyop, threat_level, source_impact_score, weighted_threat_level, published_at, psyop_risk_score')
+        .select(`
+          id,
+          title,
+          channel_name,
+          contents,
+          source,
+          published_at,
+          is_psyop,
+          psyop_risk_score,
+          threat_level,
+          analysis_stage,
+          quick_analyzed_at,
+          deep_analyzed_at,
+          deepest_analysis_completed_at
+        `)
         .not('channel_name', 'is', null)
         .neq('status', 'Archived')
         .order('published_at', { ascending: false })
@@ -228,14 +248,90 @@ const ChannelAnalytics = () => {
     return { totalChannels, criticalChannels, enemyChannels, totalPsyOps };
   }, [channels, channelRiskStats]);
 
+  const channelAggregations = useMemo(() => {
+    const channelsMap: Record<string, {
+      count: number;
+      quick_only_count: number;
+      deep_count: number;
+      deepest_count: number;
+      has_deepest: boolean;
+    }> = {};
+
+    channelPosts.forEach((post) => {
+      const source = post.source || post.channel_name;
+      if (!source) return;
+
+      if (!channelsMap[source]) {
+        channelsMap[source] = {
+          count: 0,
+          quick_only_count: 0,
+          deep_count: 0,
+          deepest_count: 0,
+          has_deepest: false,
+        };
+      }
+
+      channelsMap[source].count++;
+
+      if (post.is_psyop) {
+        if (post.analysis_stage === 'quick')
+          channelsMap[source].quick_only_count++;
+
+        if (post.analysis_stage === 'deep')
+          channelsMap[source].deep_count++;
+
+        if (post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at)
+          channelsMap[source].deepest_count++;
+
+        if (post.deepest_analysis_completed_at)
+          channelsMap[source].has_deepest = true;
+      }
+    });
+
+    return channelsMap;
+  }, [channelPosts]);
+
+  type ChannelWithAggregation = SocialMediaChannel & {
+    count: number;
+    quick_only_count: number;
+    deep_count: number;
+    deepest_count: number;
+    has_deepest: boolean;
+  };
+
+  const channelsWithAggregations: ChannelWithAggregation[] = useMemo(() => {
+    return channels.map((channel) => {
+      const aggregation = channelAggregations[channel.channel_name] || {
+        count: 0,
+        quick_only_count: 0,
+        deep_count: 0,
+        deepest_count: 0,
+        has_deepest: false,
+      };
+
+      return {
+        ...channel,
+        ...aggregation,
+      };
+    });
+  }, [channels, channelAggregations]);
+
   // Filtered and sorted channels
   const filteredChannels = useMemo(() => {
-    let filtered = channels.filter(c => {
+    let filtered = channelsWithAggregations.filter(c => {
       const matchesSearch = c.channel_name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesPlatform = platformFilter === 'all' || c.platform === platformFilter;
       const matchesAlignment = alignmentFilter === 'all' || c.political_alignment === alignmentFilter;
       return matchesSearch && matchesPlatform && matchesAlignment;
     });
+
+    if (stageFilter !== 'all') {
+      filtered = filtered.filter(c =>
+        (stageFilter === 'quick' && c.quick_only_count > 0) ||
+        (stageFilter === 'deep' && c.deep_count > 0) ||
+        (stageFilter === 'deepest' && c.deepest_count > 0)
+      );
+    }
 
     // Sort
     filtered.sort((a, b) => {
@@ -248,7 +344,7 @@ const ChannelAnalytics = () => {
     });
 
     return filtered;
-  }, [channels, searchTerm, platformFilter, alignmentFilter, sortBy]);
+  }, [channelsWithAggregations, searchTerm, platformFilter, alignmentFilter, sortBy, stageFilter]);
 
   // Top threat channels for bar chart
   const topThreatChannels = useMemo(() => {
@@ -540,6 +636,17 @@ const ChannelAnalytics = () => {
                 <SelectItem value="Pro-Resistance">مقاومت</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={stageFilter} onValueChange={setStageFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="مرحله تحلیل" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">همه مراحل</SelectItem>
+                <SelectItem value="quick">Quick</SelectItem>
+                <SelectItem value="deep">Deep</SelectItem>
+                <SelectItem value="deepest">Deepest</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="مرتب‌سازی" />
@@ -575,6 +682,16 @@ const ChannelAnalytics = () => {
                         <div className="font-medium">{channel.channel_name}</div>
                         {channel.channel_id && (
                           <div className="text-xs text-muted-foreground">{channel.channel_id}</div>
+                        )}
+                        <div className="text-xs mt-2 flex flex-wrap gap-3">
+                          <span>Quick: {channel.quick_only_count}</span>
+                          <span>Deep: {channel.deep_count}</span>
+                          <span>Deepest: {channel.deepest_count}</span>
+                        </div>
+                        {channel.has_deepest && (
+                          <div className="mt-1 text-red-500 text-xs font-bold">
+                            🔥 دارای محتوای سطح بحران (Deepest)
+                          </div>
                         )}
                       </div>
                     </td>
