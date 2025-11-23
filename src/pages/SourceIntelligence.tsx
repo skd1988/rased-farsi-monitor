@@ -38,6 +38,10 @@ interface SourcePost {
   is_psyop: boolean | null;
   psyop_risk_score: number | null;
   threat_level: string | null;
+
+  // NEW: 3-level analysis fields
+  analysis_stage?: 'quick' | 'deep' | 'deepest' | null;
+  deepest_analysis_completed_at?: string | null;
 }
 
 interface SourceRiskStats {
@@ -47,6 +51,12 @@ interface SourceRiskStats {
   max_risk: number;
   avg_risk: number;
   last_psyop_at: string | null;
+
+  // NEW: 3-level analysis metrics per source
+  quick_only_count: number;
+  deep_count: number;
+  deepest_count: number;
+  has_deepest: boolean;
 }
 
 export default function SourceIntelligence() {
@@ -75,7 +85,7 @@ export default function SourceIntelligence() {
 
       const { data: postRows, error: postError } = await supabase
         .from('posts')
-        .select('id, source, published_at, is_psyop, psyop_risk_score, threat_level')
+        .select('id, source, published_at, is_psyop, psyop_risk_score, threat_level, analysis_stage, deepest_analysis_completed_at')
         .not('source', 'is', null)
         .not('published_at', 'is', null)
         .limit(1000);
@@ -101,6 +111,12 @@ export default function SourceIntelligence() {
       risk_sum: number;
       max_risk: number;
       last_psyop_at: string | null;
+
+      // NEW: 3-level counters
+      quick_only_count: number;
+      deep_count: number;
+      deepest_count: number;
+      has_deepest: boolean;
     }>();
 
     posts.forEach(post => {
@@ -113,12 +129,32 @@ export default function SourceIntelligence() {
           psyop_posts: 0,
           risk_sum: 0,
           max_risk: 0,
-          last_psyop_at: null
+          last_psyop_at: null,
+
+          // NEW: stage counters
+          quick_only_count: 0,
+          deep_count: 0,
+          deepest_count: 0,
+          has_deepest: false,
         });
       }
 
       const entry = statsMap.get(source)!;
       entry.total_posts += 1;
+
+      // NEW: 3-level analysis counters for this source
+      if (post.is_psyop) {
+        if (post.analysis_stage === 'quick') {
+          entry.quick_only_count += 1;
+        }
+        if (post.analysis_stage === 'deep') {
+          entry.deep_count += 1;
+        }
+        if (post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at) {
+          entry.deepest_count += 1;
+          entry.has_deepest = true;
+        }
+      }
 
       if (post.is_psyop === true && post.psyop_risk_score != null) {
         entry.psyop_posts += 1;
@@ -132,28 +168,48 @@ export default function SourceIntelligence() {
       }
     });
 
-    return Array.from(statsMap.values()).map(stat => ({
+    return Array.from(statsMap.values()).map((stat) => ({
       source: stat.source,
       total_posts: stat.total_posts,
       psyop_posts: stat.psyop_posts,
       max_risk: stat.max_risk,
       avg_risk: stat.psyop_posts > 0 ? stat.risk_sum / stat.psyop_posts : 0,
-      last_psyop_at: stat.last_psyop_at
+      last_psyop_at: stat.last_psyop_at,
+
+      // NEW: stage metrics
+      quick_only_count: stat.quick_only_count,
+      deep_count: stat.deep_count,
+      deepest_count: stat.deepest_count,
+      has_deepest: stat.has_deepest,
     }));
   }, [posts]);
 
   // KPI Calculations
   const kpis = useMemo(() => {
-    const critical = sourceRiskStats.filter(s => s.max_risk >= 70).length;
-    const avgViral = sourceRiskStats.length > 0
-      ? (sourceRiskStats.reduce((sum, s) => sum + s.avg_risk, 0) / sourceRiskStats.length).toFixed(1)
-      : '0';
-    const enemySources = sourceRiskStats.filter(s => s.max_risk >= 40).length;
+    const critical = sourceRiskStats.filter((s) => s.max_risk >= 70).length;
+
+    const avgViral =
+      sourceRiskStats.length > 0
+        ? (
+            sourceRiskStats.reduce((sum, s) => sum + s.avg_risk, 0) /
+            sourceRiskStats.length
+          ).toFixed(1)
+        : '0';
+
+    const enemySources = sourceRiskStats.filter((s) => s.max_risk >= 40).length;
+
+    const crisisSources = sourceRiskStats.filter((s) => s.has_deepest).length;
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const total30d = posts.filter(p => p.is_psyop && p.published_at && new Date(p.published_at) >= thirtyDaysAgo).length;
+    const total30d = posts.filter(
+      (p) =>
+        p.is_psyop &&
+        p.published_at &&
+        new Date(p.published_at) >= thirtyDaysAgo,
+    ).length;
 
-    return { critical, avgViral, enemySources, total30d };
+    return { critical, avgViral, enemySources, crisisSources, total30d };
   }, [posts, sourceRiskStats]);
 
   // Filtered sources
@@ -213,7 +269,7 @@ export default function SourceIntelligence() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid md:grid-cols-4 gap-4">
+      <div className="grid md:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -263,6 +319,23 @@ export default function SourceIntelligence() {
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">{kpis.total30d}</div>
             <p className="text-xs text-muted-foreground">از تمام منابع</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              منابع با تحلیل بحران (Deepest)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-red-500">
+              {kpis.crisisSources}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              تعداد منابعی که حداقل یک پست در سطح Deepest دارند
+            </p>
           </CardContent>
         </Card>
       </div>
