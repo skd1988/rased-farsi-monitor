@@ -218,109 +218,48 @@ serve(async (req) => {
         
         const quick = quickResult.result || quickResult;
 
-        const isPsyop = quick.is_psyop === true;
-        const threatLevel = quick.threat_level || 'Low';
-        const riskScore =
-          typeof quick.psyop_risk_score === 'number'
+        const isPsyop =
+          quick.is_psyop === true ||
+          quick.is_psyop === "Yes";
+
+        const threatLevel: string = quick.threat_level || "Low";
+
+        const riskScore: number =
+          typeof quick.psyop_risk_score === "number"
             ? quick.psyop_risk_score
-            : typeof quick.riskScore === 'number'
+            : typeof quick.riskScore === "number"
               ? quick.riskScore
               : 0;
 
-        const needsDeepest = quick.needs_deepest_analysis === true;
-        const needsDeep = quick.needs_deep_analysis === true;
-
-        const isHighThreat = threatLevel === 'High' || threatLevel === 'Critical';
+        const needsDeepestFlag = quick.needs_deepest_analysis === true;
+        const isHighThreat = threatLevel === "High" || threatLevel === "Critical";
 
         let runDeepest = false;
         let runDeep = false;
 
-        if (needsDeepest) {
-          runDeepest = true;
-        } else if (needsDeep) {
+        // OPTION B:
+        // - All PsyOp posts => run Deep
+        // - High-risk PsyOp => also run Deepest
+        if (isPsyop) {
           runDeep = true;
-        } else {
-          if (isPsyop && isHighThreat) {
-            runDeep = true;
-          } else if (isPsyop && riskScore >= 50) {
-            runDeep = true;
-          } else if (isHighThreat && riskScore >= 50) {
-            runDeep = true;
+
+          if (isHighThreat || riskScore >= 80 || needsDeepestFlag) {
+            runDeepest = true;
           }
         }
 
-        // STAGE 2: Deep / Deepest Analysis (if needed)
-        if (runDeepest) {
+        // STAGE 2 & 3: Deep and optional Deepest analysis
+        if (runDeep || runDeepest) {
           try {
-            await supabase
-              .from('batch_analysis_progress')
-              .update({ current_stage: 'deepest_analysis' })
-              .eq('batch_id', currentBatchId);
+            // First: Deep analysis (for all PsyOp posts)
+            await supabase.from('batch_analysis_progress').update({
+              current_stage: 'deep_analysis'
+            }).eq('batch_id', currentBatchId);
 
-            console.log(`  🧠 Needs deepest analysis, proceeding...`);
-
-            const deepestStartTime = Date.now();
-            const deepestResult = await performDeepestAnalysis(post, quickResult);
-            const deepestTime = Date.now() - deepestStartTime;
-
-            console.log(`  ✅ Deepest analysis complete in ${deepestTime}ms`);
-
-            await saveAnalysisResult(supabase, post.id, deepestResult, 'deepest');
-
-            if (deepestResult.threat_level === 'Critical' || deepestResult.threat_level === 'High') {
-              await createAlert(supabase, post.id, deepestResult);
-              results.alerts_created++;
-            }
-
-            results.deep_analyzed++;
-
-            await supabase
-              .from('batch_analysis_progress')
-              .update({ deep_analyzed: results.deep_analyzed })
-              .eq('batch_id', currentBatchId);
-
-            results.detailed_results.push({
-              post_id: post.id,
-              stage: 'deepest',
-              is_psyop: deepestResult.is_psyop === "Yes" || deepestResult.is_psyop === true,
-              threat_level: deepestResult.threat_level,
-              time_ms: Date.now() - postStartTime,
-              status: 'success'
-            });
-
-          } catch (error) {
-            console.error(`  ❌ Deepest analysis failed for post ${post.id}:`, error);
-
-            await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
-            results.quick_only++;
-
-            await supabase
-              .from('batch_analysis_progress')
-              .update({ quick_only: results.quick_only })
-              .eq('batch_id', currentBatchId);
-
-            results.detailed_results.push({
-              post_id: post.id,
-              stage: 'quick_fallback',
-              error: error instanceof Error ? error.message : 'Deepest analysis failed',
-              time_ms: Date.now() - postStartTime,
-              status: 'partial'
-            });
-          }
-
-        } else if (runDeep) {
-          try {
-            await supabase
-              .from('batch_analysis_progress')
-              .update({ current_stage: 'deep_analysis' })
-              .eq('batch_id', currentBatchId);
-
-            console.log(`  🧠 Needs deep analysis, proceeding...`);
-
+            console.log(`  🔬 Running deep analysis for PsyOp post...`);
             const deepStartTime = Date.now();
             const deepResult = await performDeepAnalysis(post, quickResult);
             const deepTime = Date.now() - deepStartTime;
-
             console.log(`  ✅ Deep analysis complete in ${deepTime}ms`);
 
             await saveAnalysisResult(supabase, post.id, deepResult, 'deep');
@@ -331,55 +270,82 @@ serve(async (req) => {
             }
 
             results.deep_analyzed++;
-
-            await supabase
-              .from('batch_analysis_progress')
-              .update({ deep_analyzed: results.deep_analyzed })
-              .eq('batch_id', currentBatchId);
+            await supabase.from('batch_analysis_progress').update({
+              deep_analyzed: results.deep_analyzed
+            }).eq('batch_id', currentBatchId);
 
             results.detailed_results.push({
               post_id: post.id,
               stage: 'deep',
-              is_psyop: deepResult.is_psyop === "Yes",
+              is_psyop: deepResult.is_psyop === "Yes" || deepResult.is_psyop === true,
               threat_level: deepResult.threat_level,
               time_ms: Date.now() - postStartTime,
               status: 'success'
             });
 
-          } catch (error) {
-            console.error(`  ❌ Deep analysis failed for post ${post.id}:`, error);
+            // Second: Deepest (crisis) analysis for high-risk PsyOp posts
+            if (runDeepest) {
+              await supabase.from('batch_analysis_progress').update({
+                current_stage: 'deepest_analysis'
+              }).eq('batch_id', currentBatchId);
 
+              console.log(`  🧠 Running deepest (crisis) analysis...`);
+              const deepestStartTime = Date.now();
+              const deepestResult = await performDeepestAnalysis(post, quickResult);
+              const deepestTime = Date.now() - deepestStartTime;
+              console.log(`  ✅ Deepest analysis complete in ${deepestTime}ms`);
+
+              await saveAnalysisResult(supabase, post.id, deepestResult, 'deepest');
+
+              if (deepestResult.threat_level === 'Critical' || deepestResult.threat_level === 'High') {
+                await createAlert(supabase, post.id, deepestResult);
+                results.alerts_created++;
+              }
+
+              // We reuse deep_analyzed as a combined counter for deep + deepest in this batch
+              results.deep_analyzed++;
+              await supabase.from('batch_analysis_progress').update({
+                deep_analyzed: results.deep_analyzed
+              }).eq('batch_id', currentBatchId);
+
+              results.detailed_results.push({
+                post_id: post.id,
+                stage: 'deepest',
+                is_psyop: deepestResult.is_psyop === "Yes" || deepestResult.is_psyop === true,
+                threat_level: deepestResult.threat_level,
+                time_ms: Date.now() - postStartTime,
+                status: 'success'
+              });
+            }
+          } catch (error) {
+            console.error(`  ❌ Deep / Deepest analysis failed for post ${post.id}:`, error);
+            // Fallback: save quick-only result
             await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
             results.quick_only++;
 
-            await supabase
-              .from('batch_analysis_progress')
-              .update({ quick_only: results.quick_only })
-              .eq('batch_id', currentBatchId);
+            await supabase.from('batch_analysis_progress').update({
+              quick_only: results.quick_only
+            }).eq('batch_id', currentBatchId);
 
             results.detailed_results.push({
               post_id: post.id,
               stage: 'quick_fallback',
-              error: error instanceof Error ? error.message : 'Deep analysis failed',
+              error: error instanceof Error ? error.message : 'Deep/Deepest analysis failed',
               time_ms: Date.now() - postStartTime,
               status: 'partial'
             });
           }
-
         } else {
-          // Save quick result only
-          console.log(`  ✅ Not PsyOp, saving quick result only`);
-          
+          // Save quick result only (non-PsyOp, or cases where we decided not to run deep)
+          console.log(`  ✅ Not PsyOp or no deep analysis needed, saving quick result only`);
           await saveAnalysisResult(supabase, post.id, quickResult, 'quick');
-          
           results.quick_only++;
-          
+
           // Update quick count
-          await supabase
-            .from('batch_analysis_progress')
-            .update({ quick_only: results.quick_only })
-            .eq('batch_id', currentBatchId);
-          
+          await supabase.from('batch_analysis_progress').update({
+            quick_only: results.quick_only
+          }).eq('batch_id', currentBatchId);
+
           results.detailed_results.push({
             post_id: post.id,
             stage: 'quick',
