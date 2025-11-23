@@ -19,6 +19,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ensureValidInoreaderToken } from "../_shared/inoreaderAuth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -336,22 +337,11 @@ async function handleStats(supabase: any) {
  * Helper: Get active token
  */
 async function getActiveToken(supabase: any): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('inoreader_oauth_tokens')
-    .select('access_token, expires_at')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error || !data) {
+  try {
+    const token = await ensureValidInoreaderToken(supabase, 10);
+    return token.access_token;
+  } catch (error) {
+    console.error('❌ No valid Inoreader token available', error);
     return null;
   }
-
-  // Check expiration
-  if (new Date(data.expires_at) <= new Date()) {
-    return null;
-  }
-
-  return data.access_token;
 }

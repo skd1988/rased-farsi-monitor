@@ -17,6 +17,12 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  ensureValidInoreaderToken,
+  getActiveInoreaderToken,
+  refreshInoreaderToken
+} from "../_shared/inoreaderAuth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,6 +67,9 @@ serve(async (req) => {
 
       case 'validate':
         return await handleValidate(supabase);
+
+      case 'ensure-valid':
+        return await handleEnsureValid(supabase);
 
       case 'disconnect':
         return await handleDisconnect(supabase);
@@ -117,7 +126,7 @@ function handleAuthorize() {
  * STEP 2: Exchange authorization code for tokens
  * کد موقت را به Access Token تبدیل می‌کند
  */
-async function handleExchange(supabase: any, code: string) {
+async function handleExchange(supabase: SupabaseClient, code: string) {
   if (!code) {
     throw new Error('Authorization code is required');
   }
@@ -200,74 +209,23 @@ async function handleExchange(supabase: any, code: string) {
  * STEP 3: Refresh expired token
  * توکن منقضی شده را تمدید می‌کند
  */
-async function handleRefresh(supabase: any, providedRefreshToken?: string) {
+async function handleRefresh(supabase: SupabaseClient, providedRefreshToken?: string) {
   console.log('🔄 Refreshing token...');
 
-  // Get current active token
-  const { data: currentToken, error: fetchError } = await supabase
-    .from('inoreader_oauth_tokens')
-    .select('*')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+  const activeToken = await getActiveInoreaderToken(supabase);
 
-  if (fetchError || !currentToken) {
-    throw new Error('No active token found');
-  }
+  const tokenWithOverride = {
+    ...activeToken,
+    refresh_token: providedRefreshToken || activeToken.refresh_token
+  };
 
-  const refreshToken = providedRefreshToken || currentToken.refresh_token;
-
-  if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  // Request new tokens
-  const tokenResponse = await fetch(INOREADER_CONFIG.TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      refresh_token: refreshToken,
-      client_id: INOREADER_CONFIG.CLIENT_ID,
-      client_secret: INOREADER_CONFIG.CLIENT_SECRET,
-      grant_type: 'refresh_token'
-    }).toString()
-  });
-
-  if (!tokenResponse.ok) {
-    const errorText = await tokenResponse.text();
-    console.error('❌ Token refresh failed:', errorText);
-    throw new Error(`Token refresh failed: ${errorText}`);
-  }
-
-  const tokens = await tokenResponse.json();
-  const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
-
-  // Update current token
-  const { error: updateError } = await supabase
-    .from('inoreader_oauth_tokens')
-    .update({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || refreshToken,
-      expires_at: expiresAt.toISOString(),
-      last_refresh_at: new Date().toISOString()
-    })
-    .eq('id', currentToken.id);
-
-  if (updateError) {
-    console.error('❌ Update error:', updateError);
-    throw updateError;
-  }
-
-  console.log('✅ Token refreshed successfully');
+  const updatedToken = await refreshInoreaderToken(supabase, tokenWithOverride);
 
   return new Response(
     JSON.stringify({
       success: true,
       message: 'توکن با موفقیت تمدید شد',
-      expiresAt: expiresAt.toISOString()
+      expiresAt: updatedToken.expires_at
     }),
     {
       status: 200,
@@ -280,23 +238,45 @@ async function handleRefresh(supabase: any, providedRefreshToken?: string) {
  * STEP 4: Validate current token
  * بررسی اعتبار توکن فعلی
  */
-async function handleValidate(supabase: any) {
+async function handleValidate(supabase: SupabaseClient) {
   console.log('🔍 Validating token...');
 
-  const { data: token, error } = await supabase
-    .from('inoreader_oauth_tokens')
-    .select('*')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+  try {
+    const token = await getActiveInoreaderToken(supabase);
+    const now = new Date();
+    const expiresAt = token.expires_at ? new Date(token.expires_at) : null;
+    const isExpired = expiresAt ? expiresAt <= now : false;
+    const needsRefresh = expiresAt
+      ? expiresAt <= new Date(now.getTime() + 3600000)
+      : false;
 
-  if (error || !token) {
+    console.log('✅ Token validation complete:', {
+      isExpired,
+      needsRefresh,
+      expiresAt: token.expires_at
+    });
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isValid: !isExpired,
+        needsRefresh,
+        expiresAt: token.expires_at,
+        hasRefreshToken: !!token.refresh_token,
+        lastRefreshAt: token.last_refresh_at,
+        createdAt: token.created_at
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
+    );
+  } catch (error: any) {
     return new Response(
       JSON.stringify({
         success: false,
         isValid: false,
-        message: 'هیچ توکن فعالی یافت نشد'
+        message: error.message || 'هیچ توکن فعالی یافت نشد'
       }),
       {
         status: 200,
@@ -304,25 +284,18 @@ async function handleValidate(supabase: any) {
       }
     );
   }
+}
 
-  const now = new Date();
-  const expiresAt = new Date(token.expires_at);
-  const isExpired = expiresAt <= now;
-  const needsRefresh = expiresAt <= new Date(now.getTime() + 3600000); // 1 hour
-
-  console.log('✅ Token validation complete:', {
-    isExpired,
-    needsRefresh,
-    expiresAt: token.expires_at
-  });
+async function handleEnsureValid(supabase: SupabaseClient) {
+  console.log('🛡️ Ensuring token validity on demand...');
+  const token = await ensureValidInoreaderToken(supabase);
 
   return new Response(
     JSON.stringify({
       success: true,
-      isValid: !isExpired,
-      needsRefresh,
       expiresAt: token.expires_at,
-      hasRefreshToken: !!token.refresh_token
+      lastRefreshAt: token.last_refresh_at,
+      createdAt: token.created_at
     }),
     {
       status: 200,
