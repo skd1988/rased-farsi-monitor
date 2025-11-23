@@ -218,70 +218,91 @@ serve(async (req) => {
 
         console.log(`🔍 [AutoAnalyzer] Running QUICK analysis for post ${item.post_id}...`);
 
-        // Call quick-psyop-detection first
-        const quickResponse = await fetch(
-          `${supabaseUrl}/functions/v1/quick-psyop-detection`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`
-            },
-            body: JSON.stringify({
-              title: item.posts.title,
-              contents: item.posts.contents,
-              source: item.posts.source,
-              language: item.posts.language
-            })
-          }
-        );
+        // Call quick-psyop-detection first (stage 1)
+        const quickResponse = await fetch(`${supabaseUrl}/functions/v1/quick-psyop-detection`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({
+            postId: item.post_id,
+            title: item.posts.title,
+            contents: item.posts.contents,
+            source: item.posts.source,
+            language: item.posts.language,
+            published_at: item.posts.published_at
+          })
+        });
 
         if (!quickResponse.ok) {
           throw new Error(`Quick analysis failed: ${quickResponse.status}`);
         }
 
         const quickData = await quickResponse.json();
-        const quick = normalizeQuickResult(quickData.result || quickData);
+        const quickResult = quickData.result || quickData;
 
-        console.log(`✅ [AutoAnalyzer] Quick analysis completed for post ${item.post_id}`);
+        const isPsyop =
+          quickResult.is_psyop === true ||
+          quickResult.is_psyop === "Yes";
 
-        const quickUpdate = {
-          is_psyop: quick.is_psyop,
-          psyop_confidence: quick.psyop_confidence,
-          threat_level: quick.threat_level ?? "Low",
-          psyop_risk_score: quick.psyop_risk_score,
-          stance_type: quick.stance_type,
-          psyop_category: quick.psyop_category,
-          psyop_techniques: quick.psyop_techniques,
-          analysis_stage: 'quick',
-          quick_analyzed_at: new Date().toISOString()
-        } as const;
+        const threatLevel: string = quickResult.threat_level || "Low";
 
+        const riskScore: number =
+          typeof quickResult.psyop_risk_score === "number"
+            ? quickResult.psyop_risk_score
+            : typeof quickResult.riskScore === "number"
+              ? quickResult.riskScore
+              : 0;
+
+        const isHighThreat =
+          threatLevel === "High" || threatLevel === "Critical";
+
+        const needsDeepestFlag =
+          quickResult.needs_deepest_analysis === true;
+
+        console.log(
+          `✅ Quick analysis: is_psyop=${isPsyop}, threat=${threatLevel}, risk=${riskScore}`
+        );
+
+        // Update post with quick analysis results
         await supabase
-          .from('posts')
-          .update(quickUpdate)
-          .eq('id', item.post_id);
+          .from("posts")
+          .update({
+            is_psyop: isPsyop,
+            psyop_confidence: quickResult.psyop_confidence ?? null,
+            psyop_risk_score: riskScore,
+            threat_level: threatLevel,
+            analysis_stage: "quick",
+            quick_analyzed_at: new Date().toISOString(),
+            analyzed_at: new Date().toISOString()
+          })
+          .eq("id", item.post_id);
 
-        const shouldRunDeep = needsDeepAnalysis({
-          postId: item.post_id,
-          ...quick,
-        });
+        // Decide what to run next (Option B):
+        // - All PsyOp posts => run Deep
+        // - Only high-risk PsyOp => run Deepest as an extra stage
+        let shouldRunDeep = false;
+        let shouldRunDeepest = false;
 
-        const shouldDeepest = shouldRunDeepest({
-          postId: item.post_id,
-          ...quick,
-        });
+        if (isPsyop) {
+          shouldRunDeep = true;
 
+          if (isHighThreat || riskScore >= 80 || needsDeepestFlag) {
+            shouldRunDeepest = true;
+          }
+        }
+
+        // STAGE 2: Deep analysis (always for PsyOp posts)
         if (shouldRunDeep) {
-          console.log(`🧠 [AutoAnalyzer] Running DEEP analysis for post ${item.post_id}...`);
-
+          console.log(`🔬 Running deep analysis for PsyOp post...`);
           const deepResponse = await fetch(
             `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
             {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}`
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`
               },
               body: JSON.stringify({
                 postId: item.post_id,
@@ -289,52 +310,61 @@ serve(async (req) => {
                 contents: item.posts.contents,
                 source: item.posts.source,
                 language: item.posts.language,
-                published_at: item.posts.published_at
+                published_at: item.posts.published_at,
+                quickDetectionResult: quickResult
               })
             }
           );
 
           if (!deepResponse.ok) {
-            console.error(`❌ [AutoAnalyzer] Deep analysis failed for post ${item.post_id}: ${deepResponse.status}`);
+            console.warn(
+              `⚠️ Deep analysis failed for post ${item.post_id}: ${deepResponse.status}`
+            );
+            // Continue with quick-only data; stage stays "quick"
           } else {
+            console.log(`✅ Deep analysis completed for post ${item.post_id}`);
+            // Mark post as deep-analyzed
             await supabase
-              .from('posts')
+              .from("posts")
               .update({
-                analysis_stage: 'deep',
+                analysis_stage: "deep",
                 deep_analyzed_at: new Date().toISOString()
               })
-              .eq('id', item.post_id);
-
-            console.log(`✅ [AutoAnalyzer] Deep analysis completed for post ${item.post_id}`);
+              .eq("id", item.post_id);
           }
-        } else {
-          console.log(
-            `ℹ️ [AutoAnalyzer] Skipping deep analysis for post ${item.post_id} (low risk according to quick).`
-          );
         }
 
-        if (shouldDeepest) {
-          console.log(`🧠 [AutoAnalyzer] Running DEEPEST analysis for post ${item.post_id}...`);
-
+        // STAGE 3: Deepest (crisis) analysis for high-risk PsyOp posts
+        if (shouldRunDeepest) {
+          console.log(`🧠 Running deepest (crisis) analysis for post ${item.post_id}...`);
           const deepestResponse = await fetch(
             `${supabaseUrl}/functions/v1/analyze-post-deepest`,
             {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}`
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`
               },
               body: JSON.stringify({
                 postId: item.post_id,
-                quickResult: quick,
+                quickResult: quickResult
               })
             }
           );
 
           if (!deepestResponse.ok) {
-            console.error("❌ [AutoAnalyzer] Deepest analysis failed for post:", item.post_id, await deepestResponse.text());
+            console.warn(
+              `⚠️ Deepest analysis failed for post ${item.post_id}: ${deepestResponse.status}`
+            );
           } else {
-            console.log(`✅ [AutoAnalyzer] Deepest analysis completed for post ${item.post_id}`);
+            console.log(`🔥 Deepest (crisis) analysis completed for post ${item.post_id}`);
+            await supabase
+              .from("posts")
+              .update({
+                analysis_stage: "deepest",
+                deepest_analysis_completed_at: new Date().toISOString()
+              })
+              .eq("id", item.post_id);
           }
         }
 
