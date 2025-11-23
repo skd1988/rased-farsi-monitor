@@ -1,16 +1,14 @@
 /**
  * =====================================================
- * INOREADER AUTH HOOK - Auto Token Management
+ * INOREADER AUTH HOOK - Backend-driven Token Status
  * سیستم AFTAB Intelligence System
  * =====================================================
- * 
- * این Hook مسئولیت‌های زیر را دارد:
- * 1. بررسی خودکار وضعیت Token
- * 2. Auto-refresh قبل از expire شدن
- * 3. مدیریت Session و Error Handling
+ *
+ * این Hook اکنون فقط وضعیت را از بک‌اند می‌خواند و عملیات حساس
+ * (تبادل Token، تمدید و مدیریت) همگی در Edge Functions انجام می‌شود.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -20,6 +18,8 @@ interface InoreaderAuthState {
   needsRefresh: boolean;
   expiresAt?: string;
   lastChecked?: Date;
+  lastRefreshAt?: string;
+  createdAt?: string;
 }
 
 export const useInoreaderAuth = () => {
@@ -29,11 +29,8 @@ export const useInoreaderAuth = () => {
     needsRefresh: false
   });
 
-  const refreshTimeoutRef = useRef<NodeJS.Timeout>();
-  const checkIntervalRef = useRef<NodeJS.Timeout>();
-
   /**
-   * بررسی وضعیت اتصال
+   * بررسی وضعیت اتصال از طریق بک‌اند
    */
   const checkStatus = useCallback(async () => {
     try {
@@ -43,29 +40,21 @@ export const useInoreaderAuth = () => {
 
       if (error) throw error;
 
-      const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+      const expiresAt = data?.expiresAt ? new Date(data.expiresAt) : null;
       const now = new Date();
-      
-      // محاسبه زمان باقی‌مانده تا expire
-      const timeUntilExpiry = expiresAt ? expiresAt.getTime() - now.getTime() : 0;
-      const needsRefresh = timeUntilExpiry > 0 && timeUntilExpiry < 10 * 60 * 1000; // کمتر از 10 دقیقه
+
+      const timeUntilExpiry = expiresAt ? expiresAt.getTime() - now.getTime() : null;
+      const needsRefresh = !!timeUntilExpiry && timeUntilExpiry > 0 && timeUntilExpiry < 60 * 60 * 1000;
 
       setState({
-        isConnected: data.isValid,
+        isConnected: !!data?.isValid,
         isChecking: false,
         needsRefresh,
-        expiresAt: data.expiresAt,
-        lastChecked: now
+        expiresAt: data?.expiresAt,
+        lastChecked: now,
+        lastRefreshAt: data?.lastRefreshAt,
+        createdAt: data?.createdAt
       });
-
-      // اگر نیاز به refresh داره، خودکار انجام بده
-      if (needsRefresh && data.isValid) {
-        console.log('🔄 Token needs refresh, auto-refreshing...');
-        await refreshToken();
-      }
-
-      // برنامه‌ریزی refresh بعدی
-      scheduleNextRefresh(timeUntilExpiry);
 
       return data;
     } catch (error: any) {
@@ -80,14 +69,14 @@ export const useInoreaderAuth = () => {
   }, []);
 
   /**
-   * تمدید خودکار Token
+   * تمدید دستی Token از طریق بک‌اند
    */
   const refreshToken = useCallback(async () => {
     try {
       console.log('🔄 Refreshing Inoreader token...');
-      
+
       const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'refresh' }
+        body: { action: 'ensure-valid' }
       });
 
       if (error) throw error;
@@ -97,13 +86,12 @@ export const useInoreaderAuth = () => {
         description: 'اتصال به Inoreader تمدید شد',
       });
 
-      // بررسی مجدد وضعیت
       await checkStatus();
 
       return true;
     } catch (error: any) {
       console.error('❌ Token refresh failed:', error);
-      
+
       toast({
         title: '⚠️ خطا در تمدید',
         description: 'لطفاً دوباره به Inoreader متصل شوید',
@@ -121,47 +109,10 @@ export const useInoreaderAuth = () => {
   }, [checkStatus]);
 
   /**
-   * برنامه‌ریزی refresh بعدی
-   */
-  const scheduleNextRefresh = useCallback((timeUntilExpiry: number) => {
-    // پاک کردن timeout قبلی
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-
-    if (timeUntilExpiry <= 0) return;
-
-    // Refresh کن 5 دقیقه قبل از expire شدن
-    const refreshTime = Math.max(0, timeUntilExpiry - 5 * 60 * 1000);
-
-    console.log(`⏰ Next refresh scheduled in ${Math.round(refreshTime / 1000 / 60)} minutes`);
-
-    refreshTimeoutRef.current = setTimeout(async () => {
-      await refreshToken();
-    }, refreshTime);
-  }, [refreshToken]);
-
-  /**
-   * بررسی دوره‌ای وضعیت (هر 5 دقیقه)
+   * بررسی اولیه وضعیت
    */
   useEffect(() => {
-    // بررسی اولیه
     checkStatus();
-
-    // بررسی دوره‌ای هر 5 دقیقه
-    checkIntervalRef.current = setInterval(() => {
-      checkStatus();
-    }, 5 * 60 * 1000);
-
-    // پاکسازی
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-      }
-    };
   }, [checkStatus]);
 
   /**
@@ -170,7 +121,6 @@ export const useInoreaderAuth = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        // وقتی کاربر برگشت به tab، وضعیت رو چک کن
         checkStatus();
       }
     };
@@ -196,14 +146,6 @@ export const useInoreaderAuth = () => {
       });
 
       if (error) throw error;
-
-      // پاک کردن تمام timer‌ها
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-      }
 
       setState({
         isConnected: false,
@@ -242,10 +184,8 @@ export const useInoreaderAuth = () => {
 
       if (error) throw error;
 
-      // ذخیره state برای بعد از redirect
       sessionStorage.setItem('inoreader_connecting', 'true');
 
-      // Redirect به صفحه OAuth
       window.location.href = data.authUrl;
 
       return true;
@@ -270,7 +210,6 @@ export const useInoreaderAuth = () => {
 
       if (error) throw error;
 
-      // پاک کردن state
       sessionStorage.removeItem('inoreader_connecting');
 
       toast({
@@ -278,13 +217,12 @@ export const useInoreaderAuth = () => {
         description: data.message
       });
 
-      // بررسی وضعیت جدید
       await checkStatus();
 
       return true;
     } catch (error: any) {
       sessionStorage.removeItem('inoreader_connecting');
-      
+
       toast({
         title: '❌ خطا در اتصال',
         description: error.message,

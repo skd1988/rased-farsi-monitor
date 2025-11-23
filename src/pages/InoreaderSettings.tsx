@@ -1,12 +1,12 @@
 /**
  * =====================================================
- * INOREADER SETTINGS - Enhanced with Auto-Refresh
+ * INOREADER SETTINGS - Backend Managed Tokens
  * سیستم AFTAB Intelligence System v2.1
  * =====================================================
- * 
+ *
  * تغییرات نسبت به نسخه قبل:
- * ✅ Auto-refresh token قبل از expire
- * ✅ بررسی خودکار هر 5 دقیقه
+ * ✅ تمدید خودکار Token در بک‌اند و Edge Functions
+ * ✅ بررسی وضعیت بدون نیاز به باز بودن صفحه
  * ✅ نمایش countdown تا expire
  * ✅ Warning هنگام نزدیک شدن به expire
  * ✅ بهبود Error Handling
@@ -532,10 +532,10 @@ const InoreaderSettings: React.FC = () => {
                 <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
                   <Zap className="h-4 w-4 text-blue-500" />
                   <AlertDescription>
-                    <strong>✨ تمدید خودکار فعال است</strong>
+                    <strong>✨ تمدید خودکار در بک‌اند فعال است</strong>
                     <p className="text-sm mt-1">
-                      سیستم به طور خودکار Token شما را 5 دقیقه قبل از expire شدن تمدید می‌کند.
-                      همچنین هر 5 دقیقه یکبار وضعیت اتصال بررسی می‌شود.
+                      توکن‌ها توسط Edge Functions و کرون‌های سرور پیش از انقضا تمدید می‌شوند و دیگر
+                      نیازی نیست این صفحه باز بماند یا مرورگر Refresh انجام دهد.
                     </p>
                   </AlertDescription>
                 </Alert>
@@ -569,8 +569,8 @@ const InoreaderSettings: React.FC = () => {
                   <div className="flex items-start gap-3 p-3 border rounded">
                     <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-medium">Auto-Refresh Token</p>
-                      <p className="text-sm text-muted-foreground">نیازی به login مجدد نیست</p>
+                      <p className="font-medium">تمدید خودکار در بک‌اند</p>
+                      <p className="text-sm text-muted-foreground">نیازی به login مجدد یا باز بودن صفحه نیست</p>
                     </div>
                   </div>
                 </div>
