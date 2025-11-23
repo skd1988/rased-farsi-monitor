@@ -18,6 +18,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { ensureValidInoreaderToken } from "../_shared/inoreaderAuth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,11 +66,9 @@ serve(async (req) => {
     console.log('📂 Folder IDs:', folderIds || 'ALL');
     console.log('⚡ Force All:', forceAll);
 
-    // STEP 1: Get active access token
-    const accessToken = await getActiveToken(supabase);
-    if (!accessToken) {
-      throw new Error('No active Inoreader token found. Please connect your account first.');
-    }
+    // STEP 1: Ensure we have a valid access token
+    const token = await ensureValidInoreaderToken(supabase, 10);
+    const accessToken = token.access_token;
 
     // STEP 2: Get folders to sync
     const folders = await getFoldersToSync(supabase, folderIds, forceAll);
@@ -135,30 +134,6 @@ serve(async (req) => {
 /**
  * دریافت توکن فعال از دیتابیس
  */
-async function getActiveToken(supabase: any): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('inoreader_oauth_tokens')
-    .select('access_token, expires_at')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error || !data) {
-    console.error('❌ No active token found');
-    return null;
-  }
-
-  // Check if expired
-  const expiresAt = new Date(data.expires_at);
-  if (expiresAt <= new Date()) {
-    console.error('❌ Token expired');
-    return null;
-  }
-
-  return data.access_token;
-}
-
 /**
  * دریافت لیست folders برای sync
  */
