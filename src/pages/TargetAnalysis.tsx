@@ -219,18 +219,40 @@ const TargetAnalysis = () => {
               totalAttacks: 0,
               weekAttacks: 0,
               threatDistribution: { Critical: 0, High: 0, Medium: 0, Low: 0 },
-              topVectors: new Map(),
+              topVectors: new Map<string, number>(),
               timeline: Array(30).fill(0),
+
+              // NEW: 3-level analysis counts
+              quickOnlyCount: 0,
+              deepCount: 0,
+              deepestCount: 0,
+              hasDeepest: false,
             });
           }
 
           const stat = stats.get(entityKey);
+
+          // Total attacks
           stat.totalAttacks++;
 
           // Week attacks
           const weekAgo = subDays(new Date(), 7);
           if (new Date(post.published_at) >= weekAgo) {
             stat.weekAttacks++;
+          }
+
+          // NEW: 3-level stage counters for PsyOp posts
+          if (post.is_psyop) {
+            if (post.analysis_stage === 'quick') {
+              stat.quickOnlyCount++;
+            }
+            if (post.analysis_stage === 'deep') {
+              stat.deepCount++;
+            }
+            if (post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at) {
+              stat.deepestCount++;
+              stat.hasDeepest = true;
+            }
           }
 
           // Threat distribution
@@ -377,22 +399,44 @@ const TargetAnalysis = () => {
               totalAttacks: 0,
               weekAttacks: 0,
               threatLevels: { Critical: 0, High: 0, Medium: 0, Low: 0 },
-              topAccusations: new Map(),
-              narratives: new Map(),
-              sources: new Set(),
+              topAccusations: new Map<string, number>(),
+              narratives: new Map<string, number>(),
+              sources: new Set<string>(),
               timeline: Array(14).fill(0),
               firstAttack: post.published_at,
               lastAttack: post.published_at,
+
+              // NEW: 3-level analysis counts
+              quickOnlyCount: 0,
+              deepCount: 0,
+              deepestCount: 0,
+              hasDeepest: false,
             });
           }
 
           const stat = stats.get(personKey);
+
+          // Total attacks
           stat.totalAttacks++;
 
           // Week attacks
           const weekAgo = subDays(new Date(), 7);
           if (new Date(post.published_at) >= weekAgo) {
             stat.weekAttacks++;
+          }
+
+          // NEW: 3-level stage counters for PsyOp posts
+          if (post.is_psyop) {
+            if (post.analysis_stage === 'quick') {
+              stat.quickOnlyCount++;
+            }
+            if (post.analysis_stage === 'deep') {
+              stat.deepCount++;
+            }
+            if (post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at) {
+              stat.deepestCount++;
+              stat.hasDeepest = true;
+            }
           }
 
           // Threat levels
@@ -635,16 +679,30 @@ const TargetAnalysis = () => {
                   .filter(e => entityType === 'All' || e.entity_type === entityType)
                   .filter(e => location === 'All' || e.location === location)
                   .map((entity) => (
-                    <EntityCard
+                    <div
                       key={`${entity.name_persian}-${entity.name_english || ''}`}
-                      entity={entity}
-                      onExpand={() => {
-                        toast({
-                          title: "جزئیات نهاد",
-                          description: entity.name_persian,
-                        });
-                      }}
-                    />
+                      className="space-y-1"
+                    >
+                      <EntityCard
+                        entity={entity}
+                        onExpand={() => {
+                          toast({
+                            title: "جزئیات نهاد",
+                            description: entity.name_persian,
+                          });
+                        }}
+                      />
+                      <div className="text-[11px] text-muted-foreground flex flex-wrap gap-3 pr-1">
+                        <span>Quick: {entity.quickOnlyCount ?? 0}</span>
+                        <span>Deep: {entity.deepCount ?? 0}</span>
+                        <span>Deepest: {entity.deepestCount ?? 0}</span>
+                        {entity.hasDeepest && (
+                          <span className="font-bold text-red-500">
+                            🔥 دارای حملات سطح بحران (Deepest)
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   ))}
               </div>
             </TabsContent>
@@ -732,16 +790,30 @@ const TargetAnalysis = () => {
               {/* Person Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredPersons.map((person) => (
-                  <PersonCard
+                  <div
                     key={`${person.name_persian}-${person.name_english || ''}`}
-                    person={person}
-                    onViewDetails={() => {
-                      toast({
-                        title: "جزئیات فرد",
-                        description: person.name_persian,
-                      });
-                    }}
-                  />
+                    className="space-y-1"
+                  >
+                    <PersonCard
+                      person={person}
+                      onViewDetails={() => {
+                        toast({
+                          title: "جزئیات فرد",
+                          description: person.name_persian || person.name_english,
+                        });
+                      }}
+                    />
+                    <div className="text-[11px] text-muted-foreground flex flex-wrap gap-3 pr-1">
+                      <span>Quick: {person.quickOnlyCount ?? 0}</span>
+                      <span>Deep: {person.deepCount ?? 0}</span>
+                      <span>Deepest: {person.deepestCount ?? 0}</span>
+                      {person.hasDeepest && (
+                        <span className="font-bold text-red-500">
+                          🔥 تحت حملات سطح بحران (Deepest)
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
 
