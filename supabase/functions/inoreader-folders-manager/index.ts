@@ -234,6 +234,7 @@ async function handleUpdate(supabase: any, folderId: string, config: any) {
   const updates: any = {};
 
   if (config.is_active !== undefined) updates.is_active = config.is_active;
+  if (config.sync_enabled !== undefined) updates.is_active = config.sync_enabled;
   if (config.priority !== undefined) updates.priority = config.priority;
   if (config.fetch_interval_minutes !== undefined) {
     updates.fetch_interval_minutes = config.fetch_interval_minutes;
