@@ -21,7 +21,8 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   ensureValidInoreaderToken,
   getActiveInoreaderToken,
-  refreshInoreaderToken
+  refreshInoreaderToken,
+  saveTokenRecord
 } from "../_shared/inoreaderAuth.ts";
 
 const corsHeaders = {
@@ -68,12 +69,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const supabaseAuth = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } }
-    );
-
     console.log(`🔐 Inoreader OAuth: Action = ${action}`);
 
     switch (action) {
@@ -81,9 +76,8 @@ serve(async (req) => {
         return handleAuthorize();
 
       case 'status': {
-        const userId = await requireUserId(supabaseAuth);
         try {
-          return await handleStatus(supabase, userId);
+          return await handleStatus(supabase);
         } catch (err) {
           console.error('Inoreader status error', err);
 
@@ -113,8 +107,7 @@ serve(async (req) => {
       }
 
       case 'exchange': {
-        const userId = await requireUserId(supabaseAuth);
-        return await handleExchange(supabase, code, userId);
+        return await handleExchange(supabase, code);
       }
 
       case 'refresh':
@@ -127,8 +120,7 @@ serve(async (req) => {
         return await handleEnsureValid(supabase);
 
       case 'disconnect': {
-        const userId = await requireUserId(supabaseAuth);
-        return await handleDisconnect(supabase, userId);
+        return await handleDisconnect(supabase);
       }
 
       default:
@@ -157,16 +149,6 @@ function jsonResponse(data: any, status = 200) {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     }
   );
-}
-
-async function requireUserId(supabaseAuth: SupabaseClient) {
-  const { data: { user }, error } = await supabaseAuth.auth.getUser();
-
-  if (error || !user) {
-    throw new Error('unauthorized');
-  }
-
-  return user.id;
 }
 
 /**
@@ -198,18 +180,13 @@ function handleAuthorize() {
   );
 }
 
-async function handleStatus(supabase: SupabaseClient, userId: string) {
-  const { data: tokenRow, error: tokenError } = await supabase
-    .from(TOKENS_TABLE)
-    .select('*')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+async function handleStatus(supabase: SupabaseClient) {
+  const status = await ensureValidInoreaderToken(supabase, 10);
 
-  if (tokenError || !tokenRow) {
-    const payload = {
+  if (status.status === 'not_connected') {
+    return jsonResponse({
+      connected: false,
+      reason: 'no_tokens',
       ok: true,
       isConnected: false,
       isExpired: false,
@@ -218,40 +195,44 @@ async function handleStatus(supabase: SupabaseClient, userId: string) {
       canAutoRefresh: false,
       expiresAt: null,
       secondsToExpiry: null,
-      rawTokenState: null,
-    };
-
-    return new Response(JSON.stringify(payload), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  const now = Date.now();
-  const expiresAt = tokenRow.expires_at ? new Date(tokenRow.expires_at).getTime() : null;
-  const isExpired = expiresAt !== null && expiresAt <= now;
-  const secondsToExpiry = expiresAt !== null ? Math.floor((expiresAt - now) / 1000) : null;
-  const hasRefreshToken = !!tokenRow.refresh_token;
-  const canAutoRefresh = isExpired && hasRefreshToken;
+  if (status.status === 'refresh_failed') {
+    return jsonResponse({
+      connected: false,
+      reason: 'refresh_failed',
+      ok: false,
+      isConnected: false,
+      isExpired: true,
+      needsReconnect: true,
+      hasRefreshToken: false,
+      canAutoRefresh: false,
+      expiresAt: null,
+      secondsToExpiry: null,
+      error: { message: status.error || 'Token refresh failed' },
+    });
+  }
 
-  const payload = {
+  const token = status.token;
+  const now = new Date();
+  const expiresAt = token.expires_at ? new Date(token.expires_at) : null;
+  const isExpired = expiresAt ? expiresAt <= now : false;
+  const secondsToExpiry = expiresAt
+    ? Math.floor((expiresAt.getTime() - now.getTime()) / 1000)
+    : null;
+
+  return jsonResponse({
+    connected: true,
     ok: true,
     isConnected: true,
     isExpired,
-    needsReconnect: !hasRefreshToken,
-    hasRefreshToken,
-    canAutoRefresh,
-    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+    needsReconnect: false,
+    hasRefreshToken: !!token.refresh_token,
+    canAutoRefresh: !!token.refresh_token,
+    expiresAt: token.expires_at,
     secondsToExpiry,
-    rawTokenState: tokenRow,
-  };
-
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders,
-    },
+    needsRefresh: false,
   });
 }
 
@@ -259,7 +240,7 @@ async function handleStatus(supabase: SupabaseClient, userId: string) {
  * STEP 2: Exchange authorization code for tokens
  * کد موقت را به Access Token تبدیل می‌کند
  */
-async function handleExchange(supabase: SupabaseClient, code: string, userId: string) {
+async function handleExchange(supabase: SupabaseClient, code: string) {
   if (!code) {
     throw new Error('Authorization code is required');
   }
@@ -294,61 +275,21 @@ async function handleExchange(supabase: SupabaseClient, code: string, userId: st
     expires_in: tokens.expires_in
   });
 
-  // Calculate expiration time
-  const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
-
-  // Deactivate old tokens
-  await supabase
-    .from(TOKENS_TABLE)
-    .update({ is_active: false })
-    .eq('user_id', userId);
-
-  // Store new tokens
-  const { data: tokenRecord, error: insertError } = await supabase
-    .from(TOKENS_TABLE)
-    .insert({
-      user_id: userId,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_type: tokens.token_type,
-      expires_at: expiresAt.toISOString(),
-      scope: tokens.scope,
-      is_active: true
-    })
-    .select()
-    .single();
-
-  if (insertError) {
-    console.error('❌ Database error:', insertError);
-    throw insertError;
-  }
-
-  console.log('✅ Tokens saved to database');
-
-  const { error: sessionDeactivateError } = await supabase
-    .from('inoreader_oauth_sessions')
-    .update({ is_active: false })
-    .eq('user_id', userId);
-
-  if (sessionDeactivateError) {
-    throw sessionDeactivateError;
-  }
-
-  const { error: sessionInsertError } = await supabase.from('inoreader_oauth_sessions').insert({
-    user_id: userId,
-    is_active: true,
-    expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+  const tokenRecord = await saveTokenRecord(supabase, {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_in: tokens.expires_in,
+    token_type: tokens.token_type,
+    scope: tokens.scope,
   });
 
-  if (sessionInsertError) {
-    throw sessionInsertError;
-  }
+  console.log('✅ Tokens saved to database');
 
   return new Response(
     JSON.stringify({
       success: true,
       message: 'اتصال به Inoreader با موفقیت برقرار شد',
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: tokenRecord.expires_at,
       hasRefreshToken: !!tokens.refresh_token
     }),
     {
@@ -441,7 +382,13 @@ async function handleValidate(supabase: SupabaseClient) {
 
 async function handleEnsureValid(supabase: SupabaseClient) {
   console.log('🛡️ Ensuring token validity on demand...');
-  const token = await ensureValidInoreaderToken(supabase);
+  const status = await ensureValidInoreaderToken(supabase);
+
+  if (status.status !== 'ok') {
+    return jsonResponse({ success: false, error: 'No valid token available' }, 400);
+  }
+
+  const token = status.token;
 
   return new Response(
     JSON.stringify({
@@ -461,13 +408,13 @@ async function handleEnsureValid(supabase: SupabaseClient) {
  * STEP 5: Disconnect/Remove token
  * حذف اتصال به Inoreader
  */
-async function handleDisconnect(supabase: SupabaseClient, userId: string) {
+async function handleDisconnect(supabase: SupabaseClient) {
   console.log('🔌 Disconnecting from Inoreader...');
 
   const { error: sessionError } = await supabase
     .from('inoreader_oauth_sessions')
     .update({ is_active: false })
-    .eq('user_id', userId);
+    .neq('is_active', false);
 
   if (sessionError) {
     throw sessionError;
@@ -475,8 +422,7 @@ async function handleDisconnect(supabase: SupabaseClient, userId: string) {
 
   const { error: tokenError } = await supabase
     .from(TOKENS_TABLE)
-    .delete()
-    .eq('user_id', userId);
+    .delete();
 
   if (tokenError) {
     throw tokenError;

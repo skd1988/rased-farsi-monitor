@@ -67,8 +67,15 @@ serve(async (req) => {
     console.log('⚡ Force All:', forceAll);
 
     // STEP 1: Ensure we have a valid access token
-    const token = await ensureValidInoreaderToken(supabase, 10);
-    const accessToken = token.access_token;
+    const tokenStatus = await ensureValidInoreaderToken(supabase, 10);
+
+    if (tokenStatus.status !== 'ok') {
+      const reason = tokenStatus.status === 'not_connected' ? 'هیچ توکنی یافت نشد' : 'تمدید توکن ناموفق بود';
+      console.error('[Inoreader] No valid token available', tokenStatus);
+      return createErrorResponse(reason);
+    }
+
+    const accessToken = tokenStatus.accessToken;
 
     // STEP 2: Get folders to sync
     const folders = await getFoldersToSync(supabase, folderIds, forceAll);

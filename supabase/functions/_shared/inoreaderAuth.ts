@@ -3,7 +3,6 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export interface InoreaderTokenRecord {
   id: string;
-  user_id?: string;
   access_token: string;
   refresh_token: string | null;
   token_type?: string | null;
@@ -32,23 +31,123 @@ export const getServiceSupabaseClient = () =>
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-export async function getActiveInoreaderToken(
+export async function loadLatestTokenRecord(
   supabase: SupabaseClient<any, any, any>
-): Promise<InoreaderTokenRecord> {
+): Promise<InoreaderTokenRecord | null> {
   const { data, error } = await supabase
-    .from("inoreader_oauth_tokens")
-    .select("*")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
+    .from('inoreader_oauth_tokens')
+    .select('*')
+    .order('created_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    console.error("[Inoreader] No active token found", error);
-    throw new Error("No active Inoreader token found");
+  if (error) {
+    if ((error as any).code === 'PGRST204') {
+      console.error(
+        '[Inoreader] Schema mismatch for inoreader_oauth_tokens (probably user_id does not exist)'
+      );
+    }
+    console.error('[Inoreader] Failed to load latest token', {
+      code: (error as any).code,
+      message: error.message,
+    });
+    return null;
+  }
+
+  if (!data) {
+    console.warn('[Inoreader] No token records found');
+    return null;
   }
 
   return data as InoreaderTokenRecord;
+}
+
+export async function saveTokenRecord(
+  supabase: SupabaseClient<any, any, any>,
+  tokens: { access_token: string; refresh_token?: string | null; expires_in: number; token_type?: string; scope?: string }
+): Promise<InoreaderTokenRecord> {
+  const { access_token, refresh_token, expires_in, token_type, scope } = tokens;
+  const now = new Date().toISOString();
+  const expires_at = new Date(Date.now() + expires_in * 1000).toISOString();
+
+  // Deactivate previous tokens (global scope)
+  const { error: deactivateError } = await supabase
+    .from('inoreader_oauth_tokens')
+    .update({ is_active: false })
+    .neq('is_active', false);
+
+  if (deactivateError) {
+    console.error('[Inoreader] Failed to deactivate previous tokens', {
+      code: (deactivateError as any).code,
+      message: deactivateError.message,
+    });
+  }
+
+  const { data, error } = await supabase
+    .from('inoreader_oauth_tokens')
+    .insert({
+      access_token,
+      refresh_token: refresh_token ?? null,
+      expires_at,
+      is_active: true,
+      last_refresh_at: now,
+      token_type: token_type ?? null,
+      scope: scope ?? null,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    if ((error as any)?.code === 'PGRST204') {
+      console.error(
+        '[Inoreader] Schema mismatch for inoreader_oauth_tokens (probably user_id does not exist)'
+      );
+    }
+    console.error('[Inoreader] Failed to save token record', {
+      code: (error as any)?.code,
+      message: error?.message,
+    });
+    throw new Error('Failed to save Inoreader token record');
+  }
+
+  return data as InoreaderTokenRecord;
+}
+
+export async function markTokenError(
+  supabase: SupabaseClient<any, any, any>,
+  message: string
+) {
+  const latest = await loadLatestTokenRecord(supabase);
+  if (!latest) return;
+
+  const { error } = await supabase
+    .from('inoreader_oauth_tokens')
+    .update({ is_active: false, last_error: message })
+    .eq('id', latest.id);
+
+  if (error) {
+    if ((error as any).code === 'PGRST204') {
+      console.error(
+        '[Inoreader] Schema mismatch for inoreader_oauth_tokens (probably user_id does not exist)'
+      );
+    }
+    console.error('[Inoreader] Failed to mark token error', {
+      code: (error as any).code,
+      message: error.message,
+    });
+  }
+}
+
+export async function getActiveInoreaderToken(
+  supabase: SupabaseClient<any, any, any>
+): Promise<InoreaderTokenRecord> {
+  const latest = await loadLatestTokenRecord(supabase);
+
+  if (!latest) {
+    throw new Error('No active Inoreader token found');
+  }
+
+  return latest;
 }
 
 export async function refreshInoreaderToken(
@@ -86,70 +185,49 @@ export async function refreshInoreaderToken(
       response.status === 401 ||
       lowerError.includes("invalid_grant")
     ) {
-      const userId = tokenRecord.user_id;
-
-      if (userId) {
-        await supabase
-          .from('inoreader_oauth_sessions')
-          .update({ is_active: false })
-          .eq('user_id', userId);
-
-        await supabase
-          .from('inoreader_oauth_tokens')
-          .delete()
-          .eq('user_id', userId);
-      }
-
+      await markTokenError(supabase, 'invalid_grant');
       throw new Error('inoreader_disconnected');
     }
 
+    await markTokenError(supabase, errorText);
     throw new Error(`Token refresh failed: ${errorText}`);
   }
 
   const tokens = await response.json();
-  const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-  const now = new Date().toISOString();
-
-  const updates = {
+  const newToken = await saveTokenRecord(supabase, {
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token || refreshToken,
-    expires_at: expiresAt,
-    last_refresh_at: now,
-    updated_at: now,
+    expires_in: tokens.expires_in,
     token_type: tokens.token_type ?? tokenRecord.token_type,
     scope: tokens.scope ?? tokenRecord.scope,
-  };
-
-  const { data, error } = await supabase
-    .from("inoreader_oauth_tokens")
-    .update(updates)
-    .eq("id", tokenRecord.id)
-    .select()
-    .single();
-
-  if (error || !data) {
-    console.error("[Inoreader] Failed to update refreshed token", error);
-    throw new Error("Failed to update refreshed token");
-  }
+  });
 
   console.log("[Inoreader] Token refreshed successfully", {
-    expires_at: expiresAt,
+    expires_at: newToken.expires_at,
     has_new_refresh_token: !!tokens.refresh_token,
   });
 
-  return data as InoreaderTokenRecord;
+  return newToken;
 }
 
 export async function ensureValidInoreaderToken(
   supabase: SupabaseClient<any, any, any>,
   safetyWindowMinutes = 5
-): Promise<InoreaderTokenRecord> {
+): Promise<
+  | { status: 'ok'; token: InoreaderTokenRecord; accessToken: string }
+  | { status: 'not_connected' }
+  | { status: 'refresh_failed'; error?: string }
+> {
   console.log("[Inoreader] Ensuring token validity...");
-  const token = await getActiveInoreaderToken(supabase);
+  const token = await loadLatestTokenRecord(supabase);
+
+  if (!token) {
+    return { status: 'not_connected' };
+  }
 
   if (!token.expires_at) {
     console.log("[Inoreader] Token has no expiry, returning current token");
-    return token;
+    return { status: 'ok', token, accessToken: token.access_token };
   }
 
   const expiresAt = new Date(token.expires_at);
@@ -161,9 +239,15 @@ export async function ensureValidInoreaderToken(
     console.log(
       `[Inoreader] Token still valid, time left: ${Math.round(timeLeftMs / 1000)} seconds`
     );
-    return token;
+    return { status: 'ok', token, accessToken: token.access_token };
   }
 
   console.log("[Inoreader] Token near expiry or expired, refreshing...");
-  return await refreshInoreaderToken(supabase, token);
+  try {
+    const refreshed = await refreshInoreaderToken(supabase, token);
+    return { status: 'ok', token: refreshed, accessToken: refreshed.access_token };
+  } catch (error: any) {
+    console.error('[Inoreader] Failed to refresh token', error);
+    return { status: 'refresh_failed', error: error?.message };
+  }
 }
