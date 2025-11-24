@@ -1,157 +1,238 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
-const validEscalationLevels = [
-  "Low",
-  "Medium",
-  "High",
-  "Critical"
-];
-serve(async (req)=>{
+
+const validEscalationLevels = ["Low", "Medium", "High", "Critical"] as const;
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY =
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY") ?? "";
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+}
+
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
+
+serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: corsHeaders
-    });
+    return new Response(null, { headers: corsHeaders });
   }
+
   try {
-    const { postId } = await req.json();
-    if (!postId) {
-      return new Response(JSON.stringify({
-        error: "postId is required"
-      }), {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json"
-        }
-      });
+    if (!supabase) {
+      throw new Error("Supabase client not initialized");
     }
-    const deepseekApiKey = Deno.env.get("DEEPSEEK_API_KEY");
-    if (!deepseekApiKey) {
+    if (!DEEPSEEK_API_KEY) {
       throw new Error("DeepSeek API key not configured");
     }
-    const supabase = createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
-    const { data: post, error: postError } = await supabase.from("posts").select("id, title, source, language, contents, summary, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_theme, urgency_level, virality_potential").eq("id", postId).single();
+
+    const { postId } = await req.json();
+    if (!postId) {
+      return new Response(
+        JSON.stringify({ error: "postId is required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    console.log(`🚀 Starting deepest analysis for post ${postId}`);
+
+    const { data: post, error: postError } = await supabase
+      .from("posts")
+      .select(
+        "id, title, source, language, contents, summary, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_theme, urgency_level, virality_potential",
+      )
+      .eq("id", postId)
+      .single();
+
     if (postError || !post) {
       console.error("Post fetch error", postError);
-      return new Response(JSON.stringify({
-        error: "Post not found"
-      }), {
-        status: 404,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json"
-        }
-      });
+      return new Response(
+        JSON.stringify({ error: "Post not found" }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
+
     let relatedPosts = null;
     if (post.source) {
-      const { data: relatedData, error: relatedError } = await supabase.from("posts").select("title, summary").eq("source", post.source).eq("is_psyop", true).neq("id", post.id).order("published_at", {
-        ascending: false
-      }).limit(5);
+      const { data: relatedData, error: relatedError } = await supabase
+        .from("posts")
+        .select("title, summary")
+        .eq("source", post.source)
+        .eq("is_psyop", true)
+        .neq("id", post.id)
+        .order("published_at", { ascending: false })
+        .limit(5);
+
       if (relatedError) {
         console.warn("Related posts fetch warning", relatedError);
       } else if (relatedData && relatedData.length > 0) {
         relatedPosts = relatedData;
       }
     }
+
     const prompt = buildDeepestPrompt(post, relatedPosts ?? []);
-    const llmResult = await callDeepseekWithRetry(prompt, deepseekApiKey);
+    const llmResult = await callDeepseekWithRetry(prompt, DEEPSEEK_API_KEY);
     const parsedResult = parseDeepestResult(llmResult);
-    const normalizedEscalation = normalizeEscalationLevel(parsedResult.escalation_level);
-    const { error: updateError } = await supabase.from("posts").update({
-      deepest_escalation_level: normalizedEscalation,
-      deepest_strategic_summary: parsedResult.strategic_summary ?? null,
-      deepest_key_risks: Array.isArray(parsedResult.key_risks) ? parsedResult.key_risks : null,
-      deepest_audience_segments: Array.isArray(parsedResult.audience_segments) ? parsedResult.audience_segments : null,
-      deepest_recommended_actions: Array.isArray(parsedResult.recommended_actions) ? parsedResult.recommended_actions : null,
-      deepest_monitoring_indicators: Array.isArray(parsedResult.monitoring_indicators) ? parsedResult.monitoring_indicators : null,
-      deepest_analysis_completed_at: new Date().toISOString(),
-      deepest_raw: parsedResult
-    }).eq("id", postId);
+    const normalizedEscalation = normalizeEscalationLevel(
+      parsedResult.escalation_level,
+    );
+
+    console.log("✅ Parsed deepest analysis JSON:", parsedResult);
+
+    const { error: updateError } = await supabase
+      .from("posts")
+      .update({
+        analysis_stage: "deepest",
+        status: "completed",
+        deepest_analysis_completed_at: new Date().toISOString(),
+
+        deepest_escalation_level: normalizedEscalation,
+        deepest_strategic_summary: parsedResult.strategic_summary ?? null,
+        deepest_key_risks: Array.isArray(parsedResult.key_risks)
+          ? parsedResult.key_risks
+          : null,
+        deepest_audience_segments: Array.isArray(parsedResult.audience_segments)
+          ? parsedResult.audience_segments
+          : null,
+        deepest_recommended_actions: Array.isArray(
+          parsedResult.recommended_actions,
+        )
+          ? parsedResult.recommended_actions
+          : null,
+        deepest_monitoring_indicators: Array.isArray(
+          parsedResult.monitoring_indicators,
+        )
+          ? parsedResult.monitoring_indicators
+          : null,
+
+        deepest_raw: parsedResult,
+      })
+      .eq("id", postId);
+
     if (updateError) {
       console.error("Failed to update post", updateError);
-      return new Response(JSON.stringify({
-        error: "Failed to save analysis"
-      }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json"
-        }
-      });
+      return new Response(
+        JSON.stringify({ error: "Failed to save analysis" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
+
     const responsePayload = {
       post_id: postId,
       stage: "deepest_analysis",
       escalation_level: normalizedEscalation,
       strategic_summary: parsedResult.strategic_summary ?? null,
-      key_risks: Array.isArray(parsedResult.key_risks) ? parsedResult.key_risks : null,
-      audience_segments: Array.isArray(parsedResult.audience_segments) ? parsedResult.audience_segments : null,
-      recommended_actions: Array.isArray(parsedResult.recommended_actions) ? parsedResult.recommended_actions : null,
-      monitoring_indicators: Array.isArray(parsedResult.monitoring_indicators) ? parsedResult.monitoring_indicators : null
+      key_risks: Array.isArray(parsedResult.key_risks)
+        ? parsedResult.key_risks
+        : null,
+      audience_segments: Array.isArray(parsedResult.audience_segments)
+        ? parsedResult.audience_segments
+        : null,
+      recommended_actions: Array.isArray(parsedResult.recommended_actions)
+        ? parsedResult.recommended_actions
+        : null,
+      monitoring_indicators: Array.isArray(parsedResult.monitoring_indicators)
+        ? parsedResult.monitoring_indicators
+        : null,
     };
+
     return new Response(JSON.stringify(responsePayload), {
       status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json"
-      }
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("Unexpected error", err);
-    return new Response(JSON.stringify({
-      error: "Internal server error"
-    }), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json"
-      }
-    });
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
-function buildDeepestPrompt(post, relatedPosts) {
+
+function buildDeepestPrompt(post: any, relatedPosts: any[]) {
   const postSnippet = (post.summary || post.contents || "").slice(0, 2000);
-  const relatedSection = relatedPosts.slice(0, 5).map((p, idx)=>`Related Post ${idx + 1}: ${p.title || "(untitled)"}\nSummary: ${p.summary || ""}`).join("\n\n");
-  const relatedBlock = relatedSection ? `\n\nRecent related psyop posts:\n${relatedSection}` : "";
-  return `You are a senior strategic information warfare analyst tasked with a highest-level crisis assessment. Analyze the following content and its previous screening results to produce a strategic report.\n\n` + `Primary post details:\n` + `- Title: ${post.title || "(none)"}\n` + `- Source: ${post.source || "(unknown)"}\n` + `- Language: ${post.language || "(unknown)"}\n` + `- Raw/summary text: ${postSnippet}\n\n` + `Quick screening metadata:\n` + `- is_psyop: ${post.is_psyop}\n` + `- psyop_risk_score: ${post.psyop_risk_score}\n` + `- threat_level: ${post.threat_level}\n` + `- stance_type: ${post.stance_type}\n` + `- psyop_category: ${post.psyop_category}\n` + `- psyop_techniques: ${post.psyop_techniques?.join(", ") || ""}\n` + `- psyop_review_status: ${post.psyop_review_status}\n\n` + `Deep analysis metadata:\n` + `- analysis_summary: ${post.analysis_summary}\n` + `- narrative_theme: ${post.narrative_theme}\n` + `- urgency_level: ${post.urgency_level}\n` + `- virality_potential: ${post.virality_potential}\n` + relatedBlock + `\n\nInstructions: Provide a strategic-level crisis analysis for decision-makers. Consider quick screening results, deep analysis themes, and the raw content to justify the risk. Respond with a single JSON object using exactly this structure:\n` + `{"escalation_level":"High","strategic_summary":"Short paragraph explaining why this content matters strategically.","key_risks":["Risk that the narrative will spread to mainstream media.","Risk of demoralizing local supporters of the resistance."],"audience_segments":["local_population","regional_public","international_media"],"recommended_actions":["Prepare a clear factual rebuttal addressing the main claims.","Coordinate with allied media outlets to amplify counter-narratives."],"monitoring_indicators":["Spike in mentions of this narrative on major platforms.","Adoption of this framing by mainstream news channels."]}\n` + `Rules: escalation_level must be one of Low, Medium, High, Critical. strategic_summary should be 3-6 sentences. Arrays should contain concise, concrete items. Return ONLY valid JSON in exactly this structure and no extra text.`;
+  const relatedSection = relatedPosts
+    .slice(0, 5)
+    .map(
+      (p, idx) =>
+        `پست مرتبط ${idx + 1}: ${p.title || "(untitled)"}\nخلاصه: ${
+          p.summary || ""
+        }`,
+    )
+    .join("\n\n");
+  const relatedBlock = relatedSection
+    ? `\n\nنمونه‌هایی از پست‌های مشابه اخیر:\n${relatedSection}`
+    : "";
+
+  return `شما یک تحلیلگر ارشد جنگ شناختی و عملیات روانی هستید که باید عمیق‌ترین ارزیابی بحران را ارائه دهید. تمام متن‌های خروجی (به جز مقادیر انگلیسی در فیلدهای کلیدی) باید فارسی باشند و پاسخ فقط به صورت JSON بازگردد.
+\nاطلاعات پست:\n- عنوان: ${post.title || "(none)"}\n- منبع: ${post.source || "(unknown)"}\n- زبان: ${post.language || "(unknown)"}\n- متن/خلاصه: ${postSnippet}\n\nفراداده غربالگری سریع:\n- is_psyop: ${post.is_psyop}\n- psyop_risk_score: ${post.psyop_risk_score}\n- threat_level: ${post.threat_level}\n- stance_type: ${post.stance_type}\n- psyop_category: ${post.psyop_category}\n- psyop_techniques: ${post.psyop_techniques?.join(", ") || ""}\n- psyop_review_status: ${post.psyop_review_status}\n\nفراداده تحلیل عمیق:\n- analysis_summary: ${post.analysis_summary}\n- narrative_theme: ${post.narrative_theme}\n- urgency_level: ${post.urgency_level}\n- virality_potential: ${post.virality_potential}${relatedBlock}\n\nدستورالعمل: فقط یک شیء JSON معتبر و بدون هیچ متن اضافی برگردان. همه متن‌ها باید فارسی باشند. ساختار دقیق خروجی:
+{"escalation_level":"High","strategic_summary":"چند جمله فارسی درباره اهمیت استراتژیک این محتوا.","key_risks":["ریسک ۱ به فارسی","ریسک ۲ به فارسی"],"audience_segments":["عموم مردم","رسانه‌های منطقه‌ای"],"recommended_actions":["اقدام ۱ به فارسی","اقدام ۲ به فارسی"],"monitoring_indicators":["شاخص ۱ به فارسی","شاخص ۲ به فارسی"]}
+قواعد: escalation_level فقط یکی از Low، Medium، High، Critical باشد. strategic_summary باید ۳ تا ۶ جمله فارسی باشد. تمام آرایه‌ها باید آیتم‌های کوتاه و عملی فارسی داشته باشند. هیچ توضیح یا متن دیگری خارج از JSON برنگردان.`;
 }
-async function callDeepseekWithRetry(prompt, apiKey) {
+
+async function callDeepseekWithRetry(prompt: string, apiKey: string) {
   const maxRetries = 3;
   let responseContent = "";
-  for(let attempt = 0; attempt < maxRetries; attempt++){
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const deepseekResponse = await fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`
+      const deepseekResponse = await fetch(
+        "https://api.deepseek.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.15,
+            max_tokens: 800,
+          }),
         },
-        body: JSON.stringify({
-          model: "deepseek-chat",
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.15,
-          max_tokens: 600
-        })
-      });
+      );
       if (!deepseekResponse.ok) {
-        if ((deepseekResponse.status === 429 || deepseekResponse.status === 503) && attempt < maxRetries - 1) {
+        if (
+          (deepseekResponse.status === 429 || deepseekResponse.status === 503) &&
+          attempt < maxRetries - 1
+        ) {
           const backoffDelay = Math.pow(2, attempt) * 2000;
-          console.log(`⏳ Rate limited, retrying after ${backoffDelay}ms (attempt ${attempt + 1}/${maxRetries})...`);
-          await new Promise((resolve)=>setTimeout(resolve, backoffDelay));
+          console.log(
+            `⏳ Rate limited, retrying after ${backoffDelay}ms (attempt ${
+              attempt + 1
+            }/${maxRetries})...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoffDelay));
           continue;
         }
         const errorText = await deepseekResponse.text();
-        console.error("DeepSeek API error:", deepseekResponse.status, errorText);
+        console.error(
+          "DeepSeek API error:",
+          deepseekResponse.status,
+          errorText,
+        );
         throw new Error(`DeepSeek API error: ${deepseekResponse.status}`);
       }
       const deepseekData = await deepseekResponse.json();
@@ -161,16 +242,22 @@ async function callDeepseekWithRetry(prompt, apiKey) {
     } catch (error) {
       if (attempt === maxRetries - 1) throw error;
       const backoffDelay = Math.pow(2, attempt) * 2000;
-      console.log(`⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`);
-      await new Promise((resolve)=>setTimeout(resolve, backoffDelay));
+      console.log(
+        `⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoffDelay));
     }
   }
   return responseContent;
 }
-function parseDeepestResult(rawContent) {
-  let result = {};
+
+function parseDeepestResult(rawContent: string) {
+  let result: any = {};
   try {
-    const cleanedContent = rawContent.replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim();
+    const cleanedContent = rawContent
+      .replace(/```json\n?/gi, "")
+      .replace(/```\n?/g, "")
+      .trim();
     const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error("No JSON object found in response");
@@ -180,26 +267,34 @@ function parseDeepestResult(rawContent) {
       result = JSON.parse(jsonString);
     } catch (parseError) {
       console.warn("JSON parse error, attempting fix", parseError);
-      const fixedJson = jsonString.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/'/g, "\"").replace(/(\w+)\s*:/g, '"$1":');
+      const fixedJson = jsonString
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]")
+        .replace(/'/g, "\"")
+        .replace(/(\w+)\s*:/g, '"$1":');
       result = JSON.parse(fixedJson);
     }
   } catch (error) {
     console.error("Failed to parse DeepSeek response", error);
     result = {
-      escalation_level: "Medium",
-      strategic_summary: "Insufficient data parsed from model response; using fallback strategic summary.",
+      escalation_level: "High",
+      strategic_summary:
+        "خروجی مدل به‌درستی پارس نشد؛ این متن جایگزین موقت است.",
       key_risks: null,
       audience_segments: null,
       recommended_actions: null,
-      monitoring_indicators: null
+      monitoring_indicators: null,
     };
   }
   return result;
 }
-function normalizeEscalationLevel(level) {
+
+function normalizeEscalationLevel(level: unknown) {
   if (typeof level === "string") {
     const normalized = level.trim();
-    const match = validEscalationLevels.find((val)=>val.toLowerCase() === normalized.toLowerCase());
+    const match = validEscalationLevels.find(
+      (val) => val.toLowerCase() === normalized.toLowerCase(),
+    );
     if (match) return match;
   }
   return "High";
