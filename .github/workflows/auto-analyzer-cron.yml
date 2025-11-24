@@ -1,0 +1,31 @@
+name: Auto Analyzer Cron
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-auto-analyzer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call auto-analyzer function
+        env:
+          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_AUTO_ANALYZER_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "🚀 Calling auto-analyzer..."
+          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST "$SUPABASE_FUNCTION_URL" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            --data '{}')
+          echo "📦 Response:"
+          cat response.json
+          echo "📡 HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "❌ Error running auto-analyzer"
+            exit 1
+          fi
+          echo "✅ Auto analyzer completed"
