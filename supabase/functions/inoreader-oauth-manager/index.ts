@@ -417,7 +417,14 @@ async function handleDisconnect(supabase: SupabaseClient) {
     .neq('is_active', false);
 
   if (sessionError) {
-    throw sessionError;
+    if (['PGRST204', '42P01'].includes((sessionError as any)?.code)) {
+      console.warn(
+        '⚠️ inoreader_oauth_sessions table missing; skipping session cleanup but continuing token removal.',
+        sessionError,
+      );
+    } else {
+      throw sessionError;
+    }
   }
 
   const { error: tokenError } = await supabase
