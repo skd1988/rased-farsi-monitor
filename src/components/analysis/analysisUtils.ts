@@ -1,34 +1,30 @@
 import { AnalyzedPost, AnalysisStage, SentimentValue } from "@/types/analysis";
 
-export const resolveAnalysisStage = (post: AnalyzedPost): AnalysisStage => {
-  if (
-    post.analysis_stage === "deepest" ||
-    post.deepest_analysis_completed_at ||
-    post.deepest_strategic_summary ||
-    (post as any).deepest_smart_summary ||
-    (post as any).crisis_extended_summary ||
-    (post as any).crisis_narrative_core
-  ) {
-    return "deepest";
-  }
+export function resolveAnalysisStage(post: AnalyzedPost): AnalysisStage {
+  if (post.resolved_stage) return post.resolved_stage;
 
-  if (
-    post.analysis_stage === "deep" ||
-    post.deep_analyzed_at ||
-    post.extended_summary ||
-    post.narrative_core ||
-    post.analysis_summary ||
-    (post as any).deep_smart_summary
-  ) {
-    return "deep";
-  }
-
-  if (post.analysis_stage === "quick" || post.quick_analyzed_at) {
-    return "quick";
-  }
-
+  if (post.deepest_analysis_completed_at) return "deepest";
+  if (post.deep_analyzed_at) return "deep";
+  if (post.quick_analyzed_at) return "quick";
   return null;
-};
+}
+
+/**
+ * Unified PsyOp detection used everywhere (cards, filters, counters, badges).
+ */
+export function isPsyopPost(post: AnalyzedPost): boolean {
+  if (post.is_psyop === true) return true;
+
+  if (post.psyop_category === "hostile_propaganda" || post.psyop_category === "potential_psyop") {
+    return true;
+  }
+
+  if (typeof post.psyop_risk_score === "number" && post.psyop_risk_score >= 60) {
+    return true;
+  }
+
+  return false;
+}
 
 export const normalizeSentimentValue = (
   sentiment: SentimentValue,

@@ -7,21 +7,49 @@ export type ViralityPotential = "Low" | "Medium" | "High" | null;
 
 type PostRow = Database["public"]["Tables"]["posts"]["Row"];
 
-export type AnalyzedPost = Omit<PostRow, "analysis_stage" | "sentiment" | "urgency_level" | "virality_potential"> & {
-  analysis_stage: AnalysisStage;
+export interface AnalyzedPost
+  extends Omit<
+    PostRow,
+    | "analysis_stage"
+    | "sentiment"
+    | "urgency_level"
+    | "virality_potential"
+    | "threat_level"
+    | "status"
+  > {
+  id: string;
+  title: string;
+  contents: string | null;
+  source: string | null;
+  author?: string | null;
+  language?: string | null;
+
+  status: "pending" | "processing" | "completed";
+  quick_analyzed_at?: string | null;
+  deep_analyzed_at?: string | null;
+  deepest_analysis_completed_at?: string | null;
+
+  analysis_stage?: AnalysisStage;
   sentiment: SentimentValue;
+  sentiment_score?: number | null;
   urgency_level: UrgencyLevel;
   virality_potential: ViralityPotential;
-  resolved_stage?: AnalysisStage;
-  hasDeepAnalysis?: boolean;
-  hasDeepestAnalysis?: boolean;
-  // Deep analysis fields
+  threat_level: "Low" | "Medium" | "High" | "Critical" | null;
+  confidence?: number | null;
+
+  is_psyop?: boolean | null;
+  psyop_category?: "hostile_propaganda" | "potential_psyop" | "non_psyop" | null;
+  psyop_risk_score?: number | null;
+
   narrative_core?: string | null;
   extended_summary?: string | null;
   psychological_objectives?: string[] | null;
+  recommended_actions?: string | null;
+  key_points?: string[] | null;
   manipulation_intensity?: string | null;
   techniques?: string[] | null;
-  recommended_actions?: string[] | null;
+
+  // Deep analysis fields
   deep_main_topic?: string | null;
   deep_smart_summary?: string | null;
   deep_recommended_action?: string | null;
@@ -40,4 +68,6 @@ export type AnalyzedPost = Omit<PostRow, "analysis_stage" | "sentiment" | "urgen
   quick_main_topic?: string | null;
   smart_summary?: string | null;
   review_status?: string | null;
-};
+
+  resolved_stage?: AnalysisStage;
+}
