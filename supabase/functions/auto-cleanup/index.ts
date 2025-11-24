@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startJobRun, finishJobRun } from "../_shared/cronMonitor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +12,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const jobName = "auto-cleanup";
+  let runId: string | null = null;
+  let httpStatus = 200;
+
   try {
+    runId = await startJobRun(jobName, req.headers.get("X-Job-Source") || "github_actions");
+
     console.log('🧹 Auto Cleanup started (IMPROVED VERSION)...');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -50,7 +57,7 @@ serve(async (req) => {
 
     if (oldPosts === 0) {
       console.log('✅ No old posts found - nothing to cleanup');
-      return new Response(JSON.stringify({
+      const response = new Response(JSON.stringify({
         success: true,
         posts_deleted: 0,
         posts_archived: 0,
@@ -67,6 +74,9 @@ serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
+      httpStatus = response.status;
+      await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+      return response;
     }
 
     // === ARCHIVE PHASE ===
@@ -264,14 +274,17 @@ serve(async (req) => {
       // Don't fail the whole operation if history save fails
     }
 
-    return new Response(JSON.stringify(summary), {
+    const response = new Response(JSON.stringify(summary), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
+    httpStatus = response.status;
+    await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+    return response;
 
   } catch (error) {
     console.error('❌ Auto Cleanup error:', error);
-    return new Response(
+    const response = new Response(
       JSON.stringify({
         success: false,
         error: error.message,
@@ -282,5 +295,8 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+    httpStatus = response.status;
+    await finishJobRun(runId, "failed", httpStatus, (error as Error).message, { jobName });
+    return response;
   }
 });

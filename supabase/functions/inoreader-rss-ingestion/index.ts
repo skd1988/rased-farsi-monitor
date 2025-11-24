@@ -19,6 +19,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ensureValidInoreaderToken } from "../_shared/inoreaderAuth.ts";
+import { startJobRun, finishJobRun } from "../_shared/cronMonitor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,9 +41,14 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const jobName = "inoreader-rss-ingestion";
+  let runId: string | null = null;
+  let httpStatus = 200;
   const startTime = Date.now();
 
   try {
+    runId = await startJobRun(jobName, req.headers.get("X-Job-Source") || "github_actions");
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -72,7 +78,10 @@ serve(async (req) => {
     if (tokenStatus.status !== 'ok') {
       const reason = tokenStatus.status === 'not_connected' ? 'هیچ توکنی یافت نشد' : 'تمدید توکن ناموفق بود';
       console.error('[Inoreader] No valid token available', tokenStatus);
-      return createErrorResponse(reason);
+      const response = createErrorResponse(reason);
+      httpStatus = response.status;
+      await finishJobRun(runId, "failed", httpStatus, reason, { jobName });
+      return response;
     }
 
     const accessToken = tokenStatus.accessToken;
@@ -82,12 +91,15 @@ serve(async (req) => {
     console.log(`📊 Found ${folders.length} folders to sync`);
 
     if (folders.length === 0) {
-      return createSuccessResponse({
+      const response = createSuccessResponse({
         message: 'هیچ folderای برای sync یافت نشد',
         folders: [],
         totalPosts: 0,
         totalNew: 0
       });
+      httpStatus = response.status;
+      await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+      return response;
     }
 
     // STEP 3: Sync each folder
@@ -124,17 +136,23 @@ serve(async (req) => {
       duration_ms: totalDuration
     });
 
-    return createSuccessResponse({
+    const response = createSuccessResponse({
       message: `با موفقیت ${results.length} folder همگام‌سازی شد`,
       folders: results,
       totalPosts: totalPostsFetched,
       totalNew: totalNewPosts,
       duration_ms: totalDuration
     });
+    httpStatus = response.status;
+    await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+    return response;
 
   } catch (error: any) {
     console.error('❌ Fatal error:', error);
-    return createErrorResponse(error.message);
+    const response = createErrorResponse(error.message);
+    httpStatus = response.status;
+    await finishJobRun(runId, "failed", httpStatus, (error as Error).message, { jobName });
+    return response;
   }
 });
 

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startJobRun, finishJobRun } from "../_shared/cronMonitor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +12,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const jobName = "intelligent-archive";
+  let runId: string | null = null;
+  let httpStatus = 200;
+
   try {
+    runId = await startJobRun(jobName, req.headers.get("X-Job-Source") || "github_actions");
+
     console.log('📚 Intelligent Archive started...');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -278,7 +285,7 @@ serve(async (req) => {
     // ========================================
     console.log('✅ Intelligent Archive completed:', results);
 
-    return new Response(
+    const response = new Response(
       JSON.stringify({
         success: true,
         ...results
@@ -288,10 +295,13 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+    httpStatus = response.status;
+    await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+    return response;
 
   } catch (error) {
     console.error('❌ Intelligent Archive error:', error);
-    return new Response(
+    const response = new Response(
       JSON.stringify({
         success: false,
         error: error.message
@@ -301,5 +311,8 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+    httpStatus = response.status;
+    await finishJobRun(runId, "failed", httpStatus, (error as Error).message, { jobName });
+    return response;
   }
 });
