@@ -17,17 +17,6 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -36,14 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,7 +37,6 @@ import {
   CheckCircle2,
   XCircle,
   Folder,
-  Settings,
   PlayCircle,
   Clock,
   AlertTriangle,
@@ -145,7 +125,6 @@ const InoreaderSettings: React.FC = () => {
 
   const [folders, setFolders] = useState<InoreaderFolder[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<InoreaderFolder | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState(false);
@@ -164,7 +143,7 @@ const InoreaderSettings: React.FC = () => {
   useEffect(() => {
     if (connected) {
       loadFolders();
-      loadStats();
+      loadSyncLogs();
     }
   }, [connected]);
 
@@ -343,62 +322,38 @@ const InoreaderSettings: React.FC = () => {
   };
 
   /**
-   * بارگذاری آمار
+   * بارگذاری لاگ‌های همگام‌سازی
    */
-  const loadStats = async () => {
+  const loadSyncLogs = async () => {
     try {
-      const { data: logs } = await supabase
+      const { data: logs, error } = await supabase
         .from('inoreader_sync_log')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(20);
 
-      setSyncLogs(logs || []);
+      if (error) throw error;
 
-      if (logs && logs.length > 0) {
-        const lastDay = logs.filter(log =>
+      const safeLogs = logs || [];
+      setSyncLogs(safeLogs);
+
+      if (safeLogs.length > 0) {
+        const lastDay = safeLogs.filter(log =>
           new Date(log.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000)
         );
 
         setStats({
-          totalSyncs: logs.length,
+          totalSyncs: safeLogs.length,
           last24h: lastDay.length,
-          totalPostsFetched: logs.reduce((sum, log) => sum + (log.posts_fetched || 0), 0),
-          totalNewPosts: logs.reduce((sum, log) => sum + (log.posts_new || 0), 0),
-          successRate: (logs.filter(l => l.status === 'success').length / logs.length * 100).toFixed(1)
+          totalPostsFetched: safeLogs.reduce((sum, log) => sum + (log.posts_fetched || 0), 0),
+          totalNewPosts: safeLogs.reduce((sum, log) => sum + (log.posts_new || 0), 0),
+          successRate: (safeLogs.filter(l => l.status === 'success').length / safeLogs.length * 100).toFixed(1)
         });
+      } else {
+        setStats(null);
       }
     } catch (error: any) {
-      console.error('Error loading stats:', error);
-    }
-  };
-
-  /**
-   * همگام‌سازی folders
-   */
-  const handleSyncFolders = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('inoreader-folders-manager', {
-        body: { action: 'sync' }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'موفق',
-        description: data.message
-      });
-
-      await loadFolders();
-    } catch (error: any) {
-      toast({
-        title: 'خطا',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setIsLoading(false);
+      console.error('Error loading sync logs:', error);
     }
   };
 
@@ -423,7 +378,7 @@ const InoreaderSettings: React.FC = () => {
       });
 
       await loadFolders();
-      await loadStats();
+      await loadSyncLogs();
     } catch (error: any) {
       toast({
         title: 'خطا',
@@ -432,32 +387,6 @@ const InoreaderSettings: React.FC = () => {
       });
     } finally {
       setIsSyncing(false);
-    }
-  };
-
-  /**
-   * بروزرسانی تنظیمات folder
-   */
-  const handleUpdateFolder = async (folderId: string, config: Partial<InoreaderFolder>) => {
-    try {
-      const { error } = await supabase.functions.invoke('inoreader-folders-manager', {
-        body: { action: 'update', folderId, config }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'موفق',
-        description: 'تنظیمات بروز شد'
-      });
-
-      await loadFolders();
-    } catch (error: any) {
-      toast({
-        title: 'خطا',
-        description: error.message,
-        variant: 'destructive'
-      });
     }
   };
 
@@ -952,18 +881,9 @@ const InoreaderSettings: React.FC = () => {
                     <div>
                       <CardTitle>Folders و Tags</CardTitle>
                       <CardDescription>
-                        مدیریت Folders دریافتی از Inoreader
+                        نمای کلی اولویت، فاصله همگام‌سازی و آخرین سینک
                       </CardDescription>
                     </div>
-                    <Button
-                      onClick={handleSyncFolders}
-                      disabled={isLoading}
-                      variant="outline"
-                    >
-                      {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
-                      <RefreshCw className="h-4 w-4 ms-2" />
-                      همگام‌سازی Folders
-                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -981,135 +901,40 @@ const InoreaderSettings: React.FC = () => {
                         <TableRow>
                           <TableHead>نام Folder</TableHead>
                           <TableHead>اولویت</TableHead>
-                          <TableHead>فاصله Sync</TableHead>
-                          <TableHead>تحلیل AI</TableHead>
-                          <TableHead>تعداد مطالب</TableHead>
-                          <TableHead>آخرین Sync</TableHead>
-                          <TableHead>وضعیت</TableHead>
-                          <TableHead>عملیات</TableHead>
+                          <TableHead>فاصله (دقیقه)</TableHead>
+                          <TableHead>آخرین سینک</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {folders.map((folder) => (
-                          <TableRow key={folder.id}>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                <Folder className="h-4 w-4" />
-                                {folder.folder_name}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={getPriorityColor(folder.priority)}>
-                                {getPriorityLabel(folder.priority)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{folder.fetch_interval_minutes} دقیقه</TableCell>
-                            <TableCell>
-                              <Switch
-                                checked={folder.enable_ai_analysis}
-                                onCheckedChange={(checked) =>
-                                  handleUpdateFolder(folder.id, { enable_ai_analysis: checked })
-                                }
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">
-                                {folder.post_count || 0}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {folder.last_synced_at
-                                ? formatDistanceToNowIran(new Date(folder.last_synced_at))
-                                : 'هرگز'}
-                            </TableCell>
-                            <TableCell>
-                              <Switch
-                                checked={folder.is_active}
-                                onCheckedChange={(checked) =>
-                                  handleUpdateFolder(folder.id, { is_active: checked })
-                                }
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleManualSync(folder.id)}
-                                  disabled={isSyncing}
-                                >
-                                  <PlayCircle className="h-4 w-4" />
-                                </Button>
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => setSelectedFolder(folder)}
-                                    >
-                                      <Settings className="h-4 w-4" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent dir="rtl">
-                                    <DialogHeader>
-                                      <DialogTitle>تنظیمات {folder.folder_name}</DialogTitle>
-                                      <DialogDescription>
-                                        پیکربندی دقیق این folder
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-4 py-4">
-                                      <div className="space-y-2">
-                                        <Label>اولویت</Label>
-                                        <Select
-                                          value={folder.priority.toString()}
-                                          onValueChange={(value) =>
-                                            handleUpdateFolder(folder.id, { priority: parseInt(value) })
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="1">بالا (هر 5 دقیقه)</SelectItem>
-                                            <SelectItem value="2">متوسط (هر 30 دقیقه)</SelectItem>
-                                            <SelectItem value="3">پایین (هر 60 دقیقه)</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
+                        {folderSyncData.map((folder) => {
+                          const rowClass = !folder.is_active
+                            ? 'bg-red-50 dark:bg-red-950'
+                            : folder.due
+                              ? 'bg-green-50 dark:bg-green-950'
+                              : '';
 
-                                      <div className="space-y-2">
-                                        <Label>فاصله همگام‌سازی (دقیقه)</Label>
-                                        <Input
-                                          type="number"
-                                          value={folder.fetch_interval_minutes}
-                                          onChange={(e) =>
-                                            handleUpdateFolder(folder.id, {
-                                              fetch_interval_minutes: parseInt(e.target.value)
-                                            })
-                                          }
-                                          min={5}
-                                          max={1440}
-                                        />
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        <Label>یادداشت</Label>
-                                        <Textarea
-                                          value={folder.notes || ''}
-                                          onChange={(e) =>
-                                            handleUpdateFolder(folder.id, { notes: e.target.value })
-                                          }
-                                          placeholder="یادداشت‌های شما..."
-                                          rows={3}
-                                        />
-                                      </div>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                          return (
+                            <TableRow key={folder.id} className={rowClass}>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  <Folder className="h-4 w-4" />
+                                  {folder.folder_name}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={getPriorityColor(folder.priority)}>
+                                  {getPriorityLabel(folder.priority)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{folder.fetch_interval_minutes}</TableCell>
+                              <TableCell className="text-xs">
+                                {folder.last_synced_at
+                                  ? new Date(folder.last_synced_at).toLocaleString('fa-IR')
+                                  : 'هرگز'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   )}
