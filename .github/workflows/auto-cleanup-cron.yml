@@ -1,0 +1,31 @@
+name: Auto Cleanup Cron
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  run-auto-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call auto-cleanup
+        env:
+          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_AUTO_CLEANUP_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "🧹 Running auto-cleanup..."
+          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST "$SUPABASE_FUNCTION_URL" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            --data '{}')
+          echo "📦 Response:"
+          cat response.json
+          echo "📡 HTTP: $HTTP_CODE"
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "❌ Cleanup failed"
+            exit 1
+          fi
+          echo "✅ Cleanup completed"
