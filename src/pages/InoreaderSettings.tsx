@@ -96,6 +96,10 @@ const InoreaderSettings: React.FC = () => {
   const {
     connected,
     statusReason,
+    status,
+    isExpired,
+    canAutoRefresh,
+    needsReconnect,
     expiresAt,
     loading: authLoading,
     error: authError,
@@ -379,12 +383,25 @@ const InoreaderSettings: React.FC = () => {
                       </>
                     ) : connected ? (
                       <>
-                        <CheckCircle2 className="h-6 w-6 text-green-500" />
+                        {isExpired ? (
+                          <AlertTriangle className="h-6 w-6 text-yellow-500" />
+                        ) : (
+                          <CheckCircle2 className="h-6 w-6 text-green-500" />
+                        )}
                         <div>
-                          <p className="font-semibold">متصل به Inoreader</p>
+                          <p className="font-semibold">
+                            {isExpired ? 'توکن منقضی شده' : 'متصل به Inoreader'}
+                          </p>
                           {expiresAt && (
                             <p className="text-sm text-muted-foreground">
                               اعتبار اتصال تا {new Date(expiresAt).toLocaleString('fa-IR')}
+                            </p>
+                          )}
+                          {isExpired && (
+                            <p className="text-sm text-muted-foreground">
+                              {canAutoRefresh
+                                ? 'توکن منقضی شده است اما امکان تمدید خودکار وجود دارد.'
+                                : 'توکن منقضی شده و نیاز به اتصال مجدد دارید.'}
                             </p>
                           )}
                         </div>
@@ -395,9 +412,9 @@ const InoreaderSettings: React.FC = () => {
                         <div>
                           <p className="font-semibold">عدم اتصال</p>
                           <p className="text-sm text-muted-foreground">
-                            {statusReason === 'no_session'
-                              ? 'ابتدا حساب خود را متصل کنید'
-                              : statusReason === 'no_token' || statusReason === 'inoreader_disconnected'
+                            {statusReason === 'status_error'
+                              ? status?.error?.message || 'خطای داخلی در بررسی وضعیت'
+                              : needsReconnect
                                 ? 'توکن معتبر یافت نشد یا منقضی شده است. لطفاً دوباره متصل شوید'
                                 : 'لطفاً حساب Inoreader خود را متصل کنید'}
                           </p>

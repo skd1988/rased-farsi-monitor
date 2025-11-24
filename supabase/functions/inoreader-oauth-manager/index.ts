@@ -82,7 +82,34 @@ serve(async (req) => {
 
       case 'status': {
         const userId = await requireUserId(supabaseAuth);
-        return await handleStatus(supabase, userId);
+        try {
+          return await handleStatus(supabase, userId);
+        } catch (err) {
+          console.error('Inoreader status error', err);
+
+          const payload = {
+            ok: false,
+            isConnected: false,
+            isExpired: false,
+            needsReconnect: true,
+            hasRefreshToken: false,
+            canAutoRefresh: false,
+            expiresAt: null,
+            secondsToExpiry: null,
+            error: {
+              message: err instanceof Error ? err.message : String(err),
+              code: "INOREADER_STATUS_INTERNAL_ERROR",
+            },
+          };
+
+          return new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              ...corsHeaders,
+            },
+          });
+        }
       }
 
       case 'exchange': {
@@ -172,47 +199,59 @@ function handleAuthorize() {
 }
 
 async function handleStatus(supabase: SupabaseClient, userId: string) {
-  const { data: session, error: sessionError } = await supabase
-    .from('inoreader_oauth_sessions')
+  const { data: tokenRow, error: tokenError } = await supabase
+    .from(TOKENS_TABLE)
     .select('*')
-    .eq('is_active', true)
     .eq('user_id', userId)
+    .eq('is_active', true)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (sessionError) {
-    return jsonResponse(
-      { connected: false, reason: 'db_error' },
-      500,
-    );
-  }
-
-  if (!session) {
-    return jsonResponse({
-      connected: false,
-      reason: 'no_session',
-    });
-  }
-
-  const { data: tokenRow, error: tokenError } = await supabase
-    .from(TOKENS_TABLE)
-    .select('*')
-    .eq('user_id', session.user_id)
-    .limit(1)
-    .maybeSingle();
-
   if (tokenError || !tokenRow) {
-    return jsonResponse({
-      connected: false,
-      reason: 'no_token',
+    const payload = {
+      ok: true,
+      isConnected: false,
+      isExpired: false,
+      needsReconnect: true,
+      hasRefreshToken: false,
+      canAutoRefresh: false,
+      expiresAt: null,
+      secondsToExpiry: null,
+      rawTokenState: null,
+    };
+
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  return jsonResponse({
-    connected: true,
-    reason: 'ok',
-    expiresAt: session.expires_at,
+  const now = Date.now();
+  const expiresAt = tokenRow.expires_at ? new Date(tokenRow.expires_at).getTime() : null;
+  const isExpired = expiresAt !== null && expiresAt <= now;
+  const secondsToExpiry = expiresAt !== null ? Math.floor((expiresAt - now) / 1000) : null;
+  const hasRefreshToken = !!tokenRow.refresh_token;
+  const canAutoRefresh = isExpired && hasRefreshToken;
+
+  const payload = {
+    ok: true,
+    isConnected: true,
+    isExpired,
+    needsReconnect: !hasRefreshToken,
+    hasRefreshToken,
+    canAutoRefresh,
+    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+    secondsToExpiry,
+    rawTokenState: tokenRow,
+  };
+
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
   });
 }
 
