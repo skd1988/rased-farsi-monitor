@@ -12,116 +12,48 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
-interface InoreaderAuthState {
-  isConnected: boolean;
-  isChecking: boolean;
-  needsRefresh: boolean;
-  expiresAt?: string;
-  lastChecked?: Date;
-  lastRefreshAt?: string;
-  createdAt?: string;
-}
+type InoreaderStatusResponse = {
+  connected: boolean;
+  reason: string;
+  expiresAt?: string | null;
+};
 
 export const useInoreaderAuth = () => {
-  const [state, setState] = useState<InoreaderAuthState>({
-    isConnected: false,
-    isChecking: true,
-    needsRefresh: false
-  });
+  const [status, setStatus] = useState<InoreaderStatusResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  /**
-   * بررسی وضعیت اتصال از طریق بک‌اند
-   */
-  const checkStatus = useCallback(async () => {
+  const refreshStatus = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'validate' }
+      const { data, error: statusError } = await supabase.functions.invoke('inoreader-oauth-manager', {
+        body: { action: 'status' }
       });
 
-      if (error) throw error;
+      if (statusError) throw statusError;
 
-      const expiresAt = data?.expiresAt ? new Date(data.expiresAt) : null;
-      const now = new Date();
-
-      const timeUntilExpiry = expiresAt ? expiresAt.getTime() - now.getTime() : null;
-      const needsRefresh = !!timeUntilExpiry && timeUntilExpiry > 0 && timeUntilExpiry < 60 * 60 * 1000;
-
-      setState({
-        isConnected: !!data?.isValid,
-        isChecking: false,
-        needsRefresh,
-        expiresAt: data?.expiresAt,
-        lastChecked: now,
-        lastRefreshAt: data?.lastRefreshAt,
-        createdAt: data?.createdAt
+      setStatus({
+        connected: !!data?.connected,
+        reason: data?.reason ?? 'unknown',
+        expiresAt: data?.expiresAt ?? null,
       });
-
-      return data;
-    } catch (error: any) {
-      console.error('❌ Error checking status:', error);
-      setState(prev => ({
-        ...prev,
-        isConnected: false,
-        isChecking: false
-      }));
-      return null;
+      setError(null);
+    } catch (err: any) {
+      console.error('❌ Error checking status:', err);
+      setStatus({ connected: false, reason: 'error' });
+      setError(err.message || 'خطا در دریافت وضعیت');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  /**
-   * تمدید دستی Token از طریق بک‌اند
-   */
-  const refreshToken = useCallback(async () => {
-    try {
-      console.log('🔄 Refreshing Inoreader token...');
-
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
-        body: { action: 'ensure-valid' }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: '✅ تمدید موفق',
-        description: 'اتصال به Inoreader تمدید شد',
-      });
-
-      await checkStatus();
-
-      return true;
-    } catch (error: any) {
-      console.error('❌ Token refresh failed:', error);
-
-      toast({
-        title: '⚠️ خطا در تمدید',
-        description: 'لطفاً دوباره به Inoreader متصل شوید',
-        variant: 'destructive'
-      });
-
-      setState(prev => ({
-        ...prev,
-        isConnected: false,
-        needsRefresh: false
-      }));
-
-      return false;
-    }
-  }, [checkStatus]);
-
-  /**
-   * بررسی اولیه وضعیت
-   */
   useEffect(() => {
-    checkStatus();
-  }, [checkStatus]);
+    refreshStatus();
+  }, [refreshStatus]);
 
-  /**
-   * بررسی وضعیت هنگام focus شدن صفحه
-   */
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        checkStatus();
+        refreshStatus();
       }
     };
 
@@ -130,28 +62,22 @@ export const useInoreaderAuth = () => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [checkStatus]);
+  }, [refreshStatus]);
 
-  /**
-   * قطع اتصال
-   */
   const disconnect = useCallback(async () => {
     if (!confirm('آیا مطمئن هستید؟ اتصال به Inoreader قطع خواهد شد.')) {
       return false;
     }
 
     try {
-      const { error } = await supabase.functions.invoke('inoreader-oauth-manager', {
+      const { error: disconnectError } = await supabase.functions.invoke('inoreader-oauth-manager', {
         body: { action: 'disconnect' }
       });
 
-      if (error) throw error;
+      if (disconnectError) throw disconnectError;
 
-      setState({
-        isConnected: false,
-        isChecking: false,
-        needsRefresh: false
-      });
+      setStatus({ connected: false, reason: 'no_session', expiresAt: null });
+      setLoading(false);
 
       toast({
         title: '✅ موفق',
@@ -159,56 +85,50 @@ export const useInoreaderAuth = () => {
       });
 
       return true;
-    } catch (error: any) {
+    } catch (err: any) {
       toast({
         title: '❌ خطا',
-        description: error.message,
-        variant: 'destructive'
+        description: err.message,
+        variant: 'destructive',
       });
       return false;
     }
   }, []);
 
-  /**
-   * اتصال به Inoreader
-   */
   const connect = useCallback(async () => {
     try {
       const REDIRECT_URI = window.location.hostname === 'localhost'
         ? 'http://localhost:5173/oauth-callback.html'
         : 'https://skd1988.github.io/rased-farsi-monitor/oauth-callback.html';
 
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
+      const { data, error: authorizeError } = await supabase.functions.invoke('inoreader-oauth-manager', {
         body: { action: 'authorize', redirectUri: REDIRECT_URI }
       });
 
-      if (error) throw error;
+      if (authorizeError) throw authorizeError;
 
       sessionStorage.setItem('inoreader_connecting', 'true');
 
       window.location.href = data.authUrl;
 
       return true;
-    } catch (error: any) {
+    } catch (err: any) {
       toast({
         title: '❌ خطا',
-        description: error.message,
+        description: err.message,
         variant: 'destructive'
       });
       return false;
     }
   }, []);
 
-  /**
-   * تکمیل OAuth callback
-   */
   const handleCallback = useCallback(async (code: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
+      const { data, error: exchangeError } = await supabase.functions.invoke('inoreader-oauth-manager', {
         body: { action: 'exchange', code }
       });
 
-      if (error) throw error;
+      if (exchangeError) throw exchangeError;
 
       sessionStorage.removeItem('inoreader_connecting');
 
@@ -217,25 +137,28 @@ export const useInoreaderAuth = () => {
         description: data.message
       });
 
-      await checkStatus();
+      await refreshStatus();
 
       return true;
-    } catch (error: any) {
+    } catch (err: any) {
       sessionStorage.removeItem('inoreader_connecting');
 
       toast({
         title: '❌ خطا در اتصال',
-        description: error.message,
+        description: err.message,
         variant: 'destructive'
       });
       return false;
     }
-  }, [checkStatus]);
+  }, [refreshStatus]);
 
   return {
-    ...state,
-    checkStatus,
-    refreshToken,
+    connected: status?.connected ?? false,
+    statusReason: status?.reason ?? 'unknown',
+    expiresAt: status?.expiresAt ?? null,
+    loading,
+    error,
+    refreshStatus,
     disconnect,
     connect,
     handleCallback

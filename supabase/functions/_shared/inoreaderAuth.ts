@@ -3,6 +3,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export interface InoreaderTokenRecord {
   id: string;
+  user_id?: string;
   access_token: string;
   refresh_token: string | null;
   token_type?: string | null;
@@ -77,7 +78,31 @@ export async function refreshInoreaderToken(
 
   if (!response.ok) {
     const errorText = await response.text();
+    const lowerError = errorText.toLowerCase();
     console.error("[Inoreader] Token refresh failed", errorText);
+
+    if (
+      response.status === 400 ||
+      response.status === 401 ||
+      lowerError.includes("invalid_grant")
+    ) {
+      const userId = tokenRecord.user_id;
+
+      if (userId) {
+        await supabase
+          .from('inoreader_oauth_sessions')
+          .update({ is_active: false })
+          .eq('user_id', userId);
+
+        await supabase
+          .from('inoreader_oauth_tokens')
+          .delete()
+          .eq('user_id', userId);
+      }
+
+      throw new Error('inoreader_disconnected');
+    }
+
     throw new Error(`Token refresh failed: ${errorText}`);
   }
 

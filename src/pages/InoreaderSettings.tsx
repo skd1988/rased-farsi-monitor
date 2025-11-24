@@ -21,7 +21,6 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -95,13 +94,12 @@ interface SyncLog {
 const InoreaderSettings: React.FC = () => {
   // استفاده از Custom Hook برای مدیریت خودکار Token
   const {
-    isConnected,
-    isChecking,
-    needsRefresh,
+    connected,
+    statusReason,
     expiresAt,
-    lastChecked,
-    checkStatus,
-    refreshToken,
+    loading: authLoading,
+    error: authError,
+    refreshStatus,
     disconnect,
     connect,
     handleCallback
@@ -114,42 +112,21 @@ const InoreaderSettings: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState(false);
   const [stats, setStats] = useState<any>(null);
-  const [timeRemaining, setTimeRemaining] = useState<string>('');
-
-  /**
-   * محاسبه زمان باقی‌مانده
-   */
-  useEffect(() => {
-    if (!expiresAt) return;
-
-    const interval = setInterval(() => {
-      const now = new Date();
-      const expires = new Date(expiresAt);
-      const diff = expires.getTime() - now.getTime();
-
-      if (diff <= 0) {
-        setTimeRemaining('منقضی شده');
-        return;
-      }
-
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-      setTimeRemaining(`${hours} ساعت و ${minutes} دقیقه`);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [expiresAt]);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   /**
    * Load initial data
    */
   useEffect(() => {
-    if (isConnected) {
+    if (connected) {
       loadFolders();
       loadStats();
     }
-  }, [isConnected]);
+  }, [connected]);
+
+  useEffect(() => {
+    setConnectionError(authError);
+  }, [authError]);
 
   /**
    * بررسی OAuth callback - FIX APPLIED
@@ -356,20 +333,6 @@ const InoreaderSettings: React.FC = () => {
     }
   };
 
-  /**
-   * محاسبه درصد زمان باقی‌مانده
-   */
-  const getTimeRemainingPercent = () => {
-    if (!expiresAt) return 100;
-    
-    const now = new Date();
-    const expires = new Date(expiresAt);
-    const total = 60 * 60 * 1000; // 1 hour (فرض می‌کنیم token 1 ساعت اعتبار داره)
-    const remaining = expires.getTime() - now.getTime();
-    
-    return Math.max(0, Math.min(100, (remaining / total) * 100));
-  };
-
   return (
     <div className="container mx-auto p-6 space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
@@ -381,28 +344,6 @@ const InoreaderSettings: React.FC = () => {
         </div>
         <Rss className="h-12 w-12 text-primary" />
       </div>
-
-      {/* نمایش Warning اگر نیاز به Refresh داره */}
-      {needsRefresh && (
-        <Alert className="border-yellow-500">
-          <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          <AlertDescription className="flex items-center justify-between">
-            <div>
-              <strong>⚠️ توکن به زودی منقضی می‌شود</strong>
-              <p className="text-sm mt-1">زمان باقی‌مانده: {timeRemaining}</p>
-            </div>
-            <Button
-              onClick={refreshToken}
-              variant="outline"
-              size="sm"
-              className="border-yellow-500"
-            >
-              <Zap className="h-4 w-4 ms-2" />
-              تمدید فوری
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
 
       <Tabs defaultValue="connection" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
@@ -426,7 +367,7 @@ const InoreaderSettings: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center gap-4">
-                    {isChecking ? (
+                    {authLoading ? (
                       <>
                         <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
                         <div>
@@ -436,14 +377,14 @@ const InoreaderSettings: React.FC = () => {
                           </p>
                         </div>
                       </>
-                    ) : isConnected ? (
+                    ) : connected ? (
                       <>
                         <CheckCircle2 className="h-6 w-6 text-green-500" />
                         <div>
                           <p className="font-semibold">متصل به Inoreader</p>
                           {expiresAt && (
                             <p className="text-sm text-muted-foreground">
-                              زمان باقی‌مانده: {timeRemaining}
+                              اعتبار اتصال تا {new Date(expiresAt).toLocaleString('fa-IR')}
                             </p>
                           )}
                         </div>
@@ -454,34 +395,36 @@ const InoreaderSettings: React.FC = () => {
                         <div>
                           <p className="font-semibold">عدم اتصال</p>
                           <p className="text-sm text-muted-foreground">
-                            لطفاً حساب Inoreader خود را متصل کنید
+                            {statusReason === 'no_session'
+                              ? 'ابتدا حساب خود را متصل کنید'
+                              : statusReason === 'no_token' || statusReason === 'inoreader_disconnected'
+                                ? 'توکن معتبر یافت نشد یا منقضی شده است. لطفاً دوباره متصل شوید'
+                                : 'لطفاً حساب Inoreader خود را متصل کنید'}
                           </p>
                         </div>
                       </>
                     )}
                   </div>
 
-                  {!isChecking && (
+                  {!authLoading && (
                     <div className="flex gap-2">
-                      {isConnected ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            onClick={checkStatus}
-                            size="sm"
-                          >
-                            <RefreshCw className="h-4 w-4 ms-2" />
-                            بررسی مجدد
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            onClick={disconnect}
-                            disabled={isLoading}
-                          >
-                            {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
-                            قطع اتصال
-                          </Button>
-                        </>
+                      <Button
+                        variant="outline"
+                        onClick={refreshStatus}
+                        size="sm"
+                      >
+                        <RefreshCw className="h-4 w-4 ms-2" />
+                        بررسی مجدد
+                      </Button>
+                      {connected ? (
+                        <Button
+                          variant="destructive"
+                          onClick={disconnect}
+                          disabled={isLoading}
+                        >
+                          {isLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                          قطع اتصال
+                        </Button>
                       ) : (
                         <Button
                           onClick={connect}
@@ -496,25 +439,11 @@ const InoreaderSettings: React.FC = () => {
                   )}
                 </div>
 
-                {/* Token Expiry Progress */}
-                {isConnected && expiresAt && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">اعتبار Token:</span>
-                      <span className={needsRefresh ? 'text-yellow-600 font-medium' : 'text-green-600'}>
-                        {Math.round(getTimeRemainingPercent())}%
-                      </span>
-                    </div>
-                    <Progress 
-                      value={getTimeRemainingPercent()} 
-                      className={needsRefresh ? '[&>*]:bg-yellow-500' : '[&>*]:bg-green-500'}
-                    />
-                    {lastChecked && (
-                      <p className="text-xs text-muted-foreground text-left">
-                        آخرین بررسی: {formatDistanceToNowIran(lastChecked)}
-                      </p>
-                    )}
-                  </div>
+                {connectionError && (
+                  <Alert className="border-yellow-500">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertDescription>{connectionError}</AlertDescription>
+                  </Alert>
                 )}
               </div>
 
@@ -528,7 +457,7 @@ const InoreaderSettings: React.FC = () => {
               </Alert>
 
               {/* Auto-Refresh Info */}
-              {isConnected && (
+              {connected && (
                 <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
                   <Zap className="h-4 w-4 text-blue-500" />
                   <AlertDescription>
@@ -581,7 +510,7 @@ const InoreaderSettings: React.FC = () => {
 
         {/* TAB 2: Folders */}
         <TabsContent value="folders" className="space-y-4">
-          {!isConnected ? (
+          {!connected ? (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
@@ -775,7 +704,7 @@ const InoreaderSettings: React.FC = () => {
             <CardContent className="space-y-4">
               <Button
                 onClick={() => handleManualSync()}
-                disabled={isSyncing || !isConnected}
+                disabled={isSyncing || !connected}
                 size="lg"
                 className="w-full"
               >
