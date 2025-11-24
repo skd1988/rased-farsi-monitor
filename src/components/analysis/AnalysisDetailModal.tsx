@@ -31,7 +31,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
   const sentimentLabel = normalizeSentimentValue(post.sentiment);
   const sentiment = getSentimentConfig(sentimentLabel);
 
-  const mainTopic = deriveMainTopic(post);
+  const mainTopic = deriveMainTopic(post, resolvedStage);
 
   // =========================
   //  خلاصه هوشمند (سه‌سطحی)
