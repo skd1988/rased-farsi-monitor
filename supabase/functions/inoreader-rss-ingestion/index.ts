@@ -31,9 +31,11 @@ const CONFIG = {
   INOREADER_API_BASE: "https://www.inoreader.com/reader/api/0",
   MAX_POSTS_PER_FOLDER: 400, // حداکثر تعداد در هر sync
   POSTS_PER_REQUEST: 100, // تعداد در هر request (max از Inoreader)
-  MAX_PROCESSING_TIME_MS: 110000, // 4.5 دقیقه (کمتر از 5 دقیقه timeout)
+  MAX_PROCESSING_TIME_MS: 110000, // ~110 ثانیه (ایمن زیر timeout)
   MAX_POST_AGE_HOURS: 24, // ✅ حداکثر سن پست به ساعت
 };
+
+const MAX_FOLDERS_PER_RUN = 4;
 
 serve(async (req) => {
   // Handle CORS
@@ -107,7 +109,9 @@ serve(async (req) => {
     let totalPostsFetched = 0;
     let totalNewPosts = 0;
 
-    for (const folder of folders) {
+    const foldersToProcess = folders.slice(0, MAX_FOLDERS_PER_RUN);
+
+    for (const folder of foldersToProcess) {
       // Check timeout
       if (Date.now() - startTime > CONFIG.MAX_PROCESSING_TIME_MS) {
         console.warn('⏱️ Approaching timeout, stopping sync');
@@ -303,7 +307,11 @@ async function syncFolder(
     do {
       // Check timeout
       if (Date.now() - startTime > CONFIG.MAX_PROCESSING_TIME_MS) {
-        console.warn('⏱️ Timeout approaching, stopping folder sync');
+        console.warn(
+          "⏱️ MAX_PROCESSING_TIME_MS reached, stopping early at",
+          Date.now() - startTime,
+          "ms"
+        );
         break;
       }
 
