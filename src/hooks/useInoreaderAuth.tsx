@@ -13,9 +13,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
 type InoreaderStatusResponse = {
-  connected: boolean;
-  reason: string;
-  expiresAt?: string | null;
+  ok: boolean;
+  isConnected: boolean;
+  isExpired: boolean;
+  needsReconnect: boolean;
+  hasRefreshToken: boolean;
+  canAutoRefresh: boolean;
+  expiresAt: string | null;
+  secondsToExpiry: number | null;
+  error?: { message: string; code?: string } | null;
 };
 
 export const useInoreaderAuth = () => {
@@ -31,15 +37,33 @@ export const useInoreaderAuth = () => {
 
       if (statusError) throw statusError;
 
-      setStatus({
-        connected: !!data?.connected,
-        reason: data?.reason ?? 'unknown',
+      const normalizedStatus: InoreaderStatusResponse = {
+        ok: data?.ok ?? false,
+        isConnected: data?.isConnected ?? false,
+        isExpired: data?.isExpired ?? false,
+        needsReconnect: data?.needsReconnect ?? false,
+        hasRefreshToken: data?.hasRefreshToken ?? false,
+        canAutoRefresh: data?.canAutoRefresh ?? false,
         expiresAt: data?.expiresAt ?? null,
-      });
-      setError(null);
+        secondsToExpiry: data?.secondsToExpiry ?? null,
+        error: data?.error ?? null,
+      };
+
+      setStatus(normalizedStatus);
+      setError(normalizedStatus.ok ? null : normalizedStatus.error?.message ?? null);
     } catch (err: any) {
       console.error('❌ Error checking status:', err);
-      setStatus({ connected: false, reason: 'error' });
+      setStatus({
+        ok: false,
+        isConnected: false,
+        isExpired: false,
+        needsReconnect: true,
+        hasRefreshToken: false,
+        canAutoRefresh: false,
+        expiresAt: null,
+        secondsToExpiry: null,
+        error: { message: err.message || 'خطا در دریافت وضعیت' }
+      });
       setError(err.message || 'خطا در دریافت وضعیت');
     } finally {
       setLoading(false);
@@ -153,8 +177,19 @@ export const useInoreaderAuth = () => {
   }, [refreshStatus]);
 
   return {
-    connected: status?.connected ?? false,
-    statusReason: status?.reason ?? 'unknown',
+    connected: status?.isConnected ?? false,
+    statusReason: (() => {
+      if (!status) return 'unknown';
+      if (!status.ok) return 'status_error';
+      if (!status.isConnected) return 'no_token';
+      if (status.isExpired && status.canAutoRefresh) return 'expired_auto_refresh';
+      if (status.isExpired) return 'expired';
+      return 'connected';
+    })(),
+    status,
+    isExpired: status?.isExpired ?? false,
+    canAutoRefresh: status?.canAutoRefresh ?? false,
+    needsReconnect: status?.needsReconnect ?? false,
     expiresAt: status?.expiresAt ?? null,
     loading,
     error,
