@@ -16,7 +16,7 @@ import { getRelativeTime } from "@/lib/dateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { getActionConfig, getSentimentConfig, getThreatConfig } from "./pillConfigs";
+import { getSentimentConfig, getThreatConfig } from "./pillConfigs";
 
 interface AnalysisCardProps {
   post: any;
@@ -175,7 +175,46 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
 
   const threat = getThreatConfig(post.threat_level);
   const sentiment = getSentimentConfig(post.sentiment);
-  const action = getActionConfig(post.threat_level);
+
+  const resolvedStage: "quick" | "deep" | "deepest" | null =
+    post.resolved_stage ||
+    post.analysis_stage ||
+    (post.deepest_analysis_completed_at
+      ? "deepest"
+      : post.deep_analyzed_at
+        ? "deep"
+        : post.quick_analyzed_at
+          ? "quick"
+          : null);
+
+  const stageBadge = () => {
+    if (!resolvedStage) return null;
+
+    const labels: Record<"quick" | "deep" | "deepest", string> = {
+      quick: "تحلیل سریع",
+      deep: "تحلیل عمیق",
+      deepest: "تحلیل بحران",
+    };
+
+    const colors: Record<"quick" | "deep" | "deepest", string> = {
+      quick: "bg-green-500/10 text-green-600 border-green-500",
+      deep: "bg-blue-500/10 text-blue-600 border-blue-500",
+      deepest: "bg-red-500/10 text-red-600 border-red-500",
+    };
+
+    const modelSuffix =
+      resolvedStage === "quick"
+        ? "مرحله غربالگری"
+        : resolvedStage === "deep"
+          ? `${post.analysis_model || "DeepSeek"}`
+          : "مدل بحران";
+
+    return (
+      <Badge variant="outline" className={cn("text-xs", colors[resolvedStage])}>
+        {`${labels[resolvedStage]} · ${modelSuffix}`}
+      </Badge>
+    );
+  };
 
   const sentimentScore = typeof post.sentiment_score === "number" ? post.sentiment_score : 0;
   const sentimentProgress = ((sentimentScore + 1) / 2) * 100;
@@ -236,6 +275,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
               <p className="text-sm text-muted-foreground">اطمینان: {post.confidence}%</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">{stageBadge()}</div>
         </div>
 
         {/* Sentiment */}
@@ -292,11 +332,15 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
 
         {/* Recommended Action */}
         {post.recommended_action && (
-          <div>
-            <p className="text-sm font-semibold mb-2">اقدام پیشنهادی:</p>
-            <Button variant={action.variant} className="w-full">
-              {action.label}
-            </Button>
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">اقدام پیشنهادی (مدل):</p>
+            <div className="p-3 bg-primary/5 rounded-lg text-sm leading-7">
+              {post.recommended_action.split(/\n+/).map((line: string, index: number) => (
+                <p key={index} className="mb-1 last:mb-0">
+                  {line}
+                </p>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

@@ -329,6 +329,9 @@ serve(async (req) => {
     const processingTime = Date.now() - startTime;
 
     // 5) آپدیت ردیف posts
+    const completionTimestamp = new Date().toISOString();
+
+    // The AI Analysis UI derives deep/deepest counters from analysis_stage + *_analyzed_at timestamps
     const { error: updateError } = await supabase
       .from("posts")
       .update({
@@ -361,12 +364,13 @@ serve(async (req) => {
         virality_potential:
           viralityPotential ?? existingPost?.virality_potential ?? null,
 
-        analyzed_at: new Date().toISOString(),
+        analyzed_at: completionTimestamp,
         analysis_model: "deepseek-chat",
         processing_time: processingTime / 1000,
 
-        status: existingPost?.status ?? "completed",
+        status: "completed",
         analysis_stage: "deep",
+        deep_analyzed_at: completionTimestamp,
       })
       .eq("id", postId);
 
@@ -374,6 +378,10 @@ serve(async (req) => {
       console.error("Supabase update error:", updateError);
       throw updateError;
     }
+
+    console.log(
+      `📌 Deep analysis update => status: completed | stage: deep | deep_analyzed_at: ${completionTimestamp}`,
+    );
 
     // 6) ثبت لاگ مصرف API
     await supabase.from("api_usage_logs").insert({

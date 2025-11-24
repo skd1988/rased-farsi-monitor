@@ -361,15 +361,31 @@ export type Database = {
           created_at: string
           id: string
           is_psyop: boolean | null
+          psyop_risk_score: number | null
           key_points: string[] | null
           keywords: string[] | null
           language: string
           main_topic: string | null
           narrative_theme: string | null
+          quick_analyzed_at: string | null
+          deep_analyzed_at: string | null
+          deepest_analysis_completed_at: string | null
+          deepest_escalation_level: string | null
+          deepest_strategic_summary: string | null
+          deepest_key_risks: string[] | null
+          deepest_audience_segments: string[] | null
+          deepest_recommended_actions: string[] | null
+          deepest_monitoring_indicators: string[] | null
+          deepest_raw: Json | null
           processing_time: number | null
           psyop_confidence: number | null
           psyop_technique: string[] | null
+          psyop_techniques: string[] | null
+          psyop_category: string | null
+          stance_type: string | null
           psyop_type: string | null
+          urgency_level: string | null
+          virality_potential: string | null
           published_at: string
           recommended_action: string | null
           sentiment: string | null
@@ -401,15 +417,31 @@ export type Database = {
           created_at?: string
           id?: string
           is_psyop?: boolean | null
+          psyop_risk_score?: number | null
           key_points?: string[] | null
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
           narrative_theme?: string | null
+          quick_analyzed_at?: string | null
+          deep_analyzed_at?: string | null
+          deepest_analysis_completed_at?: string | null
+          deepest_escalation_level?: string | null
+          deepest_strategic_summary?: string | null
+          deepest_key_risks?: string[] | null
+          deepest_audience_segments?: string[] | null
+          deepest_recommended_actions?: string[] | null
+          deepest_monitoring_indicators?: string[] | null
+          deepest_raw?: Json | null
           processing_time?: number | null
           psyop_confidence?: number | null
           psyop_technique?: string[] | null
+          psyop_techniques?: string[] | null
+          psyop_category?: string | null
+          stance_type?: string | null
           psyop_type?: string | null
+          urgency_level?: string | null
+          virality_potential?: string | null
           published_at?: string
           recommended_action?: string | null
           sentiment?: string | null
@@ -441,15 +473,31 @@ export type Database = {
           created_at?: string
           id?: string
           is_psyop?: boolean | null
+          psyop_risk_score?: number | null
           key_points?: string[] | null
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
           narrative_theme?: string | null
+          quick_analyzed_at?: string | null
+          deep_analyzed_at?: string | null
+          deepest_analysis_completed_at?: string | null
+          deepest_escalation_level?: string | null
+          deepest_strategic_summary?: string | null
+          deepest_key_risks?: string[] | null
+          deepest_audience_segments?: string[] | null
+          deepest_recommended_actions?: string[] | null
+          deepest_monitoring_indicators?: string[] | null
+          deepest_raw?: Json | null
           processing_time?: number | null
           psyop_confidence?: number | null
           psyop_technique?: string[] | null
+          psyop_techniques?: string[] | null
+          psyop_category?: string | null
+          stance_type?: string | null
           psyop_type?: string | null
+          urgency_level?: string | null
+          virality_potential?: string | null
           published_at?: string
           recommended_action?: string | null
           sentiment?: string | null
