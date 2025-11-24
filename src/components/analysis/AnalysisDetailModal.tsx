@@ -1,3 +1,4 @@
+// src/components/analysis/AnalysisDetailModal.tsx
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -23,16 +24,69 @@ interface AnalysisDetailModalProps {
 }
 
 const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) => {
-  // Deep/deepest insights take priority over quick screening for all rendered fields
+  // 🧠 اول مرحله نهایی تحلیل را تعیین می‌کنیم (دیپ/دیپست نسبت به کوییک در اولویت است)
   const resolvedStage: AnalysisStage = post.resolved_stage ?? resolveAnalysisStage(post);
+
   const threat = getThreatConfig(post.threat_level);
   const sentimentLabel = normalizeSentimentValue(post.sentiment);
   const sentiment = getSentimentConfig(sentimentLabel);
+
   const mainTopic = deriveMainTopic(post);
-  const smartSummary = deriveSmartSummary(post, resolvedStage);
-  const summaryText = smartSummary ?? 'خلاصه هوشمند هنوز آماده نیست';
-  const recommendedAction = deriveRecommendedAction(post, resolvedStage);
-  const recommendedActionText = recommendedAction || 'هنوز اقدام پیشنهادی ثبت نشده است';
+
+  // =========================
+  //  خلاصه هوشمند (سه‌سطحی)
+  // =========================
+  const baseSmartSummary = deriveSmartSummary(post, resolvedStage);
+
+  let summaryText: string;
+
+  if (resolvedStage === 'deepest') {
+    // اگر تحلیل بحران/دیپست داریم، در اولویت:
+    summaryText =
+      (post as any).deepest_strategic_summary ||
+      (post as any).extended_summary ||
+      (post as any).narrative_core ||
+      baseSmartSummary ||
+      'خلاصه هوشمند هنوز آماده نیست';
+  } else if (resolvedStage === 'deep') {
+    // تحلیل دیپ
+    summaryText =
+      (post as any).extended_summary ||
+      (post as any).narrative_core ||
+      baseSmartSummary ||
+      'خلاصه هوشمند هنوز آماده نیست';
+  } else {
+    // فقط کوییک
+    summaryText = baseSmartSummary || 'خلاصه هوشمند هنوز آماده نیست';
+  }
+
+  // =========================
+  //  اقدام پیشنهادی (سه‌سطحی)
+  // =========================
+  const baseRecommendedAction = deriveRecommendedAction(post, resolvedStage);
+
+  let recommendedActionRaw: string | string[] | null = null;
+
+  if (resolvedStage === 'deepest' && (post as any).deepest_recommended_actions?.length) {
+    recommendedActionRaw = (post as any).deepest_recommended_actions as string[];
+  } else if (resolvedStage === 'deep' && (post as any).recommended_actions?.length) {
+    recommendedActionRaw = (post as any).recommended_actions as string[];
+  } else if (baseRecommendedAction) {
+    recommendedActionRaw = baseRecommendedAction;
+  }
+
+  let recommendedActionText: string;
+  if (Array.isArray(recommendedActionRaw)) {
+    recommendedActionText = recommendedActionRaw.join('\n');
+  } else if (typeof recommendedActionRaw === 'string') {
+    recommendedActionText = recommendedActionRaw;
+  } else {
+    recommendedActionText = 'هنوز اقدام پیشنهادی ثبت نشده است';
+  }
+
+  // =========================
+  //  متادیتای تحلیل
+  // =========================
   const modelLabel = post.analysis_model || 'unknown-model';
   const processingTimeLabel =
     post.processing_time !== null && post.processing_time !== undefined
@@ -77,7 +131,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
           {/* Analysis Results */}
           <div>
             <h3 className="font-bold text-lg mb-4">نتایج تحلیل</h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {/* Threat Level */}
               <div className="p-4 border rounded-lg">
@@ -86,7 +140,9 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
                   <span className="text-2xl">{threat.icon}</span>
                   <div>
                     <p className="font-bold text-lg">{threat.label}</p>
-                    <p className="text-xs text-muted-foreground">اطمینان: {post.confidence}%</p>
+                    <p className="text-xs text-muted-foreground">
+                      اطمینان: {post.confidence ? toPersianNumber(post.confidence.toString()) : 'نامشخص'}%
+                    </p>
                   </div>
                 </div>
               </div>
@@ -116,11 +172,11 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
             <div className="mb-4">
               <p className="text-sm text-muted-foreground mb-2">خلاصه هوشمند</p>
               <div className="bg-muted p-4 rounded-lg">
-                <p className="text-sm">{summaryText}</p>
+                <p className="text-sm whitespace-pre-wrap">{summaryText}</p>
               </div>
             </div>
 
-            {/* Key Points */}
+            {/* Key Points (اگر ست شده باشد) */}
             {post.key_points && post.key_points.length > 0 && (
               <div className="mb-4">
                 <p className="text-sm text-muted-foreground mb-2">نکات کلیدی</p>
