@@ -100,13 +100,30 @@ interface TokenStatusResponse {
   error?: { message?: string };
 }
 
-interface CronJobStatus {
-  name: string;
-  last_run_at?: string;
-  last_status?: string;
-  last_message?: string;
-  schedule?: string;
-}
+type CronJobSummary = {
+  job_name: string;
+  last_started_at: string | null;
+  last_success_at: string | null;
+  last_finished_at: string | null;
+  last_status: string | null;
+  last_http_status: number | null;
+  last_error_message: string | null;
+  failures_last_24h: number;
+};
+
+const CRON_JOB_LABELS: Record<string, string> = {
+  "inoreader-rss-ingestion": "دریافت RSS از Inoreader",
+  "auto-analyzer": "تحلیل خودکار (AI)",
+  "auto-cleanup": "پاکسازی ۲۴ ساعته",
+  "intelligent-archive": "آرشیو هوشمند روزانه",
+};
+
+const CRON_JOB_ORDER = [
+  "inoreader-rss-ingestion",
+  "auto-analyzer",
+  "auto-cleanup",
+  "intelligent-archive",
+];
 
 const InoreaderSettings: React.FC = () => {
   // استفاده از Custom Hook برای مدیریت خودکار Token
@@ -137,7 +154,7 @@ const InoreaderSettings: React.FC = () => {
   const [tokenStatus, setTokenStatus] = useState<TokenStatusResponse | null>(null);
   const [tokenStatusLoading, setTokenStatusLoading] = useState(false);
   const [tokenStatusError, setTokenStatusError] = useState<string | null>(null);
-  const [cronStatus, setCronStatus] = useState<CronJobStatus | null>(null);
+  const [cronStatus, setCronStatus] = useState<Record<string, CronJobSummary> | null>(null);
   const [cronStatusLoading, setCronStatusLoading] = useState(false);
   const [cronStatusError, setCronStatusError] = useState<string | null>(null);
 
@@ -279,18 +296,16 @@ const InoreaderSettings: React.FC = () => {
     setCronStatusLoading(true);
     setCronStatusError(null);
     try {
-      const { data, error } = await supabase.functions.invoke('get-cron-status', {
+      const { data, error } = await supabase.functions.invoke<Record<string, CronJobSummary>>('get-cron-status', {
         body: {}
       });
 
       if (error) throw error;
 
-      const jobs: CronJobStatus[] = data?.jobs || data || [];
-      const targetJob = jobs.find((job: CronJobStatus) => job.name === 'inoreader-rss-ingestion');
-      if (targetJob) {
-        setCronStatus(targetJob);
+      if (data) {
+        setCronStatus(data);
       } else {
-        setCronStatusError('کرون inoreader-rss-ingestion یافت نشد');
+        setCronStatus({});
       }
     } catch (error: any) {
       console.error('Error loading cron status:', error);
@@ -467,6 +482,25 @@ const InoreaderSettings: React.FC = () => {
     }
   };
 
+  const getCronStatusColor = (job?: CronJobSummary) => {
+    if (!job) return '';
+    const failures = job.failures_last_24h ?? 0;
+
+    if (job.last_status === 'failed' || failures >= 3) {
+      return 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950';
+    }
+
+    if (job.last_status === 'running' || failures > 0) {
+      return 'border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950';
+    }
+
+    if (job.last_status === 'success' && failures === 0) {
+      return 'border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950';
+    }
+
+    return '';
+  };
+
   const folderSyncData = folders
     .map((folder) => {
       const intervalMs = folder.fetch_interval_minutes * 60 * 1000;
@@ -484,14 +518,6 @@ const InoreaderSettings: React.FC = () => {
       };
     })
     .sort((a, b) => a.priority - b.priority);
-
-  const cronLastRunDate = cronStatus?.last_run_at ? new Date(cronStatus.last_run_at) : null;
-  const cronTimeSinceLastRun = cronLastRunDate ? Date.now() - cronLastRunDate.getTime() : null;
-  const cronStatusColor = cronStatus?.last_status === 'success'
-    ? 'border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950'
-    : cronStatus?.last_status === 'pending'
-      ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950'
-      : 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950';
 
   const tokenStatusColor = tokenStatus?.status === 'ok'
     ? 'border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950'
@@ -592,69 +618,87 @@ const InoreaderSettings: React.FC = () => {
               </CardContent>
             </Card>
 
-            <Card className={cronStatus ? cronStatusColor : ''}>
-              <CardHeader>
-                <CardTitle>وضعیت اجرای کرون</CardTitle>
-                <CardDescription>inoreader-rss-ingestion</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {cronStatusLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" /> در حال بررسی کرون
-                  </div>
-                ) : cronStatusError ? (
-                  <Alert className="border-yellow-500">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription>{cronStatusError}</AlertDescription>
-                  </Alert>
-                ) : cronStatus ? (
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>آخرین اجرا:</span>
-                      <span className="font-medium">
-                        {cronStatus.last_run_at
-                          ? new Date(cronStatus.last_run_at).toLocaleString('fa-IR')
-                          : 'نامشخص'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>زمان سپری شده:</span>
-                      <span className="font-medium">{formatTimeSince(cronStatus.last_run_at)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>وضعیت:</span>
-                      <Badge variant={cronStatus.last_status === 'success' ? 'default' : 'destructive'}>
-                        {cronStatus.last_status || 'نامشخص'}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>پیام:</span>
-                      <span className="text-xs text-muted-foreground text-left ltr" dir="ltr">
-                        {cronStatus.last_message || '-'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>زمان‌بندی:</span>
-                      <span className="font-medium">{cronStatus.schedule || '-'}</span>
-                    </div>
-                    {cronTimeSinceLastRun && cronTimeSinceLastRun > 60 * 60 * 1000 && (
-                      <Alert className="border-red-500 bg-red-50 dark:bg-red-950">
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                        <AlertDescription>مدت زیادی از آخرین اجرا گذشته است.</AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">وضعیت کرون در دسترس نیست</p>
-                )}
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={loadCronStatus} disabled={cronStatusLoading}>
-                    {cronStatusLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
-                    بروزرسانی وضعیت
-                  </Button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">وضعیت اجرای کرون</h3>
+                  <p className="text-sm text-muted-foreground">پایش کرون‌های اصلی سیستم</p>
                 </div>
-              </CardContent>
-            </Card>
+                <Button variant="outline" size="sm" onClick={loadCronStatus} disabled={cronStatusLoading}>
+                  {cronStatusLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                  بروزرسانی وضعیت
+                </Button>
+              </div>
+
+              {cronStatusError && (
+                <Alert className="border-yellow-500">
+                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  <AlertDescription>{cronStatusError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {CRON_JOB_ORDER.map((jobName) => {
+                  const job = cronStatus?.[jobName];
+                  const lastRun = job?.last_finished_at || job?.last_started_at;
+                  const failures = job?.failures_last_24h ?? 0;
+                  const cardColor = getCronStatusColor(job);
+                  const statusText = job?.last_status || 'نامشخص';
+                  const httpStatus = job?.last_http_status != null ? job.last_http_status : '-';
+                  const badgeVariant = statusText === 'success'
+                    ? 'default'
+                    : statusText === 'running'
+                      ? 'secondary'
+                      : 'destructive';
+
+                  return (
+                    <Card key={jobName} className={cardColor}>
+                      <CardHeader>
+                        <CardTitle>{CRON_JOB_LABELS[jobName]}</CardTitle>
+                        <CardDescription>{job?.job_name || jobName}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        {cronStatusLoading ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> در حال بررسی کرون
+                          </div>
+                        ) : job ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span>آخرین اجرا:</span>
+                              <span className="font-medium">
+                                {lastRun ? new Date(lastRun).toLocaleString('fa-IR') : 'نامشخص'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>زمان سپری شده:</span>
+                              <span className="font-medium">{lastRun ? formatTimeSince(lastRun) : 'نامشخص'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>وضعیت:</span>
+                              <Badge variant={badgeVariant}>
+                                {statusText} {job.last_http_status ? `(${httpStatus})` : ''}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>خطا در ۲۴ ساعت اخیر:</span>
+                              <span className="font-medium">{failures}</span>
+                            </div>
+                            {job.last_error_message && (
+                              <div className="text-xs text-muted-foreground text-left ltr line-clamp-2" dir="ltr">
+                                آخرین خطا: {job.last_error_message}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">وضعیت این کرون یافت نشد</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
 
             <Card>
               <CardHeader>

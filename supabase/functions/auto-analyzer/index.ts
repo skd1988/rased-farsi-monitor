@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { startJobRun, finishJobRun } from "../_shared/cronMonitor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -127,7 +128,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const jobName = "auto-analyzer";
+  let runId: string | null = null;
+  let httpStatus = 200;
+
   try {
+    runId = await startJobRun(jobName, req.headers.get("X-Job-Source") || "github_actions");
+
     console.log('🤖 Auto Analyzer started...');
 
     // Initialize Supabase client with service role
@@ -150,10 +157,13 @@ serve(async (req) => {
 
     if (configData?.config_value === false) {
       console.log('⏸️ Auto analysis is disabled');
-      return new Response(
+      const response = new Response(
         JSON.stringify({ message: 'Auto analysis is disabled', processed: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+      httpStatus = response.status;
+      await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+      return response;
     }
 
     // Get batch size from config
@@ -192,10 +202,13 @@ serve(async (req) => {
 
     if (!queueItems || queueItems.length === 0) {
       console.log('📭 No pending posts in queue');
-      return new Response(
+      const response = new Response(
         JSON.stringify({ message: 'No pending posts', processed: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+      httpStatus = response.status;
+      await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+      return response;
     }
 
     console.log(`📊 Processing ${queueItems.length} posts from queue`);
@@ -429,7 +442,7 @@ serve(async (req) => {
 
     console.log(`✅ Auto Analyzer completed: ${succeeded} succeeded, ${failed} failed`);
 
-    return new Response(
+    const response = new Response(
       JSON.stringify({
         success: true,
         processed,
@@ -437,23 +450,29 @@ serve(async (req) => {
         failed,
         message: `Processed ${processed} posts`
       }),
-      { 
+      {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+    httpStatus = response.status;
+    await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
+    return response;
 
   } catch (error) {
     console.error('❌ Auto Analyzer error:', error);
-    return new Response(
-      JSON.stringify({ 
+    const response = new Response(
+      JSON.stringify({
         success: false,
-        error: error.message 
+        error: error.message
       }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+    httpStatus = response.status;
+    await finishJobRun(runId, "failed", httpStatus, (error as Error).message, { jobName });
+    return response;
   }
 });
