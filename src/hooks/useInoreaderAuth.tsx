@@ -21,6 +21,10 @@ type InoreaderStatusResponse = {
   canAutoRefresh: boolean;
   expiresAt: string | null;
   secondsToExpiry: number | null;
+  connected?: boolean;
+  reason?: string | null;
+  needsRefresh?: boolean;
+  lastError?: string | null;
   error?: { message: string; code?: string } | null;
 };
 
@@ -39,13 +43,17 @@ export const useInoreaderAuth = () => {
 
       const normalizedStatus: InoreaderStatusResponse = {
         ok: data?.ok ?? false,
-        isConnected: data?.isConnected ?? false,
+        isConnected: data?.isConnected ?? data?.connected ?? false,
         isExpired: data?.isExpired ?? false,
         needsReconnect: data?.needsReconnect ?? false,
         hasRefreshToken: data?.hasRefreshToken ?? false,
         canAutoRefresh: data?.canAutoRefresh ?? false,
         expiresAt: data?.expiresAt ?? null,
         secondsToExpiry: data?.secondsToExpiry ?? null,
+        connected: data?.connected ?? data?.isConnected ?? false,
+        reason: data?.reason ?? null,
+        needsRefresh: data?.needsRefresh ?? false,
+        lastError: data?.error?.message ?? null,
         error: data?.error ?? null,
       };
 
@@ -100,7 +108,21 @@ export const useInoreaderAuth = () => {
 
       if (disconnectError) throw disconnectError;
 
-      setStatus({ connected: false, reason: 'no_session', expiresAt: null });
+      setStatus({
+        ok: true,
+        isConnected: false,
+        isExpired: false,
+        needsReconnect: true,
+        hasRefreshToken: false,
+        canAutoRefresh: false,
+        expiresAt: null,
+        secondsToExpiry: null,
+        connected: false,
+        reason: 'no_session',
+        needsRefresh: false,
+        lastError: null,
+        error: null,
+      });
       setLoading(false);
 
       toast({

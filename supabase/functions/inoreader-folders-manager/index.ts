@@ -338,8 +338,14 @@ async function handleStats(supabase: any) {
  */
 async function getActiveToken(supabase: any): Promise<string | null> {
   try {
-    const token = await ensureValidInoreaderToken(supabase, 10);
-    return token.access_token;
+    const tokenStatus = await ensureValidInoreaderToken(supabase, 10);
+
+    if (tokenStatus.status !== 'ok') {
+      console.error('[Inoreader] No valid token available', tokenStatus);
+      return null;
+    }
+
+    return tokenStatus.accessToken;
   } catch (error) {
     console.error('❌ No valid Inoreader token available', error);
     return null;

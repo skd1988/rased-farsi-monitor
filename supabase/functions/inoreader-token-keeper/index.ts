@@ -19,7 +19,19 @@ serve(async (req) => {
     );
 
     const beforeToken = await getActiveInoreaderToken(supabase);
-    const token = await ensureValidInoreaderToken(supabase);
+    const tokenStatus = await ensureValidInoreaderToken(supabase);
+
+    if (tokenStatus.status !== 'ok') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No valid Inoreader token' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const token = tokenStatus.token;
 
     const refreshed =
       beforeToken.access_token !== token.access_token ||
