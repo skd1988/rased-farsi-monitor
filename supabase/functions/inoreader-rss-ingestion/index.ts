@@ -29,9 +29,9 @@ const corsHeaders = {
 // ⚙️ Configuration
 const CONFIG = {
   INOREADER_API_BASE: "https://www.inoreader.com/reader/api/0",
-  MAX_POSTS_PER_FOLDER: 500, // حداکثر تعداد در هر sync
+  MAX_POSTS_PER_FOLDER: 400, // حداکثر تعداد در هر sync
   POSTS_PER_REQUEST: 100, // تعداد در هر request (max از Inoreader)
-  MAX_PROCESSING_TIME_MS: 270000, // 4.5 دقیقه (کمتر از 5 دقیقه timeout)
+  MAX_PROCESSING_TIME_MS: 110000, // 4.5 دقیقه (کمتر از 5 دقیقه timeout)
   MAX_POST_AGE_HOURS: 24, // ✅ حداکثر سن پست به ساعت
 };
 
