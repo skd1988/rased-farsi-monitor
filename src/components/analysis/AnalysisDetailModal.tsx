@@ -7,16 +7,37 @@ import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toPersianNumber } from '@/lib/utils';
 import { getSentimentConfig, getThreatConfig } from './pillConfigs';
+import { AnalyzedPost, AnalysisStage } from '@/types/analysis';
+import {
+  deriveMainTopic,
+  deriveRecommendedAction,
+  deriveSmartSummary,
+  normalizeSentimentValue,
+  resolveAnalysisStage,
+} from './analysisUtils';
 
 interface AnalysisDetailModalProps {
-  post: any;
+  post: AnalyzedPost;
   open: boolean;
   onClose: () => void;
 }
 
 const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) => {
+  // Deep/deepest insights take priority over quick screening for all rendered fields
+  const resolvedStage: AnalysisStage = post.resolved_stage ?? resolveAnalysisStage(post);
   const threat = getThreatConfig(post.threat_level);
-  const sentiment = getSentimentConfig(post.sentiment);
+  const sentimentLabel = normalizeSentimentValue(post.sentiment);
+  const sentiment = getSentimentConfig(sentimentLabel);
+  const mainTopic = deriveMainTopic(post);
+  const smartSummary = deriveSmartSummary(post, resolvedStage);
+  const summaryText = smartSummary ?? 'خلاصه هوشمند هنوز آماده نیست';
+  const recommendedAction = deriveRecommendedAction(post, resolvedStage);
+  const recommendedActionText = recommendedAction || 'هنوز اقدام پیشنهادی ثبت نشده است';
+  const modelLabel = post.analysis_model || 'unknown-model';
+  const processingTimeLabel =
+    post.processing_time !== null && post.processing_time !== undefined
+      ? `${toPersianNumber(post.processing_time.toFixed(1))} ثانیه`
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -86,22 +107,18 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
             </div>
 
             {/* Main Topic */}
-            {post.main_topic && (
-              <div className="mb-4">
-                <p className="text-sm text-muted-foreground mb-2">موضوع اصلی</p>
-                <Badge className="text-base py-2 px-4">{post.main_topic}</Badge>
-              </div>
-            )}
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground mb-2">موضوع اصلی</p>
+              <Badge className="text-base py-2 px-4">{mainTopic}</Badge>
+            </div>
 
             {/* Summary */}
-            {post.analysis_summary && (
-              <div className="mb-4">
-                <p className="text-sm text-muted-foreground mb-2">خلاصه هوشمند</p>
-                <div className="bg-muted p-4 rounded-lg">
-                  <p className="text-sm">{post.analysis_summary}</p>
-                </div>
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground mb-2">خلاصه هوشمند</p>
+              <div className="bg-muted p-4 rounded-lg">
+                <p className="text-sm">{summaryText}</p>
               </div>
-            )}
+            </div>
 
             {/* Key Points */}
             {post.key_points && post.key_points.length > 0 && (
@@ -119,24 +136,26 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
             )}
 
             {/* Recommended Action */}
-            {post.recommended_action && (
-              <div className="mb-4">
-                <p className="text-sm text-muted-foreground mb-2">اقدام پیشنهادی</p>
-                <div className="bg-primary/10 border border-primary p-4 rounded-lg">
-                  <p className="text-sm font-medium">{post.recommended_action}</p>
-                </div>
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground mb-2">اقدام پیشنهادی</p>
+              <div className="bg-primary/10 border border-primary p-4 rounded-lg space-y-1">
+                {recommendedActionText.split(/\n+/).map((line, index) => (
+                  <p key={index} className="text-sm font-medium">
+                    {line}
+                  </p>
+                ))}
               </div>
-            )}
+            </div>
 
             {/* Analysis Metadata */}
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-4 border-t">
               <span>تحلیل شده: {formatPersianDateTime(post.analyzed_at)}</span>
               <span>•</span>
-              <span>مدل: {post.analysis_model || 'DeepSeek'}</span>
-              {post.processing_time && (
+              <span>مدل: {modelLabel}</span>
+              {processingTimeLabel && (
                 <>
                   <span>•</span>
-                  <span>زمان پردازش: {toPersianNumber(post.processing_time.toFixed(2))} ثانیه</span>
+                  <span>زمان پردازش: {processingTimeLabel}</span>
                 </>
               )}
             </div>

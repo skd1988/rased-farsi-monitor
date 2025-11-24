@@ -18,83 +18,25 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from "@/components/ui/pagination";
+import { AnalyzedPost, AnalysisStage, UrgencyLevel, ViralityPotential } from "@/types/analysis";
+import { normalizeSentimentValue, resolveAnalysisStage } from "@/components/analysis/analysisUtils";
 
-interface AnalyzedPost {
-  id: string;
-  title: string;
-  contents: string;
-  source: string;
-  author: string;
-  published_at: string;
-
-  // General AI analysis
-  analysis_summary: string | null;
-  sentiment: string | null;
-  sentiment_score: number | null;
-  main_topic: string | null;
-  threat_level: string | null;
-  confidence: number | null;
-  key_points: string[] | null;
-  recommended_action: string | null;
-  analyzed_at: string | null;
-  processing_time: number | null;
-  article_url: string | null;
-  keywords: string[] | null;
-  language: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  analysis_model: string | null;
-
-  // PsyOp quick / deep fields
-  is_psyop?: boolean | null;
-  psyop_confidence?: number | null;
-  psyop_risk_score?: number | null;
-  stance_type?: string | null;
-  psyop_category?: string | null;
-  psyop_techniques?: string[] | null;
-
-  // 3-level analysis stage
-  analysis_stage?: "quick" | "deep" | "deepest" | null;
-  quick_analyzed_at?: string | null;
-  deep_analyzed_at?: string | null;
-  deepest_analysis_completed_at?: string | null;
-  resolved_stage?: "quick" | "deep" | "deepest" | null;
-  hasDeepAnalysis?: boolean;
-  hasDeepestAnalysis?: boolean;
-
-  // Deepest (crisis) analysis fields
-  deepest_escalation_level?: string | null;
-  deepest_strategic_summary?: string | null;
-  deepest_key_risks?: string[] | null;
-  deepest_audience_segments?: string[] | null;
-  deepest_recommended_actions?: string[] | null;
-  deepest_monitoring_indicators?: string[] | null;
-}
-
-const resolveAnalysisStage = (
-  post: AnalyzedPost,
-): "quick" | "deep" | "deepest" | null => {
-  if (post.analysis_stage === "deepest" || post.deepest_analysis_completed_at) {
-    return "deepest";
-  }
-
-  if (post.analysis_stage === "deep" || post.deep_analyzed_at) {
-    return "deep";
-  }
-
-  if (post.analysis_stage === "quick" || post.quick_analyzed_at) {
-    return "quick";
-  }
-
+const normalizeStageValue = (stage: AnalyzedPost["analysis_stage"]): AnalysisStage => {
+  if (stage === "quick" || stage === "deep" || stage === "deepest") return stage;
   return null;
 };
 
 const enrichPostWithStage = (post: AnalyzedPost): AnalyzedPost => {
-  const resolvedStage = resolveAnalysisStage(post);
+  const normalizedStage = normalizeStageValue(post.analysis_stage);
+  const normalizedSentiment = normalizeSentimentValue(post.sentiment);
+  const resolvedStage = resolveAnalysisStage({ ...post, analysis_stage: normalizedStage });
 
   return {
     ...post,
+    sentiment: normalizedSentiment,
+    analysis_stage: normalizedStage,
+    urgency_level: (post.urgency_level as UrgencyLevel) ?? null,
+    virality_potential: (post.virality_potential as ViralityPotential) ?? null,
     resolved_stage: resolvedStage,
     hasDeepAnalysis: resolvedStage === "deep" || resolvedStage === "deepest",
     hasDeepestAnalysis: resolvedStage === "deepest" || !!post.deepest_analysis_completed_at,
@@ -141,7 +83,7 @@ const AIAnalysis = () => {
       while (hasMore) {
         const { data, error } = await supabase
           .from("posts")
-          .select(`
+          .select<AnalyzedPost>(`
             id,
             title,
             contents,
@@ -152,6 +94,7 @@ const AIAnalysis = () => {
             sentiment,
             sentiment_score,
             main_topic,
+            narrative_theme,
             threat_level,
             confidence,
             key_points,
@@ -165,6 +108,8 @@ const AIAnalysis = () => {
             created_at,
             updated_at,
             analysis_model,
+            urgency_level,
+            virality_potential,
             is_psyop,
             psyop_confidence,
             psyop_risk_score,

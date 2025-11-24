@@ -17,9 +17,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getSentimentConfig, getThreatConfig } from "./pillConfigs";
+import { AnalyzedPost, AnalysisStage } from "@/types/analysis";
+import {
+  deriveMainTopic,
+  deriveRecommendedAction,
+  deriveSmartSummary,
+  normalizeSentimentValue,
+  resolveAnalysisStage,
+} from "./analysisUtils";
 
 interface AnalysisCardProps {
-  post: any;
+  post: AnalyzedPost;
   onViewDetails: () => void;
   onReanalyze: () => void;
 }
@@ -174,18 +182,16 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
   };
 
   const threat = getThreatConfig(post.threat_level);
-  const sentiment = getSentimentConfig(post.sentiment);
-
-  const resolvedStage: "quick" | "deep" | "deepest" | null =
-    post.resolved_stage ||
-    post.analysis_stage ||
-    (post.deepest_analysis_completed_at
-      ? "deepest"
-      : post.deep_analyzed_at
-        ? "deep"
-        : post.quick_analyzed_at
-          ? "quick"
-          : null);
+  // Deepest insights should always override deep, which should override quick screening
+  const resolvedStage: AnalysisStage = post.resolved_stage ?? resolveAnalysisStage(post);
+  const sentimentLabel = normalizeSentimentValue(post.sentiment);
+  const sentiment = getSentimentConfig(sentimentLabel);
+  const mainTopic = deriveMainTopic(post);
+  const smartSummary = deriveSmartSummary(post, resolvedStage);
+  const recommendedAction = deriveRecommendedAction(post, resolvedStage);
+  const topicBadgeClass = topicColors[mainTopic] || "bg-gray-500/10 text-gray-700 border-gray-300";
+  const summaryText = smartSummary ?? "خلاصه هوشمند هنوز آماده نیست";
+  const recommendedActionText = recommendedAction || "هنوز اقدام پیشنهادی ثبت نشده است";
 
   const stageBadge = () => {
     if (!resolvedStage) return null;
@@ -292,13 +298,10 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         </div>
 
         {/* Main Topic */}
-        {post.main_topic && (
-          <div>
-            <Badge className={cn("text-sm py-1 px-3", topicColors[post.main_topic] || topicColors["اخبار عادی"])}>
-              {post.main_topic}
-            </Badge>
-          </div>
-        )}
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">موضوع اصلی</p>
+          <Badge className={cn("text-sm py-1 px-3", topicBadgeClass)}>{mainTopic}</Badge>
+        </div>
 
         {/* Key Points */}
         {post.key_points && post.key_points.length > 0 && (
@@ -316,33 +319,29 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         )}
 
         {/* AI Summary - Collapsible */}
-        {post.analysis_summary && (
-          <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="w-full justify-between">
-                <span>خلاصه هوشمند</span>
-                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">{post.analysis_summary}</p>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
+        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between">
+              <span>خلاصه هوشمند</span>
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <p className="text-sm text-muted-foreground p-3 bg-muted rounded-lg">{summaryText}</p>
+          </CollapsibleContent>
+        </Collapsible>
 
         {/* Recommended Action */}
-        {post.recommended_action && (
-          <div className="space-y-2">
-            <p className="text-sm font-semibold">اقدام پیشنهادی (مدل):</p>
-            <div className="p-3 bg-primary/5 rounded-lg text-sm leading-7">
-              {post.recommended_action.split(/\n+/).map((line: string, index: number) => (
-                <p key={index} className="mb-1 last:mb-0">
-                  {line}
-                </p>
-              ))}
-            </div>
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">اقدام پیشنهادی (مدل):</p>
+          <div className="p-3 bg-primary/5 rounded-lg text-sm leading-7">
+            {recommendedActionText.split(/\n+/).map((line: string, index: number) => (
+              <p key={index} className="mb-1 last:mb-0">
+                {line}
+              </p>
+            ))}
           </div>
-        )}
+        </div>
       </CardContent>
 
       <CardFooter className="text-xs text-muted-foreground flex-wrap gap-2">
@@ -351,7 +350,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
         <Badge variant="outline" className="text-xs">
           {post.analysis_model || "DeepSeek"}
         </Badge>
-        {post.processing_time && (
+        {post.processing_time !== null && post.processing_time !== undefined && (
           <>
             <span>•</span>
             <span>زمان پردازش: {toPersianNumber(post.processing_time.toFixed(1))} ثانیه</span>
