@@ -91,6 +91,23 @@ interface SyncLog {
   error_message?: string;
 }
 
+interface TokenStatusResponse {
+  status: string;
+  is_active: boolean;
+  expires_at: string | null;
+  error_count?: number;
+  token_type?: string;
+  error?: { message?: string };
+}
+
+interface CronJobStatus {
+  name: string;
+  last_run_at?: string;
+  last_status?: string;
+  last_message?: string;
+  schedule?: string;
+}
+
 const InoreaderSettings: React.FC = () => {
   // استفاده از Custom Hook برای مدیریت خودکار Token
   const {
@@ -117,6 +134,12 @@ const InoreaderSettings: React.FC = () => {
   const [expandedLogs, setExpandedLogs] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<TokenStatusResponse | null>(null);
+  const [tokenStatusLoading, setTokenStatusLoading] = useState(false);
+  const [tokenStatusError, setTokenStatusError] = useState<string | null>(null);
+  const [cronStatus, setCronStatus] = useState<CronJobStatus | null>(null);
+  const [cronStatusLoading, setCronStatusLoading] = useState(false);
+  const [cronStatusError, setCronStatusError] = useState<string | null>(null);
 
   /**
    * Load initial data
@@ -126,6 +149,11 @@ const InoreaderSettings: React.FC = () => {
       loadFolders();
       loadStats();
     }
+  }, [connected]);
+
+  useEffect(() => {
+    loadTokenStatus();
+    loadCronStatus();
   }, [connected]);
 
   useEffect(() => {
@@ -195,6 +223,107 @@ const InoreaderSettings: React.FC = () => {
     } catch (error: any) {
       console.error('Error loading folders:', error);
     }
+  };
+
+  /**
+   * وضعیت توکن Inoreader
+   */
+  const loadTokenStatus = async () => {
+    setTokenStatusLoading(true);
+    setTokenStatusError(null);
+    try {
+      const response = await fetch('/functions/v1/inoreader-oauth-manager?action=status');
+      if (!response.ok) {
+        throw new Error('خطا در دریافت وضعیت توکن');
+      }
+      const data: TokenStatusResponse = await response.json();
+      setTokenStatus(data);
+    } catch (error: any) {
+      console.error('Error loading token status:', error);
+      setTokenStatusError(error.message || 'خطای ناشناخته در دریافت وضعیت توکن');
+    } finally {
+      setTokenStatusLoading(false);
+    }
+  };
+
+  const handleRefreshToken = async () => {
+    try {
+      setTokenStatusLoading(true);
+      const response = await fetch('/functions/v1/inoreader-oauth-manager?action=refresh', {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        throw new Error('تمدید توکن با مشکل مواجه شد');
+      }
+      const data = await response.json();
+      toast({
+        title: 'تمدید توکن',
+        description: data?.message || 'توکن با موفقیت تمدید شد'
+      });
+      await loadTokenStatus();
+      await refreshStatus();
+    } catch (error: any) {
+      toast({
+        title: 'خطا',
+        description: error.message || 'تمدید توکن ناموفق بود',
+        variant: 'destructive'
+      });
+      setTokenStatusLoading(false);
+    }
+  };
+
+  /**
+   * وضعیت کرون
+   */
+  const loadCronStatus = async () => {
+    setCronStatusLoading(true);
+    setCronStatusError(null);
+    try {
+      const response = await fetch('/functions/v1/get-cron-status');
+      if (!response.ok) {
+        throw new Error('خطا در دریافت وضعیت کرون');
+      }
+      const data = await response.json();
+      const jobs: CronJobStatus[] = data?.jobs || data || [];
+      const targetJob = jobs.find((job: CronJobStatus) => job.name === 'inoreader-rss-ingestion');
+      if (targetJob) {
+        setCronStatus(targetJob);
+      } else {
+        setCronStatusError('کرون inoreader-rss-ingestion یافت نشد');
+      }
+    } catch (error: any) {
+      console.error('Error loading cron status:', error);
+      setCronStatusError(error.message || 'خطای ناشناخته در دریافت وضعیت کرون');
+    } finally {
+      setCronStatusLoading(false);
+    }
+  };
+
+  const formatTimeRemaining = (expiresAt?: string | null) => {
+    if (!expiresAt) return 'نامشخص';
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) return 'منقضی شده';
+    const minutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(minutes / 60);
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days} روز`; 
+    }
+    if (hours > 0) {
+      return `${hours} ساعت و ${minutes % 60} دقیقه`;
+    }
+    return `${minutes} دقیقه`;
+  };
+
+  const formatTimeSince = (dateString?: string) => {
+    if (!dateString) return 'نامشخص';
+    const diff = Date.now() - new Date(dateString).getTime();
+    const minutes = Math.floor(diff / (1000 * 60));
+    if (minutes < 60) return `${minutes} دقیقه پیش`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} ساعت پیش`;
+    const days = Math.floor(hours / 24);
+    return `${days} روز پیش`;
   };
 
   /**
@@ -337,6 +466,38 @@ const InoreaderSettings: React.FC = () => {
     }
   };
 
+  const folderSyncData = folders
+    .map((folder) => {
+      const intervalMs = folder.fetch_interval_minutes * 60 * 1000;
+      const nextSync = folder.last_synced_at
+        ? new Date(folder.last_synced_at).getTime() + intervalMs
+        : null;
+      const due = !folder.is_active
+        ? false
+        : nextSync === null || nextSync <= Date.now();
+      return {
+        ...folder,
+        intervalMs,
+        nextSync,
+        due,
+      };
+    })
+    .sort((a, b) => a.priority - b.priority);
+
+  const cronLastRunDate = cronStatus?.last_run_at ? new Date(cronStatus.last_run_at) : null;
+  const cronTimeSinceLastRun = cronLastRunDate ? Date.now() - cronLastRunDate.getTime() : null;
+  const cronStatusColor = cronStatus?.last_status === 'success'
+    ? 'border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950'
+    : cronStatus?.last_status === 'pending'
+      ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950'
+      : 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950';
+
+  const tokenStatusColor = tokenStatus?.status === 'ok'
+    ? 'border-green-200 bg-green-50 dark:border-green-900/50 dark:bg-green-950'
+    : tokenStatus?.status === 'refresh_needed'
+      ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950'
+      : 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950';
+
   return (
     <div className="container mx-auto p-6 space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
@@ -359,6 +520,210 @@ const InoreaderSettings: React.FC = () => {
 
         {/* TAB 1: اتصال */}
         <TabsContent value="connection" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className={tokenStatus ? tokenStatusColor : ''}>
+              <CardHeader>
+                <CardTitle>وضعیت توکن</CardTitle>
+                <CardDescription>وضعیت توکن Inoreader OAuth2</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {tokenStatusLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> در حال بارگذاری وضعیت توکن
+                  </div>
+                ) : tokenStatusError ? (
+                  <Alert className="border-yellow-500">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertDescription>{tokenStatusError}</AlertDescription>
+                  </Alert>
+                ) : tokenStatus ? (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>وضعیت:</span>
+                      <Badge variant={tokenStatus.status === 'ok' ? 'default' : 'destructive'}>
+                        {tokenStatus.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>فعال:</span>
+                      <Badge variant={tokenStatus.is_active ? 'default' : 'secondary'}>
+                        {tokenStatus.is_active ? 'بله' : 'خیر'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>نوع توکن:</span>
+                      <span className="font-medium">{tokenStatus.token_type || 'OAuth2'}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>تعداد خطا:</span>
+                      <Badge variant="secondary">{tokenStatus.error_count ?? 0}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>انقضا:</span>
+                      <span className="font-medium">
+                        {tokenStatus.expires_at
+                          ? new Date(tokenStatus.expires_at).toLocaleString('fa-IR')
+                          : 'نامشخص'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>زمان باقی‌مانده:</span>
+                      <span className="font-medium">{formatTimeRemaining(tokenStatus.expires_at)}</span>
+                    </div>
+                    {tokenStatus.error?.message && (
+                      <p className="text-xs text-red-500">{tokenStatus.error.message}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">وضعیت توکن در دسترس نیست</p>
+                )}
+
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={loadTokenStatus} disabled={tokenStatusLoading}>
+                    {tokenStatusLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                    بروزرسانی وضعیت
+                  </Button>
+                  <Button size="sm" onClick={handleRefreshToken} disabled={tokenStatusLoading}>
+                    {tokenStatusLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                    تمدید توکن
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className={cronStatus ? cronStatusColor : ''}>
+              <CardHeader>
+                <CardTitle>وضعیت اجرای کرون</CardTitle>
+                <CardDescription>inoreader-rss-ingestion</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {cronStatusLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> در حال بررسی کرون
+                  </div>
+                ) : cronStatusError ? (
+                  <Alert className="border-yellow-500">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertDescription>{cronStatusError}</AlertDescription>
+                  </Alert>
+                ) : cronStatus ? (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span>آخرین اجرا:</span>
+                      <span className="font-medium">
+                        {cronStatus.last_run_at
+                          ? new Date(cronStatus.last_run_at).toLocaleString('fa-IR')
+                          : 'نامشخص'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>زمان سپری شده:</span>
+                      <span className="font-medium">{formatTimeSince(cronStatus.last_run_at)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>وضعیت:</span>
+                      <Badge variant={cronStatus.last_status === 'success' ? 'default' : 'destructive'}>
+                        {cronStatus.last_status || 'نامشخص'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>پیام:</span>
+                      <span className="text-xs text-muted-foreground text-left ltr" dir="ltr">
+                        {cronStatus.last_message || '-'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>زمان‌بندی:</span>
+                      <span className="font-medium">{cronStatus.schedule || '-'}</span>
+                    </div>
+                    {cronTimeSinceLastRun && cronTimeSinceLastRun > 60 * 60 * 1000 && (
+                      <Alert className="border-red-500 bg-red-50 dark:bg-red-950">
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        <AlertDescription>مدت زیادی از آخرین اجرا گذشته است.</AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">وضعیت کرون در دسترس نیست</p>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={loadCronStatus} disabled={cronStatusLoading}>
+                    {cronStatusLoading && <Loader2 className="h-4 w-4 ms-2 animate-spin" />}
+                    بروزرسانی وضعیت
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>وضعیت فولدرها و زمان سینک</CardTitle>
+                <CardDescription>بررسی زمان‌بندی و اولویت فولدرها</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {!connected ? (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>برای مشاهده وضعیت فولدرها ابتدا اتصال را برقرار کنید.</AlertDescription>
+                  </Alert>
+                ) : folders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">هیچ فولدری یافت نشد.</p>
+                ) : (
+                  <div className="overflow-auto max-h-80 border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Folder</TableHead>
+                          <TableHead>اولویت</TableHead>
+                          <TableHead>فاصله (دقیقه)</TableHead>
+                          <TableHead>آخرین سینک</TableHead>
+                          <TableHead>سینک بعدی</TableHead>
+                          <TableHead>وضعیت</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {folderSyncData.map((folder) => {
+                          const rowClass = !folder.is_active
+                            ? 'bg-red-50 dark:bg-red-950'
+                            : folder.due
+                              ? 'bg-green-50 dark:bg-green-950'
+                              : 'bg-yellow-50 dark:bg-yellow-950';
+
+                          return (
+                            <TableRow key={folder.id} className={rowClass}>
+                              <TableCell className="font-medium">{folder.folder_name}</TableCell>
+                              <TableCell>{folder.priority}</TableCell>
+                              <TableCell>{folder.fetch_interval_minutes}</TableCell>
+                              <TableCell className="text-xs">
+                                {folder.last_synced_at
+                                  ? new Date(folder.last_synced_at).toLocaleString('fa-IR')
+                                  : 'هرگز'}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {folder.nextSync
+                                  ? new Date(folder.nextSync).toLocaleString('fa-IR')
+                                  : 'به‌زودی'}
+                              </TableCell>
+                              <TableCell>
+                                {!folder.is_active ? (
+                                  <span className="text-red-600">🔴 غیرفعال</span>
+                                ) : folder.due ? (
+                                  <span className="text-green-600">🟢 DUE</span>
+                                ) : (
+                                  <span className="text-yellow-600">🟡 هنوز موعد نشده</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle>وضعیت اتصال</CardTitle>
