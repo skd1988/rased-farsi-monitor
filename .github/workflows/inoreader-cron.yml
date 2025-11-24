@@ -1,0 +1,49 @@
+name: Inoreader RSS Ingestion Cron
+
+on:
+  # اجرای خودکار هر 30 دقیقه
+  schedule:
+    - cron: "*/30 * * * *"
+  # اجرای دستی از تب Actions
+  workflow_dispatch:
+
+jobs:
+  call-ingestion:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call inoreader-rss-ingestion Edge Function
+        env:
+          SUPABASE_FUNCTION_URL: ${{ secrets.SUPABASE_FUNCTION_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_FUNCTION_URL" ]; then
+            echo "❌ SUPABASE_FUNCTION_URL secret is not set"
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "❌ SUPABASE_ANON_KEY secret is not set"
+            exit 1
+          fi
+
+          echo "🚀 Calling $SUPABASE_FUNCTION_URL ..."
+
+          HTTP_CODE=$(curl -sS -o response.json -w "%{http_code}" \
+            -X POST "$SUPABASE_FUNCTION_URL" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            --data '{}')
+
+          echo "📦 Response body:"
+          cat response.json || true
+          echo ""
+          echo "📡 HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "❌ Edge Function returned non-2xx status code"
+            exit 1
+          fi
+
+          echo "✅ Inoreader ingestion trigger completed successfully"
