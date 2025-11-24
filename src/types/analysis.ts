@@ -15,4 +15,29 @@ export type AnalyzedPost = Omit<PostRow, "analysis_stage" | "sentiment" | "urgen
   resolved_stage?: AnalysisStage;
   hasDeepAnalysis?: boolean;
   hasDeepestAnalysis?: boolean;
+  // Deep analysis fields
+  narrative_core?: string | null;
+  extended_summary?: string | null;
+  psychological_objectives?: string[] | null;
+  manipulation_intensity?: string | null;
+  techniques?: string[] | null;
+  recommended_actions?: string[] | null;
+  deep_main_topic?: string | null;
+  deep_smart_summary?: string | null;
+  deep_recommended_action?: string | null;
+  deep_psychological_objectives?: string[] | null;
+  deep_techniques?: string[] | null;
+
+  // Deepest/crisis layer fields
+  crisis_narrative_core?: string | null;
+  crisis_extended_summary?: string | null;
+  deepest_main_topic?: string | null;
+  deepest_smart_summary?: string | null;
+  deepest_recommended_action?: string | null;
+
+  // Quick/legacy fallbacks
+  quick_summary?: string | null;
+  quick_main_topic?: string | null;
+  smart_summary?: string | null;
+  review_status?: string | null;
 };

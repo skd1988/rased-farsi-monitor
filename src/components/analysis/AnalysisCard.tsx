@@ -186,7 +186,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
   const resolvedStage: AnalysisStage = post.resolved_stage ?? resolveAnalysisStage(post);
   const sentimentLabel = normalizeSentimentValue(post.sentiment);
   const sentiment = getSentimentConfig(sentimentLabel);
-  const mainTopic = deriveMainTopic(post);
+  const mainTopic = deriveMainTopic(post, resolvedStage);
   const smartSummary = deriveSmartSummary(post, resolvedStage);
   const recommendedAction = deriveRecommendedAction(post, resolvedStage);
   const topicBadgeClass = topicColors[mainTopic] || "bg-gray-500/10 text-gray-700 border-gray-300";
