@@ -59,6 +59,9 @@ interface AnalyzedPost {
   quick_analyzed_at?: string | null;
   deep_analyzed_at?: string | null;
   deepest_analysis_completed_at?: string | null;
+  resolved_stage?: "quick" | "deep" | "deepest" | null;
+  hasDeepAnalysis?: boolean;
+  hasDeepestAnalysis?: boolean;
 
   // Deepest (crisis) analysis fields
   deepest_escalation_level?: string | null;
@@ -68,6 +71,35 @@ interface AnalyzedPost {
   deepest_recommended_actions?: string[] | null;
   deepest_monitoring_indicators?: string[] | null;
 }
+
+const resolveAnalysisStage = (
+  post: AnalyzedPost,
+): "quick" | "deep" | "deepest" | null => {
+  if (post.analysis_stage === "deepest" || post.deepest_analysis_completed_at) {
+    return "deepest";
+  }
+
+  if (post.analysis_stage === "deep" || post.deep_analyzed_at) {
+    return "deep";
+  }
+
+  if (post.analysis_stage === "quick" || post.quick_analyzed_at) {
+    return "quick";
+  }
+
+  return null;
+};
+
+const enrichPostWithStage = (post: AnalyzedPost): AnalyzedPost => {
+  const resolvedStage = resolveAnalysisStage(post);
+
+  return {
+    ...post,
+    resolved_stage: resolvedStage,
+    hasDeepAnalysis: resolvedStage === "deep" || resolvedStage === "deepest",
+    hasDeepestAnalysis: resolvedStage === "deepest" || !!post.deepest_analysis_completed_at,
+  };
+};
 
 const AIAnalysis = () => {
   const [posts, setPosts] = useState<AnalyzedPost[]>([]);
@@ -169,8 +201,10 @@ const AIAnalysis = () => {
         }
       }
 
-      setPosts(allPosts);
-      console.log(`✅ Loaded ${allPosts.length} analyzed posts`);
+      const normalizedPosts = allPosts.map(enrichPostWithStage);
+
+      setPosts(normalizedPosts);
+      console.log(`✅ Loaded ${normalizedPosts.length} analyzed posts`);
     } catch (error) {
       console.error("Error fetching analyzed posts:", error);
       toast({
@@ -220,12 +254,18 @@ const AIAnalysis = () => {
 
     // NEW: Stage filter (all / quick / deep / deepest)
     if (stageFilter !== "all") {
-      filtered = filtered.filter((post) => post.analysis_stage === stageFilter);
+      filtered = filtered.filter((post) => {
+        const stage = post.resolved_stage ?? resolveAnalysisStage(post);
+        return stage === stageFilter;
+      });
     }
 
     // NEW: Deepest-only (crisis) filter
     if (deepestOnly) {
-      filtered = filtered.filter((post) => !!post.deepest_analysis_completed_at);
+      filtered = filtered.filter((post) => {
+        const stage = post.resolved_stage ?? resolveAnalysisStage(post);
+        return stage === "deepest" || !!post.deepest_analysis_completed_at;
+      });
     }
 
     // Sorting
@@ -259,11 +299,9 @@ const AIAnalysis = () => {
     high: posts.filter((p) => p.threat_level === "High").length,
     negative: posts.filter((p) => p.sentiment === "Negative").length,
     psyopCount: posts.filter((p) => p.is_psyop).length,
-    quickOnly: posts.filter((p) => p.analysis_stage === "quick").length,
-    deepDone: posts.filter((p) => p.analysis_stage === "deep").length,
-    deepestDone: posts.filter(
-      (p) => p.analysis_stage === "deepest" || p.deepest_analysis_completed_at,
-    ).length,
+    quickOnly: posts.filter((p) => (p.resolved_stage ?? resolveAnalysisStage(p)) === "quick").length,
+    deepDone: posts.filter((p) => (p.resolved_stage ?? resolveAnalysisStage(p)) === "deep").length,
+    deepestDone: posts.filter((p) => (p.resolved_stage ?? resolveAnalysisStage(p)) === "deepest").length,
   };
 
   const allTopics = Array.from(new Set(posts.map((p) => p.main_topic).filter(Boolean)));
