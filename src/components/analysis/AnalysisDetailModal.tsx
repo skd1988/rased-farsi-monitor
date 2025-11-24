@@ -6,6 +6,7 @@ import { formatPersianDateTime } from '@/lib/dateUtils';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toPersianNumber } from '@/lib/utils';
+import { getSentimentConfig, getThreatConfig } from './pillConfigs';
 
 interface AnalysisDetailModalProps {
   post: any;
@@ -14,21 +15,8 @@ interface AnalysisDetailModalProps {
 }
 
 const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) => {
-  const threatConfig = {
-    Critical: { label: 'بحرانی', icon: '🔴', color: 'bg-red-500/10 text-red-500' },
-    High: { label: 'بالا', icon: '🟠', color: 'bg-orange-500/10 text-orange-500' },
-    Medium: { label: 'متوسط', icon: '🟡', color: 'bg-yellow-500/10 text-yellow-500' },
-    Low: { label: 'پایین', icon: '🟢', color: 'bg-green-500/10 text-green-500' },
-  };
-
-  const sentimentConfig = {
-    Positive: { label: 'مثبت', icon: '😊', color: 'bg-green-500/10 text-green-500' },
-    Neutral: { label: 'خنثی', icon: '😐', color: 'bg-gray-500/10 text-gray-500' },
-    Negative: { label: 'منفی', icon: '😟', color: 'bg-red-500/10 text-red-500' },
-  };
-
-  const threat = threatConfig[post.threat_level as keyof typeof threatConfig];
-  const sentiment = sentimentConfig[post.sentiment as keyof typeof sentimentConfig];
+  const threat = getThreatConfig(post.threat_level);
+  const sentiment = getSentimentConfig(post.sentiment);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
