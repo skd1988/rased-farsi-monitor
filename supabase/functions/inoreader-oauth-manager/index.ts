@@ -411,20 +411,22 @@ async function handleEnsureValid(supabase: SupabaseClient) {
 async function handleDisconnect(supabase: SupabaseClient) {
   console.log('🔌 Disconnecting from Inoreader...');
 
-  const { error: sessionError } = await supabase
-    .from('inoreader_oauth_sessions')
-    .update({ is_active: false })
-    .neq('is_active', false);
+  try {
+    const { error: sessionError } = await supabase
+      .from('inoreader_oauth_sessions')
+      .update({ is_active: false })
+      .neq('is_active', false);
 
-  if (sessionError) {
-    if (['PGRST204', '42P01'].includes((sessionError as any)?.code)) {
-      console.warn(
-        '⚠️ inoreader_oauth_sessions table missing; skipping session cleanup but continuing token removal.',
-        sessionError,
-      );
-    } else {
-      throw sessionError;
+    if (sessionError) {
+      // Non-fatal: table missing or not cached
+      if (sessionError.code === 'PGRST204' || sessionError.code === '42P01') {
+        console.warn('[Inoreader] inoreader_oauth_sessions table missing, skipping session update');
+      } else {
+        console.warn('[Inoreader] Failed to update inoreader_oauth_sessions', sessionError);
+      }
     }
+  } catch (err) {
+    console.warn('[Inoreader] Error while updating sessions (ignored):', err);
   }
 
   const { error: tokenError } = await supabase
