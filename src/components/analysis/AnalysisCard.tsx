@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { translateSentiment } from "@/utils/sentimentTranslations";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,10 +12,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { MoreVertical, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
-import { formatPersianDateTime, getRelativeTime } from "@/lib/dateUtils";
+import { getRelativeTime } from "@/lib/dateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { getActionConfig, getSentimentConfig, getThreatConfig } from "./pillConfigs";
 
 interface AnalysisCardProps {
   post: any;
@@ -29,19 +29,6 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { toast } = useToast();
 
-  const threatConfig = {
-    Critical: { label: "بحرانی", icon: "🔴", color: "bg-red-500/10 text-red-500 border-red-500" },
-    High: { label: "بالا", icon: "🟠", color: "bg-orange-500/10 text-orange-500 border-orange-500" },
-    Medium: { label: "متوسط", icon: "🟡", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500" },
-    Low: { label: "پایین", icon: "🟢", color: "bg-green-500/10 text-green-500 border-green-500" },
-  };
-
-  const sentimentConfig = {
-    Positive: { label: "مثبت", icon: "😊", color: "bg-green-500/10 text-green-500" },
-    Neutral: { label: "خنثی", icon: "😐", color: "bg-gray-500/10 text-gray-500" },
-    Negative: { label: "منفی", icon: "😟", color: "bg-red-500/10 text-red-500" },
-  };
-
   const topicColors: Record<string, string> = {
     "جنگ روانی": "bg-red-500/10 text-red-500 border-red-500",
     "محور مقاومت": "bg-green-500/10 text-green-500 border-green-500",
@@ -50,13 +37,6 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
     کمپین: "bg-purple-500/10 text-purple-500 border-purple-500",
     "تحلیل سیاسی": "bg-blue-500/10 text-blue-500 border-blue-500",
     "اخبار عادی": "bg-gray-500/10 text-gray-500 border-gray-500",
-  };
-
-  const actionConfig = {
-    Critical: { label: "بررسی فوری", variant: "destructive" as const },
-    High: { label: "پاسخ سریع", variant: "default" as const },
-    Medium: { label: "رصد کنید", variant: "secondary" as const },
-    Low: { label: "آرشیو", variant: "outline" as const },
   };
 
   const handleReanalyze = async () => {
@@ -193,11 +173,12 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
     }
   };
 
-  const threat = threatConfig[post.threat_level as keyof typeof threatConfig];
-  const sentiment = sentimentConfig[post.sentiment as keyof typeof sentimentConfig];
-  const action = actionConfig[post.threat_level as keyof typeof actionConfig];
+  const threat = getThreatConfig(post.threat_level);
+  const sentiment = getSentimentConfig(post.sentiment);
+  const action = getActionConfig(post.threat_level);
 
-  const sentimentProgress = ((post.sentiment_score + 1) / 2) * 100;
+  const sentimentScore = typeof post.sentiment_score === "number" ? post.sentiment_score : 0;
+  const sentimentProgress = ((sentimentScore + 1) / 2) * 100;
 
   return (
     <Card className="hover:shadow-lg transition-shadow" dir="rtl">
