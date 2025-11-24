@@ -147,26 +147,17 @@ serve(async (req) => {
 async function getFoldersToSync(
   supabase: any,
   folderIds?: string[],
-  forceAll?: boolean
+  forceAll: boolean = false
 ): Promise<any[]> {
-  
+
   let query = supabase
     .from('inoreader_folders')
     .select('*')
     .eq('is_active', true);
 
-  // اگر folderIds مشخص شده، فقط آن‌ها را بگیر
   if (folderIds && folderIds.length > 0) {
     query = query.in('id', folderIds);
-  } else if (!forceAll) {
-    // فقط folderهایی که زمانشان رسیده
-    const now = new Date();
-    query = query.or(
-      `last_synced_at.is.null,last_synced_at.lt.${now.toISOString()}`
-    );
   }
-
-  query = query.order('priority', { ascending: true });
 
   const { data, error } = await query;
 
@@ -175,7 +166,76 @@ async function getFoldersToSync(
     return [];
   }
 
-  return data || [];
+  const folders = data || [];
+  const now = Date.now();
+
+  // حالت دستی یا Force All: فقط مرتب‌سازی بر اساس priority
+  if (forceAll || (folderIds && folderIds.length > 0)) {
+    const sorted = folders.sort((a: any, b: any) => {
+      const ap = a.priority ?? 99;
+      const bp = b.priority ?? 99;
+      return ap - bp;
+    });
+
+    console.log('🧭 Manual/Force sync selection:', sorted.map((f: any) => ({
+      id: f.id,
+      name: f.folder_name,
+      priority: f.priority,
+      interval_minutes: f.fetch_interval_minutes,
+      last_synced_at: f.last_synced_at
+    })));
+
+    return sorted;
+  }
+
+  // حالت خودکار: بررسی fetch_interval_minutes و last_synced_at
+  const evaluated = folders.map((folder: any) => {
+    const intervalMinutes =
+      folder.fetch_interval_minutes != null
+        ? Number(folder.fetch_interval_minutes)
+        : 30;
+
+    const intervalMs = intervalMinutes * 60 * 1000;
+    const lastSyncMs = folder.last_synced_at
+      ? new Date(folder.last_synced_at).getTime()
+      : null;
+    const nextSyncMs = lastSyncMs ? lastSyncMs + intervalMs : 0;
+
+    const eligible = !lastSyncMs || nextSyncMs <= now;
+
+    return {
+      folder,
+      intervalMinutes,
+      nextSyncMs,
+      eligible
+    };
+  });
+
+  console.log('⏱️ Folder schedule evaluation:', evaluated.map((item) => ({
+    id: item.folder.id,
+    name: item.folder.folder_name,
+    priority: item.folder.priority,
+    interval_minutes: item.intervalMinutes,
+    last_synced_at: item.folder.last_synced_at,
+    next_sync: item.folder.last_synced_at ? new Date(item.nextSyncMs).toISOString() : 'immediate',
+    eligible: item.eligible
+  })));
+
+  const eligible = evaluated
+    .filter((item) => item.eligible)
+    .map((item) => item.folder);
+
+  eligible.sort((a: any, b: any) => {
+    const ap = a.priority ?? 99;
+    const bp = b.priority ?? 99;
+    return ap - bp;
+  });
+
+  if (eligible.length === 0) {
+    console.warn('⚠️ هیچ فولدر واجد شرایط برای sync خودکار یافت نشد.');
+  }
+
+  return eligible;
 }
 
 /**
