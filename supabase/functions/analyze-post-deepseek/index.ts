@@ -46,7 +46,7 @@ serve(async (req) => {
       quickDetectionResult,
     } = await req.json();
 
-    console.log(`Analyzing post ${postId}: ${title}`);
+    console.log(`🚀 Starting deep analysis for post ${postId}: ${title}`);
 
     // ---------- 1) خواندن پست برای کانتکست ----------
     const { data: existingPost, error: fetchError } = await supabaseClient
@@ -102,26 +102,32 @@ serve(async (req) => {
                 },
                 {
                   role: "user",
-                  content: `${quickDetectionResult ? `نتیجه غربالگری سریع (ارسال‌شده در درخواست):
+                  content: `${
+                    quickDetectionResult
+                      ? `نتیجه غربالگری سریع (ارسال‌شده در درخواست):
 - is_psyop: ${
-                    quickDetectionResult.is_psyop ??
-                    (quickDetectionResult?.psyop_confidence ? "Yes" : "Uncertain")
-                  }
+                          quickDetectionResult.is_psyop ??
+                          (quickDetectionResult?.psyop_confidence
+                            ? "Yes"
+                            : "Uncertain")
+                        }
 - psyop_confidence: ${quickDetectionResult.psyop_confidence}
 - threat_level: ${quickDetectionResult.threat_level}
 - primary_target: ${
-                    quickDetectionResult.primary_target || "نامشخص"
-                  }
+                          quickDetectionResult.primary_target || "نامشخص"
+                        }
 - psyop_category: ${
-                    quickDetectionResult.psyop_category || "نامشخص"
-                  }
+                          quickDetectionResult.psyop_category || "نامشخص"
+                        }
 - psyop_techniques: ${
-                    Array.isArray(quickDetectionResult.psyop_technique)
-                      ? quickDetectionResult.psyop_technique.join(", ")
-                      : quickDetectionResult.psyop_technique || "نامشخص"
-                  }
+                          Array.isArray(quickDetectionResult.psyop_technique)
+                            ? quickDetectionResult.psyop_technique.join(", ")
+                            : quickDetectionResult.psyop_technique || "نامشخص"
+                        }
 
-` : ""}${quickScreeningContext}تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده:
+`
+                      : ""
+                  }${quickScreeningContext}تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده.
 
 عنوان: ${title}
 محتوا: ${contents}
@@ -129,8 +135,12 @@ serve(async (req) => {
 زبان: ${language}
 تاریخ: ${published_at}
 
-خروجی باید فقط یک شیء JSON با ساختار زیر باشد (بدون هیچ متن اضافی یا مارک‌داون). توجه کن که تمام فیلدهای متنی (به‌جز techniques و keywords) باید حتماً به زبان فارسی باشند:
+الزام‌های حیاتی:
+- خروجی باید فقط یک شیء JSON معتبر باشد و هیچ متن اضافی یا فرمت مارک‌داون نداشته باشد.
+- همه فیلدهای متنی (به جز techniques و keywords) باید حتماً فارسی باشند و از زبان انگلیسی در آن‌ها استفاده نشود.
+- techniques و keywords می‌توانند انگلیسی باشند.
 
+ساختار JSON مورد انتظار:
 {
   "narrative_core": "یک خلاصه ۲ تا ۳ جمله‌ای فارسی از هسته اصلی روایت و چارچوب ذهنی محتوا.",
   "extended_summary": "یک خلاصه بلندتر فارسی (یک یا دو پاراگراف) که پیام‌ها و جهت‌گیری کلی محتوا را توضیح می‌دهد.",
@@ -169,7 +179,7 @@ serve(async (req) => {
 - techniques باید آرایه‌ای از گزینه‌های محدود باشد: "demonization", "fear_mongering", "division_creation", "confusion", "ridicule", "character_assassination", "agenda_shifting", "disinformation".
 - keywords باید آرایه‌ای از واژه‌ها/اسامی مهم (افراد، مکان‌ها، سازمان‌ها، مفاهیم) باشد.
 
-در انتهای پاسخ این دستور را رعایت کن: فقط و فقط JSON معتبر با همین فیلدها برگردان و هیچ متن دیگری اضافه نکن.`,
+در پایان: فقط و فقط JSON معتبر با همین فیلدها برگردان و هیچ متن دیگری اضافه نکن.`,
                 },
               ],
               temperature: 0.3,
@@ -225,6 +235,7 @@ serve(async (req) => {
         .replace(/```\n?/g, "")
         .trim();
       analysisResult = JSON.parse(cleanContent);
+      console.log("✅ Parsed deep analysis JSON:", analysisResult);
     } catch (e) {
       console.error("Failed to parse DeepSeek response:", e);
       throw new Error("Failed to parse DeepSeek response as JSON");
@@ -263,46 +274,41 @@ serve(async (req) => {
       analysisResult?.virality_potential,
       allowedViralityValues,
     );
+    const sentimentValue =
+      typeof analysisResult?.sentiment === "string"
+        ? analysisResult.sentiment
+        : null;
+    const manipulationIntensity =
+      typeof analysisResult?.manipulation_intensity === "string"
+        ? analysisResult.manipulation_intensity
+        : null;
 
     const processingTime = Date.now() - startTime;
-
-    // موضوع اصلی از Quick (برای نمایش در مودال)
-    const mainTopicFromQuick: string | null =
-      quickDetectionResult?.primary_target ||
-      quickDetectionResult?.main_topic ||
-      null;
 
     // ---------- 4) آپدیت پست در Supabase ----------
     const { error } = await supabaseClient
       .from("posts")
       .update({
+        analysis_stage: "deep",
+        status: "completed",
+        deep_analyzed_at: new Date().toISOString(),
+
         analysis_summary: extendedSummary,
-        main_topic:
-          mainTopicFromQuick ??
-          existingPost?.main_topic ??
-          null, // ✅ برای نمایش "موضوع اصلی"
-        keywords: keywords ?? existingPost?.keywords ?? null,
-        is_psyop: existingPost?.is_psyop ?? null,
-        psyop_confidence: existingPost?.psyop_confidence ?? null,
-        target_entity: existingPost?.target_entity ?? null,
-        target_persons: existingPost?.target_persons ?? null,
-        psyop_technique: techniques ?? existingPost?.psyop_technique ?? null,
-        narrative_theme: narrativeCore ?? existingPost?.narrative_theme ?? null,
-        psyop_type: existingPost?.psyop_type ?? null,
-        threat_level: existingPost?.threat_level ?? null,
-        confidence: existingPost?.psyop_confidence ?? null,
-        key_points: existingPost?.key_points ?? null,
+        narrative_theme: narrativeCore,
         recommended_action: recommendedActions
           ? recommendedActions.join("\n")
-          : existingPost?.recommended_action ?? null,
-        urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
-        virality_potential:
-          viralityPotential ?? existingPost?.virality_potential ?? null,
-        analyzed_at: new Date().toISOString(),
+          : null,
+
+        keywords,
+        psyop_technique: techniques,
+
+        urgency_level: urgencyLevel,
+        virality_potential: viralityPotential,
+        manipulation_intensity: manipulationIntensity,
+        sentiment: sentimentValue,
+
         analysis_model: "deepseek-chat",
         processing_time: processingTime / 1000,
-        status: "completed",
-        analysis_stage: "deep",
       })
       .eq("id", postId);
 
@@ -310,6 +316,8 @@ serve(async (req) => {
       console.error("Supabase update error:", error);
       throw error;
     }
+
+    console.log("✅ Deep analysis saved to database for post", postId);
 
     // ---------- 5) لاگ استفاده از API ----------
     await supabaseClient.from("api_usage_logs").insert({
