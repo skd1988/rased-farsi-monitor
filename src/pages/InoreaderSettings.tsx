@@ -232,12 +232,13 @@ const InoreaderSettings: React.FC = () => {
     setTokenStatusLoading(true);
     setTokenStatusError(null);
     try {
-      const response = await fetch('/functions/v1/inoreader-oauth-manager?action=status');
-      if (!response.ok) {
-        throw new Error('خطا در دریافت وضعیت توکن');
-      }
-      const data: TokenStatusResponse = await response.json();
-      setTokenStatus(data);
+      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
+        body: { action: 'status' }
+      });
+
+      if (error) throw error;
+
+      setTokenStatus(data as TokenStatusResponse);
     } catch (error: any) {
       console.error('Error loading token status:', error);
       setTokenStatusError(error.message || 'خطای ناشناخته در دریافت وضعیت توکن');
@@ -249,13 +250,12 @@ const InoreaderSettings: React.FC = () => {
   const handleRefreshToken = async () => {
     try {
       setTokenStatusLoading(true);
-      const response = await fetch('/functions/v1/inoreader-oauth-manager?action=refresh', {
-        method: 'POST'
+      const { data, error } = await supabase.functions.invoke('inoreader-oauth-manager', {
+        body: { action: 'refresh' }
       });
-      if (!response.ok) {
-        throw new Error('تمدید توکن با مشکل مواجه شد');
-      }
-      const data = await response.json();
+
+      if (error) throw error;
+
       toast({
         title: 'تمدید توکن',
         description: data?.message || 'توکن با موفقیت تمدید شد'
@@ -279,11 +279,12 @@ const InoreaderSettings: React.FC = () => {
     setCronStatusLoading(true);
     setCronStatusError(null);
     try {
-      const response = await fetch('/functions/v1/get-cron-status');
-      if (!response.ok) {
-        throw new Error('خطا در دریافت وضعیت کرون');
-      }
-      const data = await response.json();
+      const { data, error } = await supabase.functions.invoke('get-cron-status', {
+        body: {}
+      });
+
+      if (error) throw error;
+
       const jobs: CronJobStatus[] = data?.jobs || data || [];
       const targetJob = jobs.find((job: CronJobStatus) => job.name === 'inoreader-rss-ingestion');
       if (targetJob) {
