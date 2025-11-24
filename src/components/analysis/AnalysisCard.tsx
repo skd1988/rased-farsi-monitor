@@ -22,6 +22,7 @@ import {
   deriveMainTopic,
   deriveRecommendedAction,
   deriveSmartSummary,
+  isPsyopPost,
   normalizeSentimentValue,
   resolveAnalysisStage,
 } from "./analysisUtils";
@@ -192,6 +193,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
   const topicBadgeClass = topicColors[mainTopic] || "bg-gray-500/10 text-gray-700 border-gray-300";
   const summaryText = smartSummary ?? "خلاصه هوشمند هنوز آماده نیست";
   const recommendedActionText = recommendedAction || "هنوز اقدام پیشنهادی ثبت نشده است";
+  const psyop = isPsyopPost(post);
 
   const stageBadge = () => {
     if (!resolvedStage) return null;
@@ -199,7 +201,7 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
     const labels: Record<"quick" | "deep" | "deepest", string> = {
       quick: "تحلیل سریع",
       deep: "تحلیل عمیق",
-      deepest: "تحلیل بحران",
+      deepest: "تحلیل بحران (Deepest)",
     };
 
     const colors: Record<"quick" | "deep" | "deepest", string> = {
@@ -265,6 +267,11 @@ const AnalysisCard = ({ post, onViewDetails, onReanalyze }: AnalysisCardProps) =
           <Badge variant="outline">{post.source}</Badge>
           {post.author && <span>• {post.author}</span>}
           <span>• {getRelativeTime(post.published_at)}</span>
+          {psyop && (
+            <Badge variant="destructive" className="text-xs">
+              PsyOp محتوا
+            </Badge>
+          )}
         </div>
       </CardHeader>
 

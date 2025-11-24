@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Download } from "lucide-react";
-import StatsCard from "@/components/analysis/StatsCard";
 import AnalysisCard from "@/components/analysis/AnalysisCard";
 import AnalysisDetailModal from "@/components/analysis/AnalysisDetailModal";
 import BulkAnalysisModal from "@/components/analysis/BulkAnalysisModal";
@@ -18,35 +16,14 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from "@/components/ui/pagination";
-import { AnalyzedPost, AnalysisStage, UrgencyLevel, ViralityPotential } from "@/types/analysis";
-import { normalizeSentimentValue, resolveAnalysisStage } from "@/components/analysis/analysisUtils";
-
-const normalizeStageValue = (stage: AnalyzedPost["analysis_stage"]): AnalysisStage => {
-  if (stage === "quick" || stage === "deep" || stage === "deepest") return stage;
-  return null;
-};
-
-const enrichPostWithStage = (post: AnalyzedPost): AnalyzedPost => {
-  const normalizedStage = normalizeStageValue(post.analysis_stage);
-  const normalizedSentiment = normalizeSentimentValue(post.sentiment);
-  const resolvedStage = resolveAnalysisStage({ ...post, analysis_stage: normalizedStage });
-
-  return {
-    ...post,
-    sentiment: normalizedSentiment,
-    analysis_stage: normalizedStage,
-    urgency_level: (post.urgency_level as UrgencyLevel) ?? null,
-    virality_potential: (post.virality_potential as ViralityPotential) ?? null,
-    resolved_stage: resolvedStage,
-    hasDeepAnalysis: resolvedStage === "deep" || resolvedStage === "deepest",
-    hasDeepestAnalysis: resolvedStage === "deepest" || !!post.deepest_analysis_completed_at,
-  };
-};
+import { AnalyzedPost } from "@/types/analysis";
+import { isPsyopPost, resolveAnalysisStage } from "@/components/analysis/analysisUtils";
+import AnalysisSummaryCards from "@/components/analysis/AnalysisSummaryCards";
+import { useAnalyzedPosts } from "@/hooks/useAnalyzedPosts";
 
 const AIAnalysis = () => {
-  const [posts, setPosts] = useState<AnalyzedPost[]>([]);
+  const { posts, loading, error, refetch } = useAnalyzedPosts();
   const [filteredPosts, setFilteredPosts] = useState<AnalyzedPost[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [threatFilter, setThreatFilter] = useState<string>("all");
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
@@ -62,105 +39,19 @@ const AIAnalysis = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchAnalyzedPosts();
-  }, []);
-
-  useEffect(() => {
     applyFilters();
     setCurrentPage(1); // Reset to first page when filters change
   }, [posts, searchQuery, threatFilter, sentimentFilter, topicFilter, sortBy, psyopFilter, stageFilter, deepestOnly]);
 
-  const fetchAnalyzedPosts = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch all analyzed posts without Supabase's default 1000 limit
-      let allPosts: AnalyzedPost[] = [];
-      let from = 0;
-      const batchSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from("posts")
-          .select<AnalyzedPost>(`
-            id,
-            title,
-            contents,
-            source,
-            author,
-            published_at,
-            analysis_summary,
-            sentiment,
-            sentiment_score,
-            main_topic,
-            narrative_theme,
-            threat_level,
-            confidence,
-            key_points,
-            recommended_action,
-            analyzed_at,
-            processing_time,
-            article_url,
-            keywords,
-            language,
-            status,
-            created_at,
-            updated_at,
-            analysis_model,
-            urgency_level,
-            virality_potential,
-            is_psyop,
-            psyop_confidence,
-            psyop_risk_score,
-            stance_type,
-            psyop_category,
-            psyop_techniques,
-            analysis_stage,
-            quick_analyzed_at,
-            deep_analyzed_at,
-            deepest_analysis_completed_at,
-            deepest_escalation_level,
-            deepest_strategic_summary,
-            deepest_key_risks,
-            deepest_audience_segments,
-            deepest_recommended_actions,
-            deepest_monitoring_indicators
-          `)
-          .not("analyzed_at", "is", null)
-          .order("analyzed_at", { ascending: false })
-          .range(from, from + batchSize - 1);
-
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          allPosts = [...allPosts, ...data];
-          from += batchSize;
-          
-          // If we got less than batchSize, we've reached the end
-          if (data.length < batchSize) {
-            hasMore = false;
-          }
-        } else {
-          hasMore = false;
-        }
-      }
-
-      const normalizedPosts = allPosts.map(enrichPostWithStage);
-
-      setPosts(normalizedPosts);
-      console.log(`✅ Loaded ${normalizedPosts.length} analyzed posts`);
-    } catch (error) {
-      console.error("Error fetching analyzed posts:", error);
+  useEffect(() => {
+    if (error) {
       toast({
         title: "خطا در بارگذاری تحلیل‌ها",
-        description: "لطفا دوباره تلاش کنید",
+        description: error,
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [error, toast]);
 
   const applyFilters = () => {
     let filtered = [...posts];
@@ -192,9 +83,9 @@ const AIAnalysis = () => {
 
     // NEW: PsyOp filter (all / psyop / non-psyop)
     if (psyopFilter === "psyop") {
-      filtered = filtered.filter((post) => post.is_psyop === true);
+      filtered = filtered.filter((post) => isPsyopPost(post));
     } else if (psyopFilter === "non_psyop") {
-      filtered = filtered.filter((post) => !post.is_psyop);
+      filtered = filtered.filter((post) => !isPsyopPost(post));
     }
 
     // NEW: Stage filter (all / quick / deep / deepest)
@@ -236,17 +127,6 @@ const AIAnalysis = () => {
     });
 
     setFilteredPosts(filtered);
-  };
-
-  const stats = {
-    analyzed: posts.length,
-    critical: posts.filter((p) => p.threat_level === "Critical").length,
-    high: posts.filter((p) => p.threat_level === "High").length,
-    negative: posts.filter((p) => p.sentiment === "Negative").length,
-    psyopCount: posts.filter((p) => p.is_psyop).length,
-    quickOnly: posts.filter((p) => (p.resolved_stage ?? resolveAnalysisStage(p)) === "quick").length,
-    deepDone: posts.filter((p) => (p.resolved_stage ?? resolveAnalysisStage(p)) === "deep").length,
-    deepestDone: posts.filter((p) => (p.resolved_stage ?? resolveAnalysisStage(p)) === "deepest").length,
   };
 
   const allTopics = Array.from(new Set(posts.map((p) => p.main_topic).filter(Boolean)));
@@ -331,7 +211,7 @@ const AIAnalysis = () => {
         <BulkAnalysisModal
           open={showBulkModal}
           onClose={() => setShowBulkModal(false)}
-          onComplete={fetchAnalyzedPosts}
+          onComplete={refetch}
         />
       </>
     );
@@ -364,24 +244,7 @@ const AIAnalysis = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <StatsCard title="تحلیل شده" value={stats.analyzed} icon="🤖" color="blue" />
-          <StatsCard title="تهدید بحرانی" value={stats.critical} icon="🔴" color="red" pulse={stats.critical > 0} />
-          <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
-          <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
-
-          <StatsCard title="محتوای جنگ روانی (PsyOp)" value={stats.psyopCount} icon="🎯" color="red" />
-          <StatsCard title="فقط Quick" value={stats.quickOnly} icon="⚡" color="blue" />
-          <StatsCard title="تحلیل عمیق (Deep)" value={stats.deepDone} icon="🔬" color="orange" />
-          <StatsCard
-            title="تحلیل بحران (Deepest)"
-            value={stats.deepestDone}
-            icon="🔥"
-            color="red"
-            pulse={stats.deepestDone > 0}
-          />
-        </div>
+        <AnalysisSummaryCards posts={posts} />
 
         {/* Filters */}
         <div className="bg-card border rounded-lg p-4">
@@ -446,7 +309,10 @@ const AIAnalysis = () => {
             </Select>
 
             {/* NEW: Stage filter */}
-            <Select value={stageFilter} onValueChange={(value) => setStageFilter(value as "all" | "quick" | "deep" | "deepest")}>
+            <Select
+              value={stageFilter}
+              onValueChange={(value) => setStageFilter(value as "all" | "quick" | "deep" | "deepest")}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="مرحله تحلیل" />
               </SelectTrigger>
@@ -479,7 +345,7 @@ const AIAnalysis = () => {
               key={post.id}
               post={post}
               onViewDetails={() => setSelectedPost(post)}
-              onReanalyze={fetchAnalyzedPosts}
+              onReanalyze={refetch}
             />
           ))}
         </div>
@@ -534,7 +400,7 @@ const AIAnalysis = () => {
       <BulkAnalysisModal
         open={showBulkModal}
         onClose={() => setShowBulkModal(false)}
-        onComplete={fetchAnalyzedPosts}
+        onComplete={refetch}
       />
 
       {selectedPost && (
