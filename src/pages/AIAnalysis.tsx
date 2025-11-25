@@ -16,13 +16,69 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from "@/components/ui/pagination";
-import { AnalyzedPost } from "@/types/analysis";
-import { isPsyopPost, resolveAnalysisStage } from "@/components/analysis/analysisUtils";
-import AnalysisSummaryCards from "@/components/analysis/AnalysisSummaryCards";
+import StatsCard from "@/components/analysis/StatsCard";
 import { useAnalyzedPosts } from "@/hooks/useAnalyzedPosts";
 
+interface AnalyzedPost {
+  id: string;
+  title: string;
+  contents: string;
+  source: string;
+  author: string;
+  published_at: string;
+
+  // General AI analysis
+  analysis_summary: string | null;
+  sentiment: string | null;
+  sentiment_score: number | null;
+  main_topic: string | null;
+  threat_level: string | null;
+  confidence: number | null;
+  key_points: string[] | null;
+  recommended_action: string | null;
+  analyzed_at: string | null;
+  processing_time: number | null;
+  article_url: string | null;
+  keywords: string[] | null;
+  language: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  analysis_model: string | null;
+  quick_summary?: string | null;
+  deep_summary?: string | null;
+  deep_smart_summary?: string | null;
+  deepest_smart_summary?: string | null;
+  extended_summary?: string | null;
+  narrative_core?: string | null;
+  crisis_extended_summary?: string | null;
+  crisis_narrative_core?: string | null;
+
+  // PsyOp fields
+  is_psyop: boolean | null;
+  psyop_risk_score: number | null;
+  psyop_category: string | null;
+  psyop_techniques: string[] | null;
+  stance_type: string | null;
+
+  // 3-level analysis stage
+  analysis_stage: "quick" | "deep" | "deepest" | null;
+  quick_analyzed_at: string | null;
+  deep_analyzed_at: string | null;
+  deepest_analysis_completed_at: string | null;
+
+  // Deepest-level (crisis) analysis details
+  deepest_escalation_level: string | null;
+  deepest_strategic_summary: string | null;
+  deepest_key_risks: string[] | null;
+  deepest_audience_segments: string[] | null;
+  deepest_recommended_actions: string[] | null;
+  deepest_monitoring_indicators: string[] | null;
+}
+
 const AIAnalysis = () => {
-  const { posts, loading, error, refetch } = useAnalyzedPosts();
+  const { posts: rawPosts, loading, error, refetch } = useAnalyzedPosts();
+  const posts = rawPosts as unknown as AnalyzedPost[];
   const [filteredPosts, setFilteredPosts] = useState<AnalyzedPost[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [threatFilter, setThreatFilter] = useState<string>("all");
@@ -31,7 +87,7 @@ const AIAnalysis = () => {
   const [sortBy, setSortBy] = useState<string>("threat");
   const [psyopFilter, setPsyopFilter] = useState<"all" | "psyop" | "non_psyop">("all");
   const [stageFilter, setStageFilter] = useState<"all" | "quick" | "deep" | "deepest">("all");
-  const [deepestOnly, setDeepestOnly] = useState<boolean>(false);
+  const [deepestOnly, setDeepestOnly] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState<AnalyzedPost | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,7 +97,17 @@ const AIAnalysis = () => {
   useEffect(() => {
     applyFilters();
     setCurrentPage(1); // Reset to first page when filters change
-  }, [posts, searchQuery, threatFilter, sentimentFilter, topicFilter, sortBy, psyopFilter, stageFilter, deepestOnly]);
+  }, [
+    posts,
+    searchQuery,
+    threatFilter,
+    sentimentFilter,
+    topicFilter,
+    sortBy,
+    psyopFilter,
+    stageFilter,
+    deepestOnly,
+  ]);
 
   useEffect(() => {
     if (error) {
@@ -93,24 +159,23 @@ const AIAnalysis = () => {
       filtered = filtered.filter((post) => post.main_topic === topicFilter);
     }
 
-    // NEW: PsyOp filter (all / psyop / non-psyop)
+    // PsyOp filter: all / only psyop / only non-psyop
     if (psyopFilter === "psyop") {
-      filtered = filtered.filter((post) => isPsyopPost(post));
+      filtered = filtered.filter((post) => post.is_psyop === true);
     } else if (psyopFilter === "non_psyop") {
-      filtered = filtered.filter((post) => !isPsyopPost(post));
+      filtered = filtered.filter((post) => !post.is_psyop);
     }
 
-    // Stage / Deepest filters
+    // Stage filter: Quick / Deep / Deepest
+    if (stageFilter !== "all") {
+      filtered = filtered.filter((post) => post.analysis_stage === stageFilter);
+    }
+
+    // Only posts with deepest (crisis) analysis
     if (deepestOnly) {
-      filtered = filtered.filter((post) => {
-        const stage = post.resolved_stage ?? resolveAnalysisStage(post);
-        return stage === "deepest";
-      });
-    } else if (stageFilter !== "all") {
-      filtered = filtered.filter((post) => {
-        const stage = post.resolved_stage ?? resolveAnalysisStage(post);
-        return stage === stageFilter;
-      });
+      filtered = filtered.filter(
+        (post) => !!post.deepest_analysis_completed_at
+      );
     }
 
     // Sorting
@@ -136,6 +201,23 @@ const AIAnalysis = () => {
     });
 
     setFilteredPosts(filtered);
+  };
+
+  const psyopPosts = posts.filter((p) => p.is_psyop);
+
+  const stats = {
+    analyzed: posts.length,
+    critical: posts.filter((p) => p.threat_level === "Critical").length,
+    high: posts.filter((p) => p.threat_level === "High").length,
+    negative: posts.filter((p) => p.sentiment === "Negative").length,
+
+    // 3-level PsyOp stats
+    psyop: psyopPosts.length,
+    quickOnly: psyopPosts.filter((p) => p.analysis_stage === "quick").length,
+    deep: psyopPosts.filter((p) => p.analysis_stage === "deep").length,
+    deepest: psyopPosts.filter(
+      (p) => p.analysis_stage === "deepest" || p.deepest_analysis_completed_at
+    ).length,
   };
 
   const allTopics = Array.from(new Set(posts.map((p) => p.main_topic).filter(Boolean)));
@@ -253,11 +335,44 @@ const AIAnalysis = () => {
           </div>
         </div>
 
-        <AnalysisSummaryCards posts={filteredPosts} />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <StatsCard title="کل مطالب تحلیل‌شده" value={stats.analyzed} icon="📊" color="blue" />
+          <StatsCard title="تهدید بحرانی" value={stats.critical} icon="🔴" color="red" pulse={stats.critical > 0} />
+          <StatsCard title="نیازمند بررسی" value={stats.high} icon="⚠️" color="orange" />
+          <StatsCard title="احساسات منفی" value={stats.negative} icon="😟" color="yellow" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+          <StatsCard
+            title="محتوای PsyOp"
+            value={stats.psyop}
+            icon="🎯"
+            color="purple"
+          />
+          <StatsCard
+            title="فقط Quick"
+            value={stats.quickOnly}
+            icon="⚡"
+            color="blue"
+          />
+          <StatsCard
+            title="تحلیل عمیق (Deep)"
+            value={stats.deep}
+            icon="🧠"
+            color="indigo"
+          />
+          <StatsCard
+            title="تحلیل بحران (Deepest)"
+            value={stats.deepest}
+            icon="🚨"
+            color="red"
+            pulse={stats.deepest > 0}
+          />
+        </div>
 
         {/* Filters */}
         <div className="bg-card border rounded-lg p-4">
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-8 gap-4">
             <Input
               placeholder="جستجو در نتایج..."
               value={searchQuery}
@@ -305,19 +420,31 @@ const AIAnalysis = () => {
               </SelectContent>
             </Select>
 
-            {/* NEW: PsyOp filter */}
-            <Select value={psyopFilter} onValueChange={(value) => setPsyopFilter(value as "all" | "psyop" | "non_psyop")}>
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger>
+                <SelectValue placeholder="مرتب‌سازی" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="threat">بر اساس تهدید</SelectItem>
+                <SelectItem value="newest">جدیدترین</SelectItem>
+                <SelectItem value="oldest">قدیمی‌ترین</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={psyopFilter}
+              onValueChange={(value) => setPsyopFilter(value as "all" | "psyop" | "non_psyop")}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="نوع محتوا" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">همه محتواها</SelectItem>
-                <SelectItem value="psyop">فقط جنگ روانی (PsyOp)</SelectItem>
+                <SelectItem value="psyop">فقط محتوای جنگ روانی</SelectItem>
                 <SelectItem value="non_psyop">محتوای غیر PsyOp</SelectItem>
               </SelectContent>
             </Select>
 
-            {/* NEW: Stage filter */}
             <Select
               value={stageFilter}
               onValueChange={(value) => setStageFilter(value as "all" | "quick" | "deep" | "deepest")}
@@ -332,18 +459,19 @@ const AIAnalysis = () => {
                 <SelectItem value="deepest">Deepest</SelectItem>
               </SelectContent>
             </Select>
-          </div>
 
-          <div className="mt-3 flex justify-end">
-            <label className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2">
               <input
+                id="deepest-only"
                 type="checkbox"
-                className="h-4 w-4"
                 checked={deepestOnly}
                 onChange={(e) => setDeepestOnly(e.target.checked)}
+                className="h-4 w-4"
               />
-              فقط موارد دارای تحلیل بحران (Deepest)
-            </label>
+              <label htmlFor="deepest-only" className="text-sm text-muted-foreground">
+                فقط موارد دارای تحلیل بحران (Deepest)
+              </label>
+            </div>
           </div>
         </div>
 

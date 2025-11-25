@@ -68,6 +68,64 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
   // Use real posts from campaign
   const campaignPosts = campaign?.posts || [];
 
+  const psyopStats = React.useMemo(() => {
+    if (!campaign || !campaign.posts || campaign.posts.length === 0) {
+      return {
+        totalPsyop: 0,
+        quickOnly: 0,
+        deep: 0,
+        deepest: 0,
+        avgRisk: 0,
+        maxRisk: 0,
+        highCriticalWithoutDeepest: 0,
+      };
+    }
+
+    const posts = campaign.posts as any[];
+    const psyopPosts = posts.filter((p) => p.is_psyop);
+
+    const totalPsyop = psyopPosts.length;
+    let quickOnly = 0;
+    let deep = 0;
+    let deepest = 0;
+    let sumRisk = 0;
+    let maxRisk = 0;
+    let highCriticalWithoutDeepest = 0;
+
+    psyopPosts.forEach((p) => {
+      const stage = p.analysis_stage as "quick" | "deep" | "deepest" | null;
+      const hasDeepest = !!p.deepest_analysis_completed_at;
+      const risk = p.psyop_risk_score || 0;
+
+      if (risk > maxRisk) maxRisk = risk;
+      sumRisk += risk;
+
+      if (stage === "deepest" || hasDeepest) {
+        deepest++;
+      } else if (stage === "deep") {
+        deep++;
+      } else {
+        quickOnly++;
+      }
+
+      if ((p.threat_level === "High" || p.threat_level === "Critical") && !hasDeepest) {
+        highCriticalWithoutDeepest++;
+      }
+    });
+
+    const avgRisk = totalPsyop > 0 ? Math.round((sumRisk / totalPsyop) * 10) / 10 : 0;
+
+    return {
+      totalPsyop,
+      quickOnly,
+      deep,
+      deepest,
+      avgRisk,
+      maxRisk,
+      highCriticalWithoutDeepest,
+    };
+  }, [campaign?.posts]);
+
   // Early return AFTER all hooks
   if (!campaign) return null;
 
@@ -137,6 +195,44 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
                 <div className="text-sm text-muted-foreground mt-2">وضعیت پاسخ</div>
               </Card>
             </div>
+
+            {/* PsyOp / 3-level analysis metrics */}
+            {psyopStats.totalPsyop > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="p-4 text-center">
+                  <div className="text-3xl font-bold text-purple-600">
+                    {psyopStats.totalPsyop}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    مطالب PsyOp در این کمپین
+                  </div>
+                </Card>
+                <Card className="p-4 text-center">
+                  <div className="text-2xl font-bold">
+                    ⚡ {psyopStats.quickOnly}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    فقط Quick (بدون Deep/Deepest)
+                  </div>
+                </Card>
+                <Card className="p-4 text-center">
+                  <div className="text-2xl font-bold">
+                    🧠 {psyopStats.deep}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    دارای تحلیل عمیق (Deep)
+                  </div>
+                </Card>
+                <Card className="p-4 text-center">
+                  <div className="text-2xl font-bold text-red-600">
+                    🚨 {psyopStats.deepest}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    دارای تحلیل بحران (Deepest)
+                  </div>
+                </Card>
+              </div>
+            )}
 
             {/* Activity Chart */}
             <Card className="p-6">
@@ -208,13 +304,21 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
                       <TableHead className="text-right">منبع</TableHead>
                       <TableHead className="text-right">تاریخ</TableHead>
                       <TableHead className="text-right">سطح تهدید</TableHead>
+                      <TableHead className="text-right">مرحله تحلیل</TableHead>
                       <TableHead className="text-right">عملیات</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {campaignPosts.map((post: any) => (
                       <TableRow key={post.id}>
-                        <TableCell className="font-medium max-w-md truncate">{post.title}</TableCell>
+                        <TableCell className="font-medium max-w-md truncate">
+                          {post.title}
+                          {post.is_psyop && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                              PsyOp
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell>{post.source || 'نامشخص'}</TableCell>
                         <TableCell>{format(new Date(post.published_at), 'PP', { locale: faIR })}</TableCell>
                         <TableCell>
@@ -222,6 +326,25 @@ const CampaignDetailModal: React.FC<CampaignDetailModalProps> = ({
                             variant={post.threat_level === 'Critical' || post.threat_level === 'High' ? 'destructive' : 'secondary'}
                           >
                             {post.threat_level || 'Medium'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              post.deepest_analysis_completed_at
+                                ? 'destructive'
+                                : post.analysis_stage === 'deep'
+                                ? 'outline'
+                                : 'secondary'
+                            }
+                          >
+                            {post.deepest_analysis_completed_at
+                              ? 'Deepest'
+                              : post.analysis_stage === 'deep'
+                              ? 'Deep'
+                              : post.analysis_stage === 'quick'
+                              ? 'Quick'
+                              : 'نامشخص'}
                           </Badge>
                         </TableCell>
                         <TableCell>
