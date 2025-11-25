@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/pagination";
 import StatsCard from "@/components/analysis/StatsCard";
 import { useAnalyzedPosts } from "@/hooks/useAnalyzedPosts";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AnalyzedPost {
   id: string;
@@ -201,6 +202,79 @@ const AIAnalysis = () => {
     });
 
     setFilteredPosts(filtered);
+  };
+
+  const handleRunDeepAnalysis = async (postId: string) => {
+    try {
+      console.log("▶️ Running deep analysis for post", postId);
+
+      const { data, error } = await supabase.functions.invoke(
+        "analyze-post-deepseek",
+        {
+          body: { post_id: postId },
+        }
+      );
+
+      if (error) {
+        console.error("Deep analysis error:", error);
+        toast({
+          title: "خطا در اجرای تحلیل عمیق",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("✅ Deep analysis result:", data);
+      toast({
+        title: "تحلیل عمیق اجرا شد",
+        description: "نتایج به‌روزرسانی شد.",
+      });
+
+      await refetch();
+    } catch (err) {
+      console.error("Deep analysis exception:", err);
+      toast({
+        title: "خطای غیرمنتظره در اجرای تحلیل عمیق",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRunDeepestAnalysis = async (postId: string) => {
+    try {
+      console.log("▶️ Running deepest analysis for post", postId);
+
+      const { data, error } = await supabase.functions.invoke("deepest-analysis", {
+        body: { post_id: postId },
+      });
+
+      if (error) {
+        console.error("Deepest analysis error:", error);
+        toast({
+          title: "خطا در اجرای تحلیل بحران (Deepest)",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("✅ Deepest analysis result:", data);
+      toast({
+        title: "تحلیل بحران اجرا شد",
+        description: "نتایج به‌روزرسانی شد.",
+      });
+
+      await refetch();
+    } catch (err) {
+      console.error("Deepest analysis exception:", err);
+      toast({
+        title: "خطای غیرمنتظره در اجرای تحلیل بحران (Deepest)",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
   };
 
   const psyopPosts = posts.filter((p) => p.is_psyop);
@@ -541,7 +615,13 @@ const AIAnalysis = () => {
       />
 
       {selectedPost && (
-        <AnalysisDetailModal post={selectedPost} open={!!selectedPost} onClose={() => setSelectedPost(null)} />
+        <AnalysisDetailModal
+          post={selectedPost}
+          open={!!selectedPost}
+          onClose={() => setSelectedPost(null)}
+          onRunDeep={handleRunDeepAnalysis}
+          onRunDeepest={handleRunDeepestAnalysis}
+        />
       )}
     </>
   );
