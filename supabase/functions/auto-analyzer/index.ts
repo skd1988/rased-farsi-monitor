@@ -42,8 +42,7 @@ async function getQuickCandidates(supabase: any, batchSize: number) {
   return supabase
     .from('posts')
     .select('*')
-    .is('quick_analyzed_at', null)
-    .or('analysis_stage.is.null,analysis_stage.eq.quick')
+    .is('is_psyop', null)
     .neq('status', 'Archived')
     .not('contents', 'is', null)
     .order('inoreader_timestamp_usec', { ascending: true })
@@ -54,13 +53,13 @@ async function getDeepCandidates(supabase: any) {
   return supabase
     .from('posts')
     .select(
-      'id, is_psyop, quick_analyzed_at, deep_analyzed_at, status, threat_level, psyop_risk_score',
+      '*, sort_key:COALESCE(quick_analyzed_at, created_at)'
     )
     .eq('is_psyop', true)
-    .not('status', 'eq', 'Archived')
-    .not('quick_analyzed_at', 'is', null)
     .is('deep_analyzed_at', null)
-    .order('quick_analyzed_at', { ascending: true })
+    .neq('status', 'Archived')
+    .not('contents', 'is', null)
+    .order('sort_key', { ascending: true })
     .limit(DEEP_BATCH_SIZE);
 }
 
@@ -69,11 +68,11 @@ async function getDeepestCandidates(supabase: any) {
     .from('posts')
     .select('*')
     .eq('is_psyop', true)
-    .in('threat_level', ['High', 'Critical'])
     .not('deep_analyzed_at', 'is', null)
     .is('deepest_analysis_completed_at', null)
     .neq('status', 'Archived')
     .not('contents', 'is', null)
+    .order('deep_analyzed_at', { ascending: true })
     .limit(20);
 }
 
@@ -175,10 +174,8 @@ serve(async (req) => {
       } catch (err) {
         const msg = String((err as Error)?.message ?? err);
 
-        if (msg.includes("Post not found")) {
-          console.warn(
-            `⚠️ Skipping QUICK analysis for missing/invalid post ${post.id}: ${msg}`,
-          );
+        if (msg.includes("Post not found") || msg.includes("404")) {
+          console.warn("Skipping missing post");
           continue;
         }
 
@@ -199,9 +196,8 @@ serve(async (req) => {
 
     const eligibleDeep = (deepCandidatesRaw || []).filter((post) =>
       post.is_psyop === true &&
-      post.quick_analyzed_at &&
       !post.deep_analyzed_at &&
-      post.status !== "Archived"
+      isValidForAnalysis(post)
     );
 
     console.log(
@@ -210,6 +206,10 @@ serve(async (req) => {
 
     for (const post of eligibleDeep) {
       totalTasks++;
+
+      if (!isValidForAnalysis(post)) {
+        continue;
+      }
 
       try {
         console.log(`🧠 [AutoAnalyzer] Running DEEP analysis for post ${post.id}...`);
