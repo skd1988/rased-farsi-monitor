@@ -13,6 +13,9 @@ function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
   return post?.analysis_stage ?? null;
 }
 
+// NOTE: This function expects a post ID.
+// We accept { postId }, { id } or { post_id } in the request body
+// and normalize them to "effectivePostId", then load from "posts" by id.
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -22,16 +25,17 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { postId } = await req.json();
+    const { postId, id, post_id } = await req.json();
+    const effectivePostId = postId ?? id ?? post_id;
 
-    if (!postId) {
+    if (!effectivePostId) {
       return new Response(
         JSON.stringify({ error: "postId is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    console.log(`Quick screening post: ${postId}`);
+    console.log(`Quick screening post: ${effectivePostId}`);
     
     // Get DeepSeek API key
     const deepseekApiKey = Deno.env.get("DEEPSEEK_API_KEY");
@@ -54,13 +58,13 @@ serve(async (req) => {
       .select(
         "id, title, source, language, contents, summary, analysis_stage, quick_analyzed_at, deep_analyzed_at, deepest_analyzed_at, deepest_analysis_completed_at, is_psyop, psyop_confidence, psyop_risk_score, threat_level, psyop_category, psyop_techniques, stance_type, primary_target",
       )
-      .eq("id", postId)
+      .eq("id", effectivePostId)
       .single();
 
     if (contentErr || !postContent) {
       console.error("Failed to fetch post for quick analysis", contentErr);
       return new Response(
-        JSON.stringify({ error: "Post not found" }),
+        JSON.stringify({ error: "Post not found", postId: String(effectivePostId) }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -300,7 +304,7 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from("posts")
       .update(updateData)
-      .eq("id", postId);
+      .eq("id", effectivePostId);
 
     if (updateError) {
       console.error("Error updating post:", updateError);
@@ -315,7 +319,7 @@ serve(async (req) => {
       input_tokens: deepseekData.usage.prompt_tokens,
       output_tokens: deepseekData.usage.completion_tokens,
       model: 'deepseek-chat',
-      post_id: postId,
+      post_id: effectivePostId,
       response_time: responseTime
     });
     
