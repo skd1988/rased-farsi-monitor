@@ -191,6 +191,8 @@ serve(async (req) => {
           throw new Error(`Post ${candidate.id} could not be validated`);
         }
 
+        // NOTE: Quick screening is invoked by postId only.
+        // quick-psyop-detection will load the full post from the "posts" table.
         await callEdgeFunction(
           `${supabaseUrl}/functions/v1/quick-psyop-detection`,
           { postId: candidate.id },
