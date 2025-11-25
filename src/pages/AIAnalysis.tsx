@@ -100,7 +100,7 @@ const AIAnalysis = () => {
     if (deepestOnly) {
       filtered = filtered.filter((post) => {
         const stage = post.resolved_stage ?? resolveAnalysisStage(post);
-        return stage === "deepest" || !!post.deepest_analysis_completed_at;
+        return stage === "deepest";
       });
     }
 

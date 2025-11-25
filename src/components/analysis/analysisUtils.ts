@@ -3,9 +3,11 @@ import { AnalyzedPost, AnalysisStage, SentimentValue } from "@/types/analysis";
 export function resolveAnalysisStage(post: AnalyzedPost): AnalysisStage {
   if (post.resolved_stage) return post.resolved_stage;
 
-  if (post.deepest_analysis_completed_at) return "deepest";
-  if (post.deep_analyzed_at) return "deep";
-  if (post.quick_analyzed_at) return "quick";
+  const normalizedStage = post.analysis_stage;
+
+  if (post.deepest_analysis_completed_at || normalizedStage === "deepest") return "deepest";
+  if (post.deep_analyzed_at || normalizedStage === "deep") return "deep";
+  if (post.quick_analyzed_at || normalizedStage === "quick") return "quick";
   return null;
 }
 
