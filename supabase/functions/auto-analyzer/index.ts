@@ -28,6 +28,8 @@ type PostRow = {
   psyop_risk_score: number | null;
 };
 
+const DEEP_BATCH_SIZE = 20;
+
 function isValidForAnalysis(post: PostRow): boolean {
   // پست آرشیو شده یا بدون محتوا را کلاً وارد چرخه نکن
   if (!post) return false;
@@ -51,12 +53,15 @@ async function getQuickCandidates(supabase: any, batchSize: number) {
 async function getDeepCandidates(supabase: any) {
   return supabase
     .from('posts')
-    .select('*')
+    .select(
+      'id, is_psyop, quick_analyzed_at, deep_analyzed_at, status, threat_level, psyop_risk_score',
+    )
     .eq('is_psyop', true)
+    .not('status', 'eq', 'Archived')
+    .not('quick_analyzed_at', 'is', null)
     .is('deep_analyzed_at', null)
-    .neq('status', 'Archived')
-    .not('contents', 'is', null)
-    .limit(50);
+    .order('quick_analyzed_at', { ascending: true })
+    .limit(DEEP_BATCH_SIZE);
 }
 
 async function getDeepestCandidates(supabase: any) {
@@ -192,10 +197,18 @@ serve(async (req) => {
 
     if (deepError) throw deepError;
 
-    const deepCandidates = (deepCandidatesRaw ?? []).filter(isValidForAnalysis);
-    console.log(`🔬 Deep analysis candidates: ${deepCandidates.length}`);
+    const eligibleDeep = (deepCandidatesRaw || []).filter((post) =>
+      post.is_psyop === true &&
+      post.quick_analyzed_at &&
+      !post.deep_analyzed_at &&
+      post.status !== "Archived"
+    );
 
-    for (const post of deepCandidates) {
+    console.log(
+      `🔬 Deep analysis candidates (PsyOp-only): ${eligibleDeep.length}`,
+    );
+
+    for (const post of eligibleDeep) {
       totalTasks++;
 
       try {
