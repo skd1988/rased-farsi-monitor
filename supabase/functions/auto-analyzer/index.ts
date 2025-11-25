@@ -16,94 +16,70 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface StageResult {
-  processed: number;
-  succeeded: number;
-  failed: number;
-}
+type PostRow = {
+  id: string;
+  status: string | null;
+  contents: string | null;
+  is_psyop: boolean | null;
+  quick_analyzed_at: string | null;
+  deep_analyzed_at: string | null;
+  deepest_analysis_completed_at: string | null;
+  threat_level: string | null;
+  psyop_risk_score: number | null;
+};
 
-interface PostCheckResult {
-  exists: boolean;
-  skipped: boolean;
-}
-
-function buildBaseCandidateQuery(supabase: any) {
-  return supabase
-    .from('posts')
-    .select('id')
-    .in('status', ['new', 'ready'])
-    .not('title', 'is', null)
-    .not('contents', 'is', null)
-    .not('inoreader_timestamp_usec', 'is', null);
+function isValidForAnalysis(post: PostRow): boolean {
+  // پست آرشیو شده یا بدون محتوا را کلاً وارد چرخه نکن
+  if (!post) return false;
+  if (post.status === "Archived") return false;
+  if (post.contents === null || post.contents.trim() === "") return false;
+  return true;
 }
 
 async function getQuickCandidates(supabase: any, batchSize: number) {
   return supabase
     .from('posts')
-    .select('id')
-    .in('status', ['new', 'ready'])
-    .not('title', 'is', null)
-    .not('contents', 'is', null)
-    .not('inoreader_timestamp_usec', 'is', null)
+    .select('*')
     .is('quick_analyzed_at', null)
     .or('analysis_stage.is.null,analysis_stage.eq.quick')
-    .order('created_at', { ascending: true })
+    .neq('status', 'Archived')
+    .not('contents', 'is', null)
+    .order('inoreader_timestamp_usec', { ascending: true })
     .limit(batchSize);
 }
 
-async function getDeepCandidates(supabase: any, batchSize: number) {
-  return buildBaseCandidateQuery(supabase)
+async function getDeepCandidates(supabase: any) {
+  return supabase
+    .from('posts')
+    .select('*')
     .eq('is_psyop', true)
-    .not('quick_analyzed_at', 'is', null)
     .is('deep_analyzed_at', null)
-    .gte('psyop_risk_score', 60)
-    .in('threat_level', ['Medium', 'High', 'Critical'])
-    .or('analysis_stage.is.null,analysis_stage.eq.quick,analysis_stage.eq.deep')
-    .order('created_at', { ascending: true })
-    .limit(batchSize);
+    .neq('status', 'Archived')
+    .not('contents', 'is', null)
+    .limit(50);
 }
 
-async function getDeepestCandidates(supabase: any, batchSize: number) {
-  return buildBaseCandidateQuery(supabase)
+async function getDeepestCandidates(supabase: any) {
+  return supabase
+    .from('posts')
+    .select('*')
     .eq('is_psyop', true)
+    .in('threat_level', ['High', 'Critical'])
     .not('deep_analyzed_at', 'is', null)
     .is('deepest_analysis_completed_at', null)
-    .gte('psyop_risk_score', 80)
-    .in('threat_level', ['High', 'Critical'])
-    .or('analysis_stage.is.null,analysis_stage.eq.deep,analysis_stage.eq.deepest')
-    .order('created_at', { ascending: true })
-    .limit(batchSize);
+    .neq('status', 'Archived')
+    .not('contents', 'is', null)
+    .limit(20);
 }
 
-async function ensurePostExists(
-  supabase: any,
-  postId: string,
-): Promise<PostCheckResult> {
-  const { data: post, error } = await supabase
-    .from("posts")
-    .select("id, title, contents, status, inoreader_timestamp_usec")
-    .eq("id", postId)
-    .single();
+async function callEdgeFunction(
+  functionName: string,
+  body: Record<string, unknown>,
+  supabaseUrl: string,
+  serviceKey: string,
+) {
+  const url = `${supabaseUrl}/functions/v1/${functionName}`;
 
-  if (error || !post) {
-    console.log(`⚠️ Skipped post ${postId} (not found in posts table) - Post disappeared, skipping`);
-    return { exists: false, skipped: true };
-  }
-
-  if (
-    !post.title ||
-    !post.contents ||
-    post.status === 'Archived' ||
-    !post.inoreader_timestamp_usec
-  ) {
-    console.log(`⚠️ Skipped post ${postId} (missing required fields)`);
-    return { exists: false, skipped: true };
-  }
-
-  return { exists: true, skipped: false };
-}
-
-async function callEdgeFunction(url: string, body: Record<string, unknown>, serviceKey: string) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -115,7 +91,8 @@ async function callEdgeFunction(url: string, body: Record<string, unknown>, serv
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`${url} failed with status ${response.status}: ${text}`);
+    const postId = (body as { postId?: string }).postId || "unknown";
+    throw new Error(`${url} failed with status ${response.status}: ${text} (postId=${postId})`);
   }
 
   return response;
@@ -169,7 +146,9 @@ serve(async (req) => {
 
     const batchSize = parseInt(batchConfig?.config_value || '20', 10);
 
-    const totals: StageResult = { processed: 0, succeeded: 0, failed: 0 };
+    let totalTasks = 0;
+    let successTasks = 0;
+    let failedTasks = 0;
 
     // --------------------
     // QUICK SCREENING
@@ -178,116 +157,111 @@ serve(async (req) => {
 
     if (quickError) throw quickError;
 
-    console.log(`🧭 Quick screening candidates: ${quickCandidates?.length || 0}`);
+    const quickCandidatesSafe = (quickCandidates ?? []).filter(isValidForAnalysis);
+    console.log(`🧭 Quick screening candidates: ${quickCandidatesSafe.length}`);
 
-    for (const candidate of quickCandidates ?? []) {
+    for (const post of quickCandidatesSafe) {
+      totalTasks++;
+
       try {
-        const { exists, skipped } = await ensurePostExists(supabase, candidate.id);
-        if (!exists) {
-          if (skipped) {
-            totals.processed += 1;
-            continue;
-          }
-          throw new Error(`Post ${candidate.id} could not be validated`);
+        console.log(`🔍 [AutoAnalyzer] Running QUICK analysis for post ${post.id}...`);
+        await callEdgeFunction("quick-psyop-detection", { postId: post.id }, supabaseUrl, supabaseServiceKey);
+        successTasks++;
+      } catch (err) {
+        const msg = String((err as Error)?.message ?? err);
+
+        if (msg.includes("Post not found")) {
+          console.warn(
+            `⚠️ Skipping QUICK analysis for missing/invalid post ${post.id}: ${msg}`,
+          );
+          continue;
         }
 
-        // NOTE: Quick screening is invoked by postId only.
-        // quick-psyop-detection will load the full post from the "posts" table.
-        await callEdgeFunction(
-          `${supabaseUrl}/functions/v1/quick-psyop-detection`,
-          { postId: candidate.id },
-          supabaseServiceKey,
+        failedTasks++;
+        console.error(
+          `❌ Quick analysis failed for post ${post.id}:`,
+          err,
         );
-        totals.succeeded += 1;
-      } catch (error) {
-        console.error(`❌ Quick analysis failed for post ${candidate.id}:`, error);
-        totals.failed += 1;
       }
-      totals.processed += 1;
     }
 
     // --------------------
     // DEEP ANALYSIS
     // --------------------
-    const { data: deepCandidates, error: deepError } = await getDeepCandidates(supabase, batchSize);
+    const { data: deepCandidatesRaw, error: deepError } = await getDeepCandidates(supabase);
 
     if (deepError) throw deepError;
 
-    console.log(`🔬 Deep analysis candidates: ${deepCandidates?.length || 0}`);
+    const deepCandidates = (deepCandidatesRaw ?? []).filter(isValidForAnalysis);
+    console.log(`🔬 Deep analysis candidates: ${deepCandidates.length}`);
 
-    for (const candidate of deepCandidates ?? []) {
+    for (const post of deepCandidates) {
+      totalTasks++;
+
       try {
-        const { exists, skipped } = await ensurePostExists(supabase, candidate.id);
-        if (!exists) {
-          if (skipped) {
-            totals.processed += 1;
-            continue;
-          }
-          throw new Error(`Post ${candidate.id} could not be validated`);
-        }
-
-        await callEdgeFunction(
-          `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
-          { postId: candidate.id },
-          supabaseServiceKey,
+        console.log(`🧠 [AutoAnalyzer] Running DEEP analysis for post ${post.id}...`);
+        await callEdgeFunction("analyze-post-deepseek", { postId: post.id }, supabaseUrl, supabaseServiceKey);
+        successTasks++;
+      } catch (err) {
+        failedTasks++;
+        console.error(
+          `❌ Deep analysis failed for post ${post.id}:`,
+          err,
         );
-        totals.succeeded += 1;
-      } catch (error) {
-        console.error(`❌ Deep analysis failed for post ${candidate.id}:`, error);
-        totals.failed += 1;
       }
-      totals.processed += 1;
     }
 
     // --------------------
     // DEEPEST ANALYSIS
     // --------------------
-    const { data: deepestCandidates, error: deepestError } = await getDeepestCandidates(supabase, batchSize);
+    const { data: deepestCandidatesRaw, error: deepestError } = await getDeepestCandidates(supabase);
 
     if (deepestError) throw deepestError;
 
-    console.log(`🧠 Deepest analysis candidates: ${deepestCandidates?.length || 0}`);
+    const deepestCandidates = (deepestCandidatesRaw ?? []).filter(isValidForAnalysis);
+    console.log(`🧠 Deepest analysis candidates: ${deepestCandidates.length}`);
 
-    for (const candidate of deepestCandidates ?? []) {
+    for (const post of deepestCandidates) {
+      totalTasks++;
+
       try {
-        const { exists, skipped } = await ensurePostExists(supabase, candidate.id);
-        if (!exists) {
-          if (skipped) {
-            totals.processed += 1;
-            continue;
-          }
-          throw new Error(`Post ${candidate.id} could not be validated`);
+        console.log(`🚨 [AutoAnalyzer] Running DEEPEST analysis for post ${post.id}...`);
+        await callEdgeFunction("deepest-analysis", { postId: post.id }, supabaseUrl, supabaseServiceKey);
+        successTasks++;
+      } catch (err) {
+        const msg = String((err as Error)?.message ?? err);
+
+        if (msg.includes("Post not ready for deepest analysis")) {
+          console.warn(
+            `⚠️ Skipping DEEPEST for post ${post.id}: not ready yet (${msg})`,
+          );
+          continue;
         }
 
-        await callEdgeFunction(
-          `${supabaseUrl}/functions/v1/deepest-analysis`,
-          { postId: candidate.id },
-          supabaseServiceKey,
+        failedTasks++;
+        console.error(
+          `❌ Deepest analysis failed for post ${post.id}:`,
+          err,
         );
-        totals.succeeded += 1;
-      } catch (error) {
-        console.error(`❌ Deepest analysis failed for post ${candidate.id}:`, error);
-        totals.failed += 1;
       }
-      totals.processed += 1;
     }
 
     // Update stats
     await supabase.rpc('increment_auto_analysis_stats', {
       p_date: new Date().toISOString().split('T')[0],
-      p_analyzed: totals.succeeded,
-      p_failed: totals.failed,
+      p_analyzed: successTasks,
+      p_failed: failedTasks,
     });
 
-    console.log(`✅ Auto Analyzer completed: ${totals.succeeded} succeeded, ${totals.failed} failed`);
+    console.log(`✅ Auto Analyzer completed: ${successTasks} succeeded, ${failedTasks} failed`);
 
     const response = new Response(
       JSON.stringify({
         success: true,
-        processed: totals.processed,
-        succeeded: totals.succeeded,
-        failed: totals.failed,
-        message: `Processed ${totals.processed} analyses across stages`,
+        processed: totalTasks,
+        succeeded: successTasks,
+        failed: failedTasks,
+        message: `Processed ${totalTasks} analyses across stages`,
       }),
       {
         status: 200,
