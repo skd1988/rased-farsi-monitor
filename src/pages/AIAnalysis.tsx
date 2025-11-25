@@ -7,6 +7,7 @@ import { FileText, Download } from "lucide-react";
 import AnalysisCard from "@/components/analysis/AnalysisCard";
 import AnalysisDetailModal from "@/components/analysis/AnalysisDetailModal";
 import BulkAnalysisModal from "@/components/analysis/BulkAnalysisModal";
+import { resolveAnalysisStage } from "@/components/analysis/analysisUtils";
 import {
   Pagination,
   PaginationContent,
@@ -169,7 +170,7 @@ const AIAnalysis = () => {
 
     // Stage filter: Quick / Deep / Deepest
     if (stageFilter !== "all") {
-      filtered = filtered.filter((post) => post.analysis_stage === stageFilter);
+      filtered = filtered.filter((post) => resolveAnalysisStage(post) === stageFilter);
     }
 
     // Only posts with deepest (crisis) analysis
@@ -287,11 +288,9 @@ const AIAnalysis = () => {
 
     // 3-level PsyOp stats
     psyop: psyopPosts.length,
-    quickOnly: psyopPosts.filter((p) => p.analysis_stage === "quick").length,
-    deep: psyopPosts.filter((p) => p.analysis_stage === "deep").length,
-    deepest: psyopPosts.filter(
-      (p) => p.analysis_stage === "deepest" || p.deepest_analysis_completed_at
-    ).length,
+    quickOnly: psyopPosts.filter((p) => resolveAnalysisStage(p) === "quick").length,
+    deep: psyopPosts.filter((p) => resolveAnalysisStage(p) === "deep").length,
+    deepest: psyopPosts.filter((p) => resolveAnalysisStage(p) === "deepest").length,
   };
 
   const allTopics = Array.from(new Set(posts.map((p) => p.main_topic).filter(Boolean)));

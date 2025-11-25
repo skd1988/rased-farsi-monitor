@@ -1,13 +1,28 @@
 import { AnalyzedPost, AnalysisStage, SentimentValue } from "@/types/analysis";
 
-export function resolveAnalysisStage(post: AnalyzedPost): AnalysisStage {
-  if (post.resolved_stage) return post.resolved_stage;
+export function resolveAnalysisStage(post: AnalyzedPost): "quick" | "deep" | "deepest" | null {
+  if (post.analysis_stage === "deepest") return "deepest";
+  if (post.analysis_stage === "deep") return "deep";
+  if (post.analysis_stage === "quick") return "quick";
 
-  const normalizedStage = post.analysis_stage;
+  if (post.deepest_analysis_completed_at) return "deepest";
 
-  if (post.deepest_analysis_completed_at || normalizedStage === "deepest") return "deepest";
-  if (post.deep_analyzed_at || normalizedStage === "deep") return "deep";
-  if (post.quick_analyzed_at || normalizedStage === "quick") return "quick";
+  if (
+    post.deep_analyzed_at ||
+    post.deep_main_topic ||
+    post.deep_extended_summary
+  ) {
+    return "deep";
+  }
+
+  if (
+    post.quick_analyzed_at ||
+    post.analysis_summary ||
+    post.threat_level
+  ) {
+    return "quick";
+  }
+
   return null;
 }
 
