@@ -112,7 +112,10 @@ const AnalysisDetailModal = ({
         if (!isOpen) onClose();
       }}
     >
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
+      <DialogContent
+        className="max-w-4xl w-full max-h-[80vh] overflow-y-auto overflow-x-hidden"
+        dir="rtl"
+      >
         <DialogHeader>
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2">
@@ -152,7 +155,9 @@ const AnalysisDetailModal = ({
           <div>
             <h3 className="font-bold text-lg mb-2">محتوای اصلی</h3>
             <div className="bg-muted p-4 rounded-lg max-h-60 overflow-y-auto">
-              <p className="text-sm whitespace-pre-wrap">{post.contents}</p>
+              <p className="text-sm leading-relaxed text-justify whitespace-pre-wrap break-words">
+                {post.contents}
+              </p>
             </div>
           </div>
 
@@ -193,7 +198,9 @@ const AnalysisDetailModal = ({
             <Card className="p-4">
               <div className="text-xs text-muted-foreground mb-1">خلاصه هوشمند</div>
               {post.analysis_summary ? (
-                <p className="text-sm leading-relaxed text-justify">{post.analysis_summary}</p>
+                <p className="text-sm leading-relaxed text-justify break-words">
+                  {post.analysis_summary}
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">خلاصه هوشمند هنوز آماده نیست.</p>
               )}
@@ -202,7 +209,9 @@ const AnalysisDetailModal = ({
             <Card className="p-4">
               <div className="text-xs text-muted-foreground mb-1">اقدام پیشنهادی</div>
               {post.recommended_action ? (
-                <p className="text-sm leading-relaxed text-justify">{post.recommended_action}</p>
+                <p className="text-sm leading-relaxed text-justify break-words">
+                  {post.recommended_action}
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">هنوز اقدام پیشنهادی ثبت نشده است.</p>
               )}
@@ -220,14 +229,14 @@ const AnalysisDetailModal = ({
               <div className="space-y-4">
                 <Card className="p-4">
                   <div className="text-xs text-muted-foreground mb-1">هسته روایت</div>
-                  <p className="text-sm leading-relaxed text-justify">
+                  <p className="text-sm leading-relaxed text-justify break-words">
                     {post.deep_main_topic || "اطلاعاتی ثبت نشده است."}
                   </p>
                 </Card>
 
                 <Card className="p-4">
                   <div className="text-xs text-muted-foreground mb-1">خلاصه توسعه‌یافته</div>
-                  <p className="text-sm leading-relaxed text-justify">
+                  <p className="text-sm leading-relaxed text-justify break-words">
                     {post.deep_extended_summary || "خلاصه‌ای ثبت نشده است."}
                   </p>
                 </Card>
@@ -330,7 +339,7 @@ const AnalysisDetailModal = ({
                       <Badge variant="outline">{post.deepest_escalation_level}</Badge>
                     )}
                   </div>
-                  <p className="text-sm leading-relaxed text-justify">
+                  <p className="text-sm leading-relaxed text-justify break-words">
                     {post.deepest_strategic_summary || "خلاصه استراتژیک ثبت نشده است."}
                   </p>
                 </Card>
