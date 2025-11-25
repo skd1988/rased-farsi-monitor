@@ -19,6 +19,87 @@ interface StageResult {
   failed: number;
 }
 
+interface PostCheckResult {
+  exists: boolean;
+  skipped: boolean;
+}
+
+function buildBaseCandidateQuery(supabase: any) {
+  return supabase
+    .from('posts')
+    .select('id')
+    .in('status', ['new', 'ready'])
+    .not('title', 'is', null)
+    .not('contents', 'is', null)
+    .not('inoreader_timestamp', 'is', null);
+}
+
+async function getQuickCandidates(supabase: any, batchSize: number) {
+  return supabase
+    .from('posts')
+    .select('id')
+    .in('status', ['new', 'ready'])
+    .not('title', 'is', null)
+    .not('contents', 'is', null)
+    .not('inoreader_timestamp', 'is', null)
+    .is('quick_analyzed_at', null)
+    .or('analysis_stage.is.null,analysis_stage.eq.quick')
+    .order('created_at', { ascending: true })
+    .limit(batchSize);
+}
+
+async function getDeepCandidates(supabase: any, batchSize: number) {
+  return buildBaseCandidateQuery(supabase)
+    .eq('is_psyop', true)
+    .not('quick_analyzed_at', 'is', null)
+    .is('deep_analyzed_at', null)
+    .gte('psyop_risk_score', 60)
+    .in('threat_level', ['Medium', 'High', 'Critical'])
+    .or('analysis_stage.is.null,analysis_stage.eq.quick,analysis_stage.eq.deep')
+    .order('created_at', { ascending: true })
+    .limit(batchSize);
+}
+
+async function getDeepestCandidates(supabase: any, batchSize: number) {
+  return buildBaseCandidateQuery(supabase)
+    .eq('is_psyop', true)
+    .not('deep_analyzed_at', 'is', null)
+    .is('deepest_analysis_completed_at', null)
+    .gte('psyop_risk_score', 80)
+    .in('threat_level', ['High', 'Critical'])
+    .or('analysis_stage.is.null,analysis_stage.eq.deep,analysis_stage.eq.deepest')
+    .order('created_at', { ascending: true })
+    .limit(batchSize);
+}
+
+async function ensurePostExists(
+  supabase: any,
+  postId: string,
+): Promise<PostCheckResult> {
+  const { data: post, error } = await supabase
+    .from("posts")
+    .select("id, title, contents, status, inoreader_timestamp")
+    .eq("id", postId)
+    .single();
+
+  if (error || !post) {
+    console.log(`⚠️ Skipped post ${postId} (not found in posts table) - Post disappeared, skipping`);
+    return { exists: false, skipped: true };
+  }
+
+  if (
+    !post.title ||
+    !post.contents ||
+    post.status === 'Archived' ||
+    !post.inoreader_timestamp
+  ) {
+    console.log(`⚠️ Skipped post ${postId} (missing required fields)`);
+    return { exists: false, skipped: true };
+  }
+
+  return { exists: true, skipped: false };
+}
+
 async function callEdgeFunction(url: string, body: Record<string, unknown>, serviceKey: string) {
   const response = await fetch(url, {
     method: "POST",
@@ -90,12 +171,7 @@ serve(async (req) => {
     // --------------------
     // QUICK SCREENING
     // --------------------
-    const { data: quickCandidates, error: quickError } = await supabase
-      .from('posts')
-      .select('id')
-      .is('quick_analyzed_at', null)
-      .order('created_at', { ascending: true })
-      .limit(batchSize);
+    const { data: quickCandidates, error: quickError } = await getQuickCandidates(supabase, batchSize);
 
     if (quickError) throw quickError;
 
@@ -103,6 +179,15 @@ serve(async (req) => {
 
     for (const candidate of quickCandidates ?? []) {
       try {
+        const { exists, skipped } = await ensurePostExists(supabase, candidate.id);
+        if (!exists) {
+          if (skipped) {
+            totals.processed += 1;
+            continue;
+          }
+          throw new Error(`Post ${candidate.id} could not be validated`);
+        }
+
         await callEdgeFunction(
           `${supabaseUrl}/functions/v1/quick-psyop-detection`,
           { postId: candidate.id },
@@ -119,16 +204,7 @@ serve(async (req) => {
     // --------------------
     // DEEP ANALYSIS
     // --------------------
-    const { data: deepCandidates, error: deepError } = await supabase
-      .from('posts')
-      .select('id')
-      .eq('is_psyop', true)
-      .not('quick_analyzed_at', 'is', null)
-      .is('deep_analyzed_at', null)
-      .gte('psyop_risk_score', 60)
-      .in('threat_level', ['Medium', 'High', 'Critical'])
-      .order('created_at', { ascending: true })
-      .limit(batchSize);
+    const { data: deepCandidates, error: deepError } = await getDeepCandidates(supabase, batchSize);
 
     if (deepError) throw deepError;
 
@@ -136,6 +212,15 @@ serve(async (req) => {
 
     for (const candidate of deepCandidates ?? []) {
       try {
+        const { exists, skipped } = await ensurePostExists(supabase, candidate.id);
+        if (!exists) {
+          if (skipped) {
+            totals.processed += 1;
+            continue;
+          }
+          throw new Error(`Post ${candidate.id} could not be validated`);
+        }
+
         await callEdgeFunction(
           `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
           { postId: candidate.id },
@@ -152,16 +237,7 @@ serve(async (req) => {
     // --------------------
     // DEEPEST ANALYSIS
     // --------------------
-    const { data: deepestCandidates, error: deepestError } = await supabase
-      .from('posts')
-      .select('id')
-      .eq('is_psyop', true)
-      .not('deep_analyzed_at', 'is', null)
-      .is('deepest_analysis_completed_at', null)
-      .gte('psyop_risk_score', 80)
-      .in('threat_level', ['High', 'Critical'])
-      .order('created_at', { ascending: true })
-      .limit(batchSize);
+    const { data: deepestCandidates, error: deepestError } = await getDeepestCandidates(supabase, batchSize);
 
     if (deepestError) throw deepestError;
 
@@ -169,6 +245,15 @@ serve(async (req) => {
 
     for (const candidate of deepestCandidates ?? []) {
       try {
+        const { exists, skipped } = await ensurePostExists(supabase, candidate.id);
+        if (!exists) {
+          if (skipped) {
+            totals.processed += 1;
+            continue;
+          }
+          throw new Error(`Post ${candidate.id} could not be validated`);
+        }
+
         await callEdgeFunction(
           `${supabaseUrl}/functions/v1/deepest-analysis`,
           { postId: candidate.id },
