@@ -171,14 +171,14 @@ const AIAnalysis = () => {
     // Stage filter: Quick / Deep / Deepest
     if (stageFilter !== "all") {
       filtered = filtered.filter(
-        (post) => resolveAnalysisStage(post as any) === stageFilter
+        (p) => resolveAnalysisStage(p as any) === stageFilter
       );
     }
 
     // Only posts with deepest (crisis) analysis
     if (deepestOnly) {
       filtered = filtered.filter(
-        (post) => !!post.deepest_analysis_completed_at
+        (p) => resolveAnalysisStage(p as any) === "deepest"
       );
     }
 
