@@ -27,8 +27,9 @@ export function useAnalyzedPosts() {
         const { data, error: fetchError } = await supabase
           .from("posts")
           .select("*")
-          .not("analyzed_at", "is", null)
-          .order("analyzed_at", { ascending: false })
+          .or("analyzed_at.not.is.null,quick_analyzed_at.not.is.null")
+          .order("analyzed_at", { ascending: false, nullsFirst: false })
+          .order("quick_analyzed_at", { ascending: false, nullsFirst: false })
           .range(from, from + batchSize - 1);
 
         if (fetchError) throw fetchError;
@@ -65,7 +66,15 @@ export function useAnalyzedPosts() {
         }
       }
 
-      setPosts(allPosts);
+      const sorted = allPosts.sort((a, b) => {
+        const aDate =
+          new Date(a.analyzed_at || a.quick_analyzed_at || a.published_at || 0).getTime();
+        const bDate =
+          new Date(b.analyzed_at || b.quick_analyzed_at || b.published_at || 0).getTime();
+        return bDate - aDate;
+      });
+
+      setPosts(sorted);
     } catch (err) {
       console.error("Error fetching analyzed posts:", err);
       setError((err as Error).message);
