@@ -330,48 +330,72 @@ serve(async (req) => {
 
     // 5) آپدیت ردیف posts
     const completionTimestamp = new Date().toISOString();
+    const nextStage = existingPost?.analysis_stage === "deepest"
+      ? "deepest"
+      : "deep";
 
-    // The AI Analysis UI derives deep/deepest counters from analysis_stage + *_analyzed_at timestamps
+    const updateData: Record<string, any> = {
+      analysis_summary: extendedSummary ?? existingPost?.analysis_summary ?? null,
+      main_topic: existingPost?.main_topic ?? null,
+      keywords: keywords ?? existingPost?.keywords ?? null,
+
+      // Deep fields
+      narrative_core: narrativeCore ?? existingPost?.narrative_core ?? null,
+      extended_summary: extendedSummary ?? existingPost?.extended_summary ?? null,
+      psychological_objectives:
+        psychologicalObjectives ?? existingPost?.psychological_objectives ?? null,
+      manipulation_intensity:
+        manipulationIntensity ?? existingPost?.manipulation_intensity ?? null,
+      techniques: techniques ?? existingPost?.techniques ?? existingPost?.psyop_technique ?? null,
+      recommended_actions:
+        recommendedActions ?? existingPost?.recommended_actions ?? null,
+      recommended_action: recommendedActions
+        ? recommendedActions.join("\n")
+        : existingPost?.recommended_action ?? null,
+      deep_main_topic: existingPost?.deep_main_topic ?? narrativeCore ?? null,
+      deep_smart_summary:
+        extendedSummary ?? narrativeCore ?? existingPost?.deep_smart_summary ?? null,
+      deep_recommended_action: recommendedActions
+        ? recommendedActions.join("\n")
+        : existingPost?.deep_recommended_action ?? null,
+      deep_psychological_objectives:
+        psychologicalObjectives ?? existingPost?.deep_psychological_objectives ?? null,
+      deep_techniques:
+        techniques ?? existingPost?.deep_techniques ?? existingPost?.psyop_technique ?? null,
+
+      // Preserve quick-screen fields when Deep is missing values
+      is_psyop: typeof analysisResult?.is_psyop === "boolean"
+        ? analysisResult.is_psyop
+        : existingPost?.is_psyop ?? null,
+      psyop_confidence: existingPost?.psyop_confidence ?? null,
+      psyop_risk_score: existingPost?.psyop_risk_score ?? null,
+      psyop_category: analysisResult?.psyop_category ?? existingPost?.psyop_category ?? null,
+      narrative_theme: analysisResult?.narrative_theme ?? existingPost?.narrative_theme ?? null,
+      psyop_type: existingPost?.psyop_type ?? null,
+
+      // ✅ sentiment را نرمال و ذخیره می‌کنیم تا با کانسترینت DB سازگار باشد
+      sentiment: sentimentValue ?? existingPost?.sentiment ?? null,
+
+      threat_level: existingPost?.threat_level ?? null,
+      confidence: existingPost?.psyop_confidence ?? null,
+      key_points: existingPost?.key_points ?? null,
+
+      urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
+      virality_potential:
+        viralityPotential ?? existingPost?.virality_potential ?? null,
+
+      analyzed_at: completionTimestamp,
+      analysis_model: "deepseek-chat",
+      processing_time: processingTime / 1000,
+
+      status: "completed",
+      analysis_stage: nextStage,
+      deep_analyzed_at: completionTimestamp,
+    };
+
     const { error: updateError } = await supabase
       .from("posts")
-      .update({
-        analysis_summary: extendedSummary,
-        main_topic: existingPost?.main_topic ?? null,
-        keywords: keywords ?? existingPost?.keywords ?? null,
-
-        is_psyop: existingPost?.is_psyop ?? null,
-        psyop_confidence: existingPost?.psyop_confidence ?? null,
-
-        target_entity: existingPost?.target_entity ?? null,
-        target_persons: existingPost?.target_persons ?? null,
-
-        psyop_technique: techniques ?? existingPost?.psyop_technique ?? null,
-        narrative_theme: narrativeCore ?? existingPost?.narrative_theme ?? null,
-        psyop_type: existingPost?.psyop_type ?? null,
-
-        // ✅ sentiment را نرمال و ذخیره می‌کنیم تا با کانسترینت DB سازگار باشد
-        sentiment: sentimentValue,
-
-        threat_level: existingPost?.threat_level ?? null,
-        confidence: existingPost?.psyop_confidence ?? null,
-        key_points: existingPost?.key_points ?? null,
-
-        recommended_action: recommendedActions
-          ? recommendedActions.join("\n")
-          : existingPost?.recommended_action ?? null,
-
-        urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
-        virality_potential:
-          viralityPotential ?? existingPost?.virality_potential ?? null,
-
-        analyzed_at: completionTimestamp,
-        analysis_model: "deepseek-chat",
-        processing_time: processingTime / 1000,
-
-        status: "completed",
-        analysis_stage: "deep",
-        deep_analyzed_at: completionTimestamp,
-      })
+      .update(updateData)
       .eq("id", postId);
 
     if (updateError) {

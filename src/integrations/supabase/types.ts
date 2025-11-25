@@ -359,37 +359,50 @@ export type Database = {
           contents: string | null
           counter_narrative_ready: boolean | null
           created_at: string
+          crisis_extended_summary: string | null
+          crisis_narrative_core: string | null
+          deep_analyzed_at: string | null
+          deep_main_topic: string | null
+          deep_psychological_objectives: string[] | null
+          deep_recommended_action: string | null
+          deep_smart_summary: string | null
+          deep_techniques: string[] | null
+          deepest_analysis_completed_at: string | null
+          deepest_audience_segments: string[] | null
+          deepest_escalation_level: string | null
+          deepest_key_risks: string[] | null
+          deepest_monitoring_indicators: string[] | null
+          deepest_raw: Json | null
+          deepest_recommended_actions: string[] | null
+          deepest_strategic_summary: string | null
+          deepest_main_topic: string | null
+          deepest_smart_summary: string | null
+          deepest_recommended_action: string | null
           id: string
           is_psyop: boolean | null
-          psyop_risk_score: number | null
           key_points: string[] | null
           keywords: string[] | null
           language: string
           main_topic: string | null
+          manipulation_intensity: string | null
+          narrative_core: string | null
           narrative_theme: string | null
-          quick_analyzed_at: string | null
-          deep_analyzed_at: string | null
-          deepest_analysis_completed_at: string | null
-          deepest_escalation_level: string | null
-          deepest_strategic_summary: string | null
-          deepest_key_risks: string[] | null
-          deepest_audience_segments: string[] | null
-          deepest_recommended_actions: string[] | null
-          deepest_monitoring_indicators: string[] | null
-          deepest_raw: Json | null
-          processing_time: number | null
+          psyop_category: string | null
           psyop_confidence: number | null
+          psyop_risk_score: number | null
           psyop_technique: string[] | null
           psyop_techniques: string[] | null
-          psyop_category: string | null
-          stance_type: string | null
           psyop_type: string | null
-          urgency_level: string | null
-          virality_potential: string | null
-          published_at: string
+          psychological_objectives: string[] | null
+          quick_analyzed_at: string | null
+          quick_main_topic: string | null
+          quick_summary: string | null
           recommended_action: string | null
+          recommended_actions: string[] | null
+          review_status: string | null
           sentiment: string | null
           sentiment_score: number | null
+          smart_summary: string | null
           source: string
           source_country: string | null
           source_impact_score: number | null
@@ -398,9 +411,12 @@ export type Database = {
           status: string
           target_entity: string[] | null
           target_persons: string[] | null
+          techniques: string[] | null
           threat_level: string | null
           title: string
           updated_at: string
+          urgency_level: string | null
+          virality_potential: string | null
           weighted_threat_level: string | null
         }
         Insert: {
@@ -415,37 +431,50 @@ export type Database = {
           contents?: string | null
           counter_narrative_ready?: boolean | null
           created_at?: string
+          crisis_extended_summary?: string | null
+          crisis_narrative_core?: string | null
+          deep_analyzed_at?: string | null
+          deep_main_topic?: string | null
+          deep_psychological_objectives?: string[] | null
+          deep_recommended_action?: string | null
+          deep_smart_summary?: string | null
+          deep_techniques?: string[] | null
+          deepest_analysis_completed_at?: string | null
+          deepest_audience_segments?: string[] | null
+          deepest_escalation_level?: string | null
+          deepest_key_risks?: string[] | null
+          deepest_monitoring_indicators?: string[] | null
+          deepest_raw?: Json | null
+          deepest_recommended_actions?: string[] | null
+          deepest_strategic_summary?: string | null
+          deepest_main_topic?: string | null
+          deepest_smart_summary?: string | null
+          deepest_recommended_action?: string | null
           id?: string
           is_psyop?: boolean | null
-          psyop_risk_score?: number | null
           key_points?: string[] | null
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
+          manipulation_intensity?: string | null
+          narrative_core?: string | null
           narrative_theme?: string | null
-          quick_analyzed_at?: string | null
-          deep_analyzed_at?: string | null
-          deepest_analysis_completed_at?: string | null
-          deepest_escalation_level?: string | null
-          deepest_strategic_summary?: string | null
-          deepest_key_risks?: string[] | null
-          deepest_audience_segments?: string[] | null
-          deepest_recommended_actions?: string[] | null
-          deepest_monitoring_indicators?: string[] | null
-          deepest_raw?: Json | null
-          processing_time?: number | null
+          psyop_category?: string | null
           psyop_confidence?: number | null
+          psyop_risk_score?: number | null
           psyop_technique?: string[] | null
           psyop_techniques?: string[] | null
-          psyop_category?: string | null
-          stance_type?: string | null
           psyop_type?: string | null
-          urgency_level?: string | null
-          virality_potential?: string | null
-          published_at?: string
+          psychological_objectives?: string[] | null
+          quick_analyzed_at?: string | null
+          quick_main_topic?: string | null
+          quick_summary?: string | null
           recommended_action?: string | null
+          recommended_actions?: string[] | null
+          review_status?: string | null
           sentiment?: string | null
           sentiment_score?: number | null
+          smart_summary?: string | null
           source: string
           source_country?: string | null
           source_impact_score?: number | null
@@ -454,9 +483,12 @@ export type Database = {
           status?: string
           target_entity?: string[] | null
           target_persons?: string[] | null
+          techniques?: string[] | null
           threat_level?: string | null
           title: string
           updated_at?: string
+          urgency_level?: string | null
+          virality_potential?: string | null
           weighted_threat_level?: string | null
         }
         Update: {
@@ -471,37 +503,50 @@ export type Database = {
           contents?: string | null
           counter_narrative_ready?: boolean | null
           created_at?: string
+          crisis_extended_summary?: string | null
+          crisis_narrative_core?: string | null
+          deep_analyzed_at?: string | null
+          deep_main_topic?: string | null
+          deep_psychological_objectives?: string[] | null
+          deep_recommended_action?: string | null
+          deep_smart_summary?: string | null
+          deep_techniques?: string[] | null
+          deepest_analysis_completed_at?: string | null
+          deepest_audience_segments?: string[] | null
+          deepest_escalation_level?: string | null
+          deepest_key_risks?: string[] | null
+          deepest_monitoring_indicators?: string[] | null
+          deepest_raw?: Json | null
+          deepest_recommended_actions?: string[] | null
+          deepest_strategic_summary?: string | null
+          deepest_main_topic?: string | null
+          deepest_smart_summary?: string | null
+          deepest_recommended_action?: string | null
           id?: string
           is_psyop?: boolean | null
-          psyop_risk_score?: number | null
           key_points?: string[] | null
           keywords?: string[] | null
           language?: string
           main_topic?: string | null
+          manipulation_intensity?: string | null
+          narrative_core?: string | null
           narrative_theme?: string | null
-          quick_analyzed_at?: string | null
-          deep_analyzed_at?: string | null
-          deepest_analysis_completed_at?: string | null
-          deepest_escalation_level?: string | null
-          deepest_strategic_summary?: string | null
-          deepest_key_risks?: string[] | null
-          deepest_audience_segments?: string[] | null
-          deepest_recommended_actions?: string[] | null
-          deepest_monitoring_indicators?: string[] | null
-          deepest_raw?: Json | null
-          processing_time?: number | null
+          psyop_category?: string | null
           psyop_confidence?: number | null
+          psyop_risk_score?: number | null
           psyop_technique?: string[] | null
           psyop_techniques?: string[] | null
-          psyop_category?: string | null
-          stance_type?: string | null
           psyop_type?: string | null
-          urgency_level?: string | null
-          virality_potential?: string | null
-          published_at?: string
+          psychological_objectives?: string[] | null
+          quick_analyzed_at?: string | null
+          quick_main_topic?: string | null
+          quick_summary?: string | null
           recommended_action?: string | null
+          recommended_actions?: string[] | null
+          review_status?: string | null
           sentiment?: string | null
           sentiment_score?: number | null
+          smart_summary?: string | null
           source?: string
           source_country?: string | null
           source_impact_score?: number | null
@@ -510,9 +555,12 @@ export type Database = {
           status?: string
           target_entity?: string[] | null
           target_persons?: string[] | null
+          techniques?: string[] | null
           threat_level?: string | null
           title?: string
           updated_at?: string
+          urgency_level?: string | null
+          virality_potential?: string | null
           weighted_threat_level?: string | null
         }
         Relationships: []

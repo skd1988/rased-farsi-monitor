@@ -4,6 +4,7 @@ export type AnalysisStage = "quick" | "deep" | "deepest" | null;
 export type SentimentValue = "positive" | "negative" | "neutral" | "Positive" | "Negative" | "Neutral" | null;
 export type UrgencyLevel = "Low" | "Medium" | "High" | "Critical" | null;
 export type ViralityPotential = "Low" | "Medium" | "High" | null;
+export type ManipulationIntensity = "Low" | "Medium" | "High" | null;
 
 type PostRow = Database["public"]["Tables"]["posts"]["Row"];
 
@@ -36,6 +37,7 @@ export interface AnalyzedPost
   virality_potential: ViralityPotential;
   threat_level: "Low" | "Medium" | "High" | "Critical" | null;
   confidence?: number | null;
+  manipulation_intensity?: ManipulationIntensity;
 
   is_psyop?: boolean | null;
   psyop_category?: "hostile_propaganda" | "potential_psyop" | "non_psyop" | null;
@@ -44,9 +46,8 @@ export interface AnalyzedPost
   narrative_core?: string | null;
   extended_summary?: string | null;
   psychological_objectives?: string[] | null;
-  recommended_actions?: string | null;
+  recommended_actions?: string[] | string | null;
   key_points?: string[] | null;
-  manipulation_intensity?: string | null;
   techniques?: string[] | null;
 
   // Deep analysis fields
