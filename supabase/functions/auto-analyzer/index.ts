@@ -53,15 +53,18 @@ async function getDeepCandidates(supabase: any) {
   return supabase
     .from('posts')
     .select(
-      '*, sort_key:COALESCE(quick_analyzed_at, created_at)'
+      'id, is_psyop, quick_analyzed_at, deep_analyzed_at, status, threat_level, psyop_risk_score',
     )
+    // فقط پست‌های PsyOp
     .eq('is_psyop', true)
-    .is('deep_analyzed_at', null)
+    // آرشیوها را کنار بگذار
     .neq('status', 'Archived')
-    .not('contents', 'is', null)
-    .order('sort_key', { ascending: true })
+    // هر پستی که هنوز deep نشده، حتی اگر quick_analyzed_at خالی باشد
+    .is('deep_analyzed_at', null)
+    .order('created_at', { ascending: true })   // اگر خواستی می‌توانی بر اساس زمان ساخت مرتب کنی
     .limit(DEEP_BATCH_SIZE);
 }
+
 
 async function getDeepestCandidates(supabase: any) {
   return supabase
