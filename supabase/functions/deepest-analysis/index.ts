@@ -52,7 +52,7 @@ serve(async (req) => {
     const { data: post, error: postError } = await supabase
       .from("posts")
       .select(
-        "id, title, source, language, contents, summary, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_theme, urgency_level, virality_potential",
+        "id, title, source, language, contents, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_core, urgency_level, virality_potential",
       )
       .eq("id", postId)
       .single();
@@ -72,7 +72,7 @@ serve(async (req) => {
     if (post.source) {
       const { data: relatedData, error: relatedError } = await supabase
         .from("posts")
-        .select("title, summary")
+        .select("title, analysis_summary")
         .eq("source", post.source)
         .eq("is_psyop", true)
         .neq("id", post.id)
@@ -172,13 +172,13 @@ serve(async (req) => {
 });
 
 function buildDeepestPrompt(post: any, relatedPosts: any[]) {
-  const postSnippet = (post.summary || post.contents || "").slice(0, 2000);
+  const postSnippet = (post.analysis_summary || post.contents || "").slice(0, 2000);
   const relatedSection = relatedPosts
     .slice(0, 5)
     .map(
       (p, idx) =>
         `پست مرتبط ${idx + 1}: ${p.title || "(untitled)"}\nخلاصه: ${
-          p.summary || ""
+          p.analysis_summary || ""
         }`,
     )
     .join("\n\n");
@@ -187,7 +187,7 @@ function buildDeepestPrompt(post: any, relatedPosts: any[]) {
     : "";
 
   return `شما یک تحلیلگر ارشد جنگ شناختی و عملیات روانی هستید که باید عمیق‌ترین ارزیابی بحران را ارائه دهید. تمام متن‌های خروجی (به جز مقادیر انگلیسی در فیلدهای کلیدی) باید فارسی باشند و پاسخ فقط به صورت JSON بازگردد.
-\nاطلاعات پست:\n- عنوان: ${post.title || "(none)"}\n- منبع: ${post.source || "(unknown)"}\n- زبان: ${post.language || "(unknown)"}\n- متن/خلاصه: ${postSnippet}\n\nفراداده غربالگری سریع:\n- is_psyop: ${post.is_psyop}\n- psyop_risk_score: ${post.psyop_risk_score}\n- threat_level: ${post.threat_level}\n- stance_type: ${post.stance_type}\n- psyop_category: ${post.psyop_category}\n- psyop_techniques: ${post.psyop_techniques?.join(", ") || ""}\n- psyop_review_status: ${post.psyop_review_status}\n\nفراداده تحلیل عمیق:\n- analysis_summary: ${post.analysis_summary}\n- narrative_theme: ${post.narrative_theme}\n- urgency_level: ${post.urgency_level}\n- virality_potential: ${post.virality_potential}${relatedBlock}\n\nدستورالعمل: فقط یک شیء JSON معتبر و بدون هیچ متن اضافی برگردان. همه متن‌ها باید فارسی باشند. ساختار دقیق خروجی:
+\nاطلاعات پست:\n- عنوان: ${post.title || "(none)"}\n- منبع: ${post.source || "(unknown)"}\n- زبان: ${post.language || "(unknown)"}\n- متن/خلاصه: ${postSnippet}\n\nفراداده غربالگری سریع:\n- is_psyop: ${post.is_psyop}\n- psyop_risk_score: ${post.psyop_risk_score}\n- threat_level: ${post.threat_level}\n- stance_type: ${post.stance_type}\n- psyop_category: ${post.psyop_category}\n- psyop_techniques: ${post.psyop_techniques?.join(", ") || ""}\n- psyop_review_status: ${post.psyop_review_status}\n\nفراداده تحلیل عمیق:\n- analysis_summary: ${post.analysis_summary}\n- narrative_core: ${post.narrative_core}\n- urgency_level: ${post.urgency_level}\n- virality_potential: ${post.virality_potential}${relatedBlock}\n\nدستورالعمل: فقط یک شیء JSON معتبر و بدون هیچ متن اضافی برگردان. همه متن‌ها باید فارسی باشند. ساختار دقیق خروجی:
 {"escalation_level":"High","strategic_summary":"چند جمله فارسی درباره اهمیت استراتژیک این محتوا.","key_risks":["ریسک ۱ به فارسی","ریسک ۲ به فارسی"],"audience_segments":["عموم مردم","رسانه‌های منطقه‌ای"],"recommended_actions":["اقدام ۱ به فارسی","اقدام ۲ به فارسی"],"monitoring_indicators":["شاخص ۱ به فارسی","شاخص ۲ به فارسی"]}
 قواعد: escalation_level فقط یکی از Low، Medium، High، Critical باشد. strategic_summary باید ۳ تا ۶ جمله فارسی باشد. تمام آرایه‌ها باید آیتم‌های کوتاه و عملی فارسی داشته باشند. هیچ توضیح یا متن دیگری خارج از JSON برنگردان.`;
 }
