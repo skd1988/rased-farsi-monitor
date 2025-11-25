@@ -18,7 +18,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Loader2, Search, Grid3x3, List, Calendar as CalendarIcon, Shield, CheckCircle } from 'lucide-react';
-import { format, subDays, startOfDay } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PsyOpCard from '@/components/psyop/PsyOpCard';
@@ -28,6 +28,7 @@ import { DateRange } from 'react-day-picker';
 import { DataPagination } from '@/components/common/DataPagination';
 import { PostCardSkeletonGrid } from '@/components/dashboard/PostCardSkeleton';
 import { useNewAuth } from '@/contexts/NewAuthContext';
+import { resolveAnalysisStage } from '@/components/analysis/analysisUtils';
 
 interface PsyOpPost {
   id: string;
@@ -220,9 +221,9 @@ const PsyOpDetection = () => {
       if (dateRange?.from) {
         query = query.gte('published_at', startOfDay(dateRange.from).toISOString());
       }
-      
+
       if (dateRange?.to) {
-        query = query.lte('published_at', startOfDay(dateRange.to).toISOString());
+        query = query.lte('published_at', endOfDay(dateRange.to).toISOString());
       }
       
       // Apply pagination
@@ -346,7 +347,9 @@ const PsyOpDetection = () => {
     }
 
     if (stageFilter !== 'all') {
-      filtered = filtered.filter(p => p.analysis_stage === stageFilter);
+      filtered = filtered.filter(
+        p => resolveAnalysisStage(p as any) === stageFilter
+      );
     }
 
     if (riskFilter === 'high') {
@@ -416,11 +419,9 @@ const PsyOpDetection = () => {
       avgConfidence: psyops.length > 0
         ? Math.round(psyops.reduce((sum, p) => sum + (p.psyop_confidence || 0), 0) / psyops.length)
         : 0,
-      quickOnly: psyops.filter(p => p.analysis_stage === 'quick').length,
-      deepCount: psyops.filter(p => p.analysis_stage === 'deep').length,
-      deepestCount: psyops.filter(
-        p => p.analysis_stage === 'deepest' || p.deepest_analysis_completed_at
-      ).length,
+      quickOnly: psyops.filter(p => resolveAnalysisStage(p as any) === 'quick').length,
+      deepCount: psyops.filter(p => resolveAnalysisStage(p as any) === 'deep').length,
+      deepestCount: psyops.filter(p => resolveAnalysisStage(p as any) === 'deepest').length,
     };
   }, [filteredPosts]);
 
