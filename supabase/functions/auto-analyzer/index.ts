@@ -31,7 +31,7 @@ function buildBaseCandidateQuery(supabase: any) {
     .in('status', ['new', 'ready'])
     .not('title', 'is', null)
     .not('contents', 'is', null)
-    .not('inoreader_timestamp', 'is', null);
+    .not('inoreader_timestamp_usec', 'is', null);
 }
 
 async function getQuickCandidates(supabase: any, batchSize: number) {
@@ -41,7 +41,7 @@ async function getQuickCandidates(supabase: any, batchSize: number) {
     .in('status', ['new', 'ready'])
     .not('title', 'is', null)
     .not('contents', 'is', null)
-    .not('inoreader_timestamp', 'is', null)
+    .not('inoreader_timestamp_usec', 'is', null)
     .is('quick_analyzed_at', null)
     .or('analysis_stage.is.null,analysis_stage.eq.quick')
     .order('created_at', { ascending: true })
@@ -78,7 +78,7 @@ async function ensurePostExists(
 ): Promise<PostCheckResult> {
   const { data: post, error } = await supabase
     .from("posts")
-    .select("id, title, contents, status, inoreader_timestamp")
+    .select("id, title, contents, status, inoreader_timestamp_usec")
     .eq("id", postId)
     .single();
 
@@ -91,7 +91,7 @@ async function ensurePostExists(
     !post.title ||
     !post.contents ||
     post.status === 'Archived' ||
-    !post.inoreader_timestamp
+    !post.inoreader_timestamp_usec
   ) {
     console.log(`⚠️ Skipped post ${postId} (missing required fields)`);
     return { exists: false, skipped: true };
