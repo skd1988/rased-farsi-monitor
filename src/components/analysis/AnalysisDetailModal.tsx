@@ -59,11 +59,13 @@ type ExtendedAnalyzedPost = AnalyzedPost & {
 };
 
 interface AnalysisDetailModalProps {
-  post: ExtendedAnalyzedPost;
+  post: ExtendedAnalyzedPost | null;
   open: boolean;
   onClose: () => void;
-  onRunDeep?: (post: ExtendedAnalyzedPost) => void;
-  onRunDeepest?: (post: ExtendedAnalyzedPost) => void;
+
+  // optional handlers passed from AIAnalysis page
+  onRunDeep?: (postId: string) => Promise<void> | void;
+  onRunDeepest?: (postId: string) => Promise<void> | void;
 }
 
 const AnalysisDetailModal = ({
@@ -73,6 +75,7 @@ const AnalysisDetailModal = ({
   onRunDeep,
   onRunDeepest,
 }: AnalysisDetailModalProps) => {
+  if (!post) return null;
   const modelLabel = post.analysis_model || "unknown-model";
   const processingTimeLabel =
     post.processing_time !== null && post.processing_time !== undefined
@@ -302,8 +305,8 @@ const AnalysisDetailModal = ({
                     ? "این محتوا واجد شرایط تحلیل عمیق است، اما هنوز اجرا نشده است."
                     : "این محتوا زیر آستانه ریسک برای تحلیل عمیق است."}
                 </p>
-                {isDeepEligible && (
-                  <Button variant="outline" size="sm" onClick={() => onRunDeep?.(post)}>
+                {isDeepEligible && onRunDeep && post && (
+                  <Button variant="outline" size="sm" onClick={() => onRunDeep(post.id)}>
                     اجرای تحلیل عمیق
                   </Button>
                 )}
@@ -405,11 +408,11 @@ const AnalysisDetailModal = ({
                 <p className="text-sm text-muted-foreground">
                   برای این محتوا هنوز تحلیل بحران (Deepest) اجرا نشده است.
                 </p>
-                {isDeepestEligible && (
+                {isDeepestEligible && onRunDeepest && post && (
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => onRunDeepest?.(post)}
+                    onClick={() => onRunDeepest(post.id)}
                   >
                     اجرای تحلیل بحران
                   </Button>
