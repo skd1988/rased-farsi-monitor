@@ -59,11 +59,22 @@ const AIAnalysis = () => {
     // Text search on title and analysis summary
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (post) =>
-          post.title.toLowerCase().includes(q) ||
-          post.analysis_summary?.toLowerCase().includes(q),
-      );
+      filtered = filtered.filter((post) => {
+        const searchableTexts = [
+          post.title,
+          post.analysis_summary,
+          post.quick_summary,
+          post.smart_summary,
+          post.deep_smart_summary,
+          post.deepest_smart_summary,
+          post.extended_summary,
+          post.narrative_core,
+          post.crisis_extended_summary,
+          post.crisis_narrative_core,
+        ];
+
+        return searchableTexts.some((text) => text?.toLowerCase().includes(q));
+      });
     }
 
     // Threat level filter
@@ -89,7 +100,7 @@ const AIAnalysis = () => {
     }
 
     // NEW: Stage filter (all / quick / deep / deepest)
-    if (stageFilter !== "all") {
+    if (!deepestOnly && stageFilter !== "all") {
       filtered = filtered.filter((post) => {
         const stage = post.resolved_stage ?? resolveAnalysisStage(post);
         return stage === stageFilter;
@@ -244,7 +255,7 @@ const AIAnalysis = () => {
           </div>
         </div>
 
-        <AnalysisSummaryCards posts={posts} />
+        <AnalysisSummaryCards posts={filteredPosts} />
 
         {/* Filters */}
         <div className="bg-card border rounded-lg p-4">

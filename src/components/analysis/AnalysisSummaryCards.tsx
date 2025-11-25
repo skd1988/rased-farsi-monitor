@@ -1,27 +1,39 @@
 import React from "react";
 import StatsCard from "@/components/analysis/StatsCard";
 import { AnalyzedPost } from "@/types/analysis";
-import { isPsyopPost, normalizeSentimentValue, resolveAnalysisStage } from "./analysisUtils";
+import { isPsyopPost, normalizeSentimentValue } from "./analysisUtils";
 
 interface Props {
   posts: AnalyzedPost[];
 }
 
 const AnalysisSummaryCards: React.FC<Props> = ({ posts }) => {
-  const completed = posts.filter((p) => p.status === "completed");
+  const completed = posts.filter((p) => {
+    const anyStageDone =
+      p.quick_analyzed_at ||
+      p.deep_analyzed_at ||
+      p.deepest_analysis_completed_at ||
+      p.analyzed_at ||
+      p.analysis_stage;
+
+    return Boolean(anyStageDone);
+  });
 
   const stats = completed.reduce(
     (acc, post) => {
-      const resolvedStage = post.resolved_stage ?? resolveAnalysisStage(post);
       const sentiment = normalizeSentimentValue(post.sentiment);
 
       if (post.threat_level === "Critical") acc.critical += 1;
       if (post.threat_level === "High") acc.high += 1;
       if (sentiment === "Negative") acc.negative += 1;
 
-      if (resolvedStage === "quick") acc.quickOnly += 1;
-      if (resolvedStage === "deep") acc.deep += 1;
-      if (resolvedStage === "deepest") acc.deepest += 1;
+      const hasQuick = Boolean(post.quick_analyzed_at);
+      const hasDeep = Boolean(post.deep_analyzed_at);
+      const hasDeepest = Boolean(post.deepest_analysis_completed_at);
+
+      if (hasQuick && !hasDeep && !hasDeepest) acc.quickOnly += 1;
+      if (hasDeep && !hasDeepest) acc.deep += 1;
+      if (hasDeepest) acc.deepest += 1;
 
       if (isPsyopPost(post)) acc.psyop += 1;
 
