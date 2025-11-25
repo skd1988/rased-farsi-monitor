@@ -60,8 +60,6 @@ serve(async (req) => {
       );
     }
 
-    console.log(`🚀 Starting deepest analysis for post ${postId}`);
-
     const { data: existingPost, error: postError } = await supabase
       .from("posts")
       .select(
@@ -89,6 +87,10 @@ serve(async (req) => {
     );
 
     if (resolvedStage !== "deep" && resolvedStage !== "deepest") {
+      console.warn(
+        `⛔ Post ${postId} is not ready for deepest analysis (resolved stage: ${resolvedStage}, raw: ${rawStage})`,
+      );
+
       return new Response(
         JSON.stringify({
           success: false,
@@ -102,6 +104,8 @@ serve(async (req) => {
         },
       );
     }
+
+    console.log(`🚀 Starting deepest analysis for post ${postId}`);
 
     let relatedPosts = null;
     if (existingPost.source) {

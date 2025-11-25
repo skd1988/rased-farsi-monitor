@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { toPersianNumber } from "@/lib/utils";
 import { AnalyzedPost, AnalysisStage } from "@/types/analysis";
 import { Card } from "@/components/ui/card";
+import { resolveAnalysisStage } from "@/components/analysis/analysisUtils";
 
 type ExtendedAnalyzedPost = AnalyzedPost & {
   analysis_summary?: string | null;
@@ -77,6 +78,8 @@ const AnalysisDetailModal = ({
 }: AnalysisDetailModalProps) => {
   if (!post) return null;
   const modelLabel = post.analysis_model || "unknown-model";
+  const effectiveStage = resolveAnalysisStage(post as any); // "quick" | "deep" | "deepest" | null
+  const canRunDeepest = effectiveStage === "deep" || effectiveStage === "deepest";
   const processingTimeLabel =
     post.processing_time !== null && post.processing_time !== undefined
       ? `${toPersianNumber(post.processing_time.toFixed(1))} ثانیه`
@@ -421,10 +424,19 @@ const AnalysisDetailModal = ({
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => onRunDeepest(post.id)}
+                    disabled={!canRunDeepest}
+                    onClick={() => {
+                      if (!canRunDeepest) return;
+                      onRunDeepest(post.id);
+                    }}
                   >
                     اجرای تحلیل بحران
                   </Button>
+                )}
+                {!canRunDeepest && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    برای اجرای تحلیل بحران، ابتدا باید تحلیل عمیق (Deep) برای این محتوا انجام شود.
+                  </p>
                 )}
               </Card>
             )}
