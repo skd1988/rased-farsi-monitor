@@ -81,12 +81,13 @@ serve(async (req) => {
 
     const rawStage = existingPost?.analysis_stage ?? null;
     const resolvedStage = resolveAnalysisStageFromTimestamps(existingPost);
+    const effectiveStage = resolvedStage ?? rawStage;
 
     console.log(
       `🔎 Deepest-analysis stage check for post ${postId}: resolved=${resolvedStage}, raw=${rawStage}`,
     );
 
-    if (resolvedStage !== "deep" && resolvedStage !== "deepest") {
+    if (effectiveStage !== "deep" && effectiveStage !== "deepest") {
       console.warn(
         `⛔ Post ${postId} is not ready for deepest analysis (resolved stage: ${resolvedStage}, raw: ${rawStage})`,
       );

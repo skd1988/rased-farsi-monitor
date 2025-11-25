@@ -309,11 +309,15 @@ serve(async (req) => {
       stance_type: stanceType,
       psyop_category: psyopCategory,
       psyop_techniques: psyopTechniques,
-      quick_analyzed_at: post.quick_analyzed_at ?? completionTimestamp,
+      quick_analyzed_at: completionTimestamp,
     };
 
     if (!post.deep_analyzed_at && !post.deepest_analysis_completed_at && !post.deepest_analyzed_at) {
-      updateData.analysis_stage = currentStage === "deep" || currentStage === "deepest" ? currentStage : "quick";
+      if (currentStage === "deep" || currentStage === "deepest") {
+        updateData.analysis_stage = currentStage;
+      } else if (!currentStage || currentStage === "quick") {
+        updateData.analysis_stage = "quick";
+      }
     }
 
     const { error: updateError } = await supabase
