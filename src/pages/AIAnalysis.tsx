@@ -214,7 +214,7 @@ const AIAnalysis = () => {
       const { data, error } = await supabase.functions.invoke(
         "analyze-post-deepseek",
         {
-          body: { post_id: postId },
+          body: { postId }, // send postId with correct key
         }
       );
 
@@ -288,12 +288,14 @@ const AIAnalysis = () => {
     high: posts.filter((p) => p.threat_level === "High").length,
     negative: posts.filter((p) => p.sentiment === "Negative").length,
 
-    // 3-level PsyOp stats
+    // 3-level PsyOp stats (using resolver)
     psyop: psyopPosts.length,
     quickOnly: psyopPosts.filter(
       (p) => resolveAnalysisStage(p as any) === "quick"
     ).length,
-    deep: psyopPosts.filter((p) => resolveAnalysisStage(p as any) === "deep").length,
+    deep: psyopPosts.filter(
+      (p) => resolveAnalysisStage(p as any) === "deep"
+    ).length,
     deepest: psyopPosts.filter(
       (p) => resolveAnalysisStage(p as any) === "deepest"
     ).length,
