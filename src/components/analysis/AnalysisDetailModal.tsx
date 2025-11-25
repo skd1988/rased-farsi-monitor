@@ -67,11 +67,23 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
 
   let recommendedActionRaw: string | string[] | null = null;
 
-  if (resolvedStage === 'deepest' && (post as any).deepest_recommended_actions?.length) {
-    recommendedActionRaw = (post as any).deepest_recommended_actions as string[];
-  } else if (resolvedStage === 'deep' && (post as any).recommended_actions?.length) {
-    recommendedActionRaw = (post as any).recommended_actions as string[];
-  } else if (baseRecommendedAction) {
+  if (resolvedStage === 'deepest') {
+    if (post.deepest_recommended_action) {
+      recommendedActionRaw = post.deepest_recommended_action;
+    } else if (Array.isArray((post as any).deepest_recommended_actions) && (post as any).deepest_recommended_actions.length) {
+      recommendedActionRaw = (post as any).deepest_recommended_actions as string[];
+    }
+  }
+
+  if (!recommendedActionRaw && resolvedStage === 'deep') {
+    if (Array.isArray(post.recommended_actions) && post.recommended_actions.length) {
+      recommendedActionRaw = post.recommended_actions;
+    } else if (post.deep_recommended_action) {
+      recommendedActionRaw = post.deep_recommended_action;
+    }
+  }
+
+  if (!recommendedActionRaw && baseRecommendedAction) {
     recommendedActionRaw = baseRecommendedAction;
   }
 

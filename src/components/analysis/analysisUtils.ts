@@ -128,7 +128,13 @@ export const deriveRecommendedAction = (
   if (stage === "deepest") {
     return (
       post.deepest_recommended_action ||
+      (Array.isArray((post as any).deepest_recommended_actions)
+        ? (post as any).deepest_recommended_actions.join("\n")
+        : null) ||
       post.deep_recommended_action ||
+      (Array.isArray(post.recommended_actions)
+        ? post.recommended_actions.join("\n")
+        : null) ||
       post.recommended_action ||
       "هنوز اقدام پیشنهادی ثبت نشده است"
     );
@@ -137,10 +143,19 @@ export const deriveRecommendedAction = (
   if (stage === "deep") {
     return (
       post.deep_recommended_action ||
+      (Array.isArray(post.recommended_actions)
+        ? post.recommended_actions.join("\n")
+        : null) ||
       post.recommended_action ||
       "هنوز اقدام پیشنهادی ثبت نشده است"
     );
   }
 
-  return post.recommended_action || "هنوز اقدام پیشنهادی ثبت نشده است";
+  return (
+    (Array.isArray(post.recommended_actions)
+      ? post.recommended_actions.join("\n")
+      : post.recommended_actions) ||
+    post.recommended_action ||
+    "هنوز اقدام پیشنهادی ثبت نشده است"
+  );
 };
