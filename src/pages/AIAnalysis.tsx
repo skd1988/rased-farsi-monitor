@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/pagination";
 import StatsCard from "@/components/analysis/StatsCard";
 import { useAnalyzedPosts } from "@/hooks/useAnalyzedPosts";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AnalyzedPost {
   id: string;
