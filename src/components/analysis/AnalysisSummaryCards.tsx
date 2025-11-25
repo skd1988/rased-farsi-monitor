@@ -10,11 +10,11 @@ interface Props {
 const AnalysisSummaryCards: React.FC<Props> = ({ posts }) => {
   const completed = posts.filter((p) => {
     const anyStageDone =
-      p.quick_analyzed_at ||
-      p.deep_analyzed_at ||
-      p.deepest_analysis_completed_at ||
+      (p as any).quick_analyzed_at ||
+      (p as any).deep_analyzed_at ||
+      (p as any).deepest_analysis_completed_at ||
       p.analyzed_at ||
-      p.analysis_stage;
+      (p as any).analysis_stage;
 
     return Boolean(anyStageDone);
   });
@@ -27,9 +27,9 @@ const AnalysisSummaryCards: React.FC<Props> = ({ posts }) => {
       if (post.threat_level === "High") acc.high += 1;
       if (sentiment === "Negative") acc.negative += 1;
 
-      const hasQuick = Boolean(post.quick_analyzed_at);
-      const hasDeep = Boolean(post.deep_analyzed_at);
-      const hasDeepest = Boolean(post.deepest_analysis_completed_at);
+      const hasQuick = Boolean((post as any).quick_analyzed_at);
+      const hasDeep = Boolean((post as any).deep_analyzed_at);
+      const hasDeepest = Boolean((post as any).deepest_analysis_completed_at);
 
       if (hasQuick && !hasDeep && !hasDeepest) acc.quickOnly += 1;
       if (hasDeep && !hasDeepest) acc.deep += 1;
@@ -59,7 +59,7 @@ const AnalysisSummaryCards: React.FC<Props> = ({ posts }) => {
 
       <StatsCard title="محتوای جنگ روانی (PsyOp)" value={stats.psyop} icon="🎯" color="red" />
       <StatsCard title="فقط Quick" value={stats.quickOnly} icon="⚡" color="blue" />
-      <StatsCard title="تحلیل عمیق (Deep)" value={stats.deep} icon="🔬" color="orange" />
+      <StatsCard title="تحلیل عمیق (Deep بدون بحران)" value={stats.deep} icon="🔬" color="orange" />
       <StatsCard title="تحلیل بحران (Deepest)" value={stats.deepest} icon="🔥" color="red" pulse={stats.deepest > 0} />
     </div>
   );

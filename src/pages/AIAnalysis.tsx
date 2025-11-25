@@ -60,20 +60,21 @@ const AIAnalysis = () => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((post) => {
-        const searchableTexts = [
+        const textParts: string[] = [
           post.title,
           post.analysis_summary,
-          post.quick_summary,
-          post.smart_summary,
+          (post as any).quick_summary,
+          (post as any).deep_summary,
           post.deep_smart_summary,
           post.deepest_smart_summary,
           post.extended_summary,
           post.narrative_core,
           post.crisis_extended_summary,
           post.crisis_narrative_core,
-        ];
+        ].filter(Boolean) as string[];
 
-        return searchableTexts.some((text) => text?.toLowerCase().includes(q));
+        const haystack = textParts.join(" ").toLowerCase();
+        return haystack.includes(q);
       });
     }
 
@@ -99,19 +100,16 @@ const AIAnalysis = () => {
       filtered = filtered.filter((post) => !isPsyopPost(post));
     }
 
-    // NEW: Stage filter (all / quick / deep / deepest)
-    if (!deepestOnly && stageFilter !== "all") {
-      filtered = filtered.filter((post) => {
-        const stage = post.resolved_stage ?? resolveAnalysisStage(post);
-        return stage === stageFilter;
-      });
-    }
-
-    // NEW: Deepest-only (crisis) filter
+    // Stage / Deepest filters
     if (deepestOnly) {
       filtered = filtered.filter((post) => {
         const stage = post.resolved_stage ?? resolveAnalysisStage(post);
         return stage === "deepest";
+      });
+    } else if (stageFilter !== "all") {
+      filtered = filtered.filter((post) => {
+        const stage = post.resolved_stage ?? resolveAnalysisStage(post);
+        return stage === stageFilter;
       });
     }
 
