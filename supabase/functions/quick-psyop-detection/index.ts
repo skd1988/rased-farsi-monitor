@@ -25,13 +25,14 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { postId, id, post_id } = await req.json();
+    const body = await req.json();
+    const { postId, id, post_id } = body;
     const effectivePostId = postId ?? id ?? post_id;
 
     if (!effectivePostId) {
       return new Response(
         JSON.stringify({ error: "postId is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -52,20 +53,34 @@ serve(async (req) => {
     const thresholds = await loadPsyopThresholds(supabase);
     console.log("Quick detection thresholds:", thresholds);
 
-    // Load post content and metadata
-    const { data: postContent, error: contentErr } = await supabase
+    // NOTE:
+    // We ALWAYS load the post from "posts" table by its primary key only.
+    // Do not add extra filters (status, timestamps, etc.) here,
+    // otherwise auto-analyzer will see false "Post not found" errors.
+    const { data: post, error: fetchError } = await supabase
       .from("posts")
-      .select(
-        "id, title, source, language, contents, summary, analysis_stage, quick_analyzed_at, deep_analyzed_at, deepest_analyzed_at, deepest_analysis_completed_at, is_psyop, psyop_confidence, psyop_risk_score, threat_level, psyop_category, psyop_techniques, stance_type, primary_target",
-      )
+      .select("*")
       .eq("id", effectivePostId)
-      .single();
+      .maybeSingle();
 
-    if (contentErr || !postContent) {
-      console.error("Failed to fetch post for quick analysis", contentErr);
+    if (fetchError) {
+      console.error("❌ quick-psyop-detection: DB fetch error", {
+        postId: String(effectivePostId),
+        error: fetchError,
+      });
+      return new Response(
+        JSON.stringify({ error: "Database error" }),
+        { status: 500, headers: corsHeaders },
+      );
+    }
+
+    if (!post) {
+      console.warn("⚠️ quick-psyop-detection: Post not found in DB", {
+        postId: String(effectivePostId),
+      });
       return new Response(
         JSON.stringify({ error: "Post not found", postId: String(effectivePostId) }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 404, headers: corsHeaders },
       );
     }
 
@@ -79,8 +94,8 @@ serve(async (req) => {
       `${e.name_persian} (${e.name_arabic} / ${e.name_english})`
     ).join(', ') || '';
 
-    const rawSummary = (postContent?.summary || "").trim();
-    const rawContents = (postContent?.contents || "").trim();
+    const rawSummary = (post?.summary || "").trim();
+    const rawContents = (post?.contents || "").trim();
 
     // Build a richer composite snippet to give the LLM more representative context
     const MAX_CHARS = 4000;
@@ -110,9 +125,9 @@ serve(async (req) => {
 
     // Build quick screening prompt
     const prompt = buildQuickPrompt(
-      postContent.title,
-      postContent.source,
-      postContent.language,
+      post.title,
+      post.source,
+      post.language,
       entityList,
       snippet,
     );
@@ -283,7 +298,7 @@ serve(async (req) => {
     console.log('Final normalized result:', normalizedResult);
 
     const completionTimestamp = new Date().toISOString();
-    const currentStage = deriveCurrentStage(postContent);
+    const currentStage = deriveCurrentStage(post);
 
     const updateData: Record<string, any> = {
       is_psyop: normalizedResult.is_psyop,
@@ -294,10 +309,10 @@ serve(async (req) => {
       stance_type: stanceType,
       psyop_category: psyopCategory,
       psyop_techniques: psyopTechniques,
-      quick_analyzed_at: postContent.quick_analyzed_at ?? completionTimestamp,
+      quick_analyzed_at: post.quick_analyzed_at ?? completionTimestamp,
     };
 
-    if (!postContent.deep_analyzed_at && !postContent.deepest_analysis_completed_at && !postContent.deepest_analyzed_at) {
+    if (!post.deep_analyzed_at && !post.deepest_analysis_completed_at && !post.deepest_analyzed_at) {
       updateData.analysis_stage = currentStage === "deep" || currentStage === "deepest" ? currentStage : "quick";
     }
 
