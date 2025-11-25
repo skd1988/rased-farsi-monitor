@@ -105,8 +105,15 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
       ? `${toPersianNumber(post.processing_time.toFixed(1))} ثانیه`
       : null;
 
+  const confidenceValue = post.confidence ?? post.psyop_risk_score ?? null;
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose();
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-2xl">{post.title}</DialogTitle>
@@ -117,7 +124,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
           <div className="flex flex-wrap gap-2 items-center text-sm">
             <Badge variant="outline">{post.source}</Badge>
             {post.author && <span>• {post.author}</span>}
-            <span>• {formatPersianDateTime(post.published_at)}</span>
+            <span>• {post.published_at ? formatPersianDateTime(post.published_at) : 'نامشخص'}</span>
             {post.article_url && (
               <Button variant="link" size="sm" asChild>
                 <a href={post.article_url} target="_blank" rel="noopener noreferrer">
@@ -153,7 +160,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
                   <div>
                     <p className="font-bold text-lg">{threat.label}</p>
                     <p className="text-xs text-muted-foreground">
-                      اطمینان: {post.confidence ? toPersianNumber(post.confidence.toString()) : 'نامشخص'}%
+                      اطمینان: {confidenceValue !== null ? toPersianNumber(confidenceValue.toString()) : 'نامشخص'}%
                     </p>
                   </div>
                 </div>
@@ -189,7 +196,7 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
             </div>
 
             {/* Key Points (اگر ست شده باشد) */}
-            {post.key_points && post.key_points.length > 0 && (
+            {Array.isArray(post.key_points) && post.key_points.length > 0 && (
               <div className="mb-4">
                 <p className="text-sm text-muted-foreground mb-2">نکات کلیدی</p>
                 <ul className="space-y-2">
@@ -217,7 +224,9 @@ const AnalysisDetailModal = ({ post, open, onClose }: AnalysisDetailModalProps) 
 
             {/* Analysis Metadata */}
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-4 border-t">
-              <span>تحلیل شده: {formatPersianDateTime(post.analyzed_at)}</span>
+              <span>
+                تحلیل شده: {post.analyzed_at ? formatPersianDateTime(post.analyzed_at) : 'نامشخص'}
+              </span>
               <span>•</span>
               <span>مدل: {modelLabel}</span>
               {processingTimeLabel && (
