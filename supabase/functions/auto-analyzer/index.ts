@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { startJobRun, finishJobRun } from "../_shared/cronMonitor.ts";
 
+// NOTE: posts.inoreader_timestamp_usec is the only Inoreader timestamp column.
+// Do not use "inoreader_timestamp" — it does not exist in the schema.
+
 // Helpful sanity queries for validating stage counts:
 // SELECT count(*) FROM posts WHERE is_psyop = true;
 // SELECT count(*) FROM posts WHERE is_psyop = true AND quick_analyzed_at IS NOT NULL AND deep_analyzed_at IS NULL AND deepest_analysis_completed_at IS NULL;
