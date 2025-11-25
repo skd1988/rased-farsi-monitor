@@ -23,11 +23,17 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
-  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) return "deepest";
-  if (post?.deep_analyzed_at) return "deep";
-  if (post?.quick_analyzed_at) return "quick";
-  return post?.analysis_stage ?? null;
+function resolveAnalysisStageFromTimestamps(
+  post: any,
+): "quick" | "deep" | "deepest" | null {
+  const hasQuick = !!post?.quick_analyzed_at;
+  const hasDeep = !!post?.deep_analyzed_at;
+  const hasDeepest = !!post?.deepest_analysis_completed_at;
+
+  if (hasDeepest) return "deepest";
+  if (hasDeep) return "deep";
+  if (hasQuick) return "quick";
+  return null;
 }
 
 serve(async (req) => {
@@ -56,7 +62,7 @@ serve(async (req) => {
 
     console.log(`🚀 Starting deepest analysis for post ${postId}`);
 
-    const { data: post, error: postError } = await supabase
+    const { data: existingPost, error: postError } = await supabase
       .from("posts")
       .select(
         "id, title, source, language, contents, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_core, urgency_level, virality_potential",
@@ -64,7 +70,7 @@ serve(async (req) => {
       .eq("id", postId)
       .single();
 
-    if (postError || !post) {
+    if (postError || !existingPost) {
       console.error("Post fetch error", postError);
       return new Response(
         JSON.stringify({ error: "Post not found" }),
@@ -75,23 +81,36 @@ serve(async (req) => {
       );
     }
 
-    const currentStage = deriveCurrentStage(post);
-    if (currentStage !== "deep" && currentStage !== "deepest") {
-      console.warn(`Skipping deepest analysis for post ${postId}: stage=${currentStage}`);
+    const rawStage = existingPost?.analysis_stage ?? null;
+    const resolvedStage = resolveAnalysisStageFromTimestamps(existingPost);
+
+    console.log(
+      `🔎 Deepest-analysis stage check for post ${postId}: resolved=${resolvedStage}, raw=${rawStage}`,
+    );
+
+    if (resolvedStage !== "deep" && resolvedStage !== "deepest") {
       return new Response(
-        JSON.stringify({ error: "Post not ready for deepest analysis" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          success: false,
+          error: "Post not ready for deepest analysis",
+          stage: resolvedStage,
+          raw_stage: rawStage,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
     let relatedPosts = null;
-    if (post.source) {
+    if (existingPost.source) {
       const { data: relatedData, error: relatedError } = await supabase
         .from("posts")
         .select("title, analysis_summary")
-        .eq("source", post.source)
+        .eq("source", existingPost.source)
         .eq("is_psyop", true)
-        .neq("id", post.id)
+        .neq("id", existingPost.id)
         .order("published_at", { ascending: false })
         .limit(5);
 
@@ -102,7 +121,7 @@ serve(async (req) => {
       }
     }
 
-    const prompt = buildDeepestPrompt(post, relatedPosts ?? []);
+    const prompt = buildDeepestPrompt(existingPost, relatedPosts ?? []);
     const llmResult = await callDeepseekWithRetry(prompt, DEEPSEEK_API_KEY);
     const parsedResult = parseDeepestResult(llmResult);
     const normalizedEscalation = normalizeEscalationLevel(
@@ -111,13 +130,18 @@ serve(async (req) => {
 
     console.log("✅ Parsed deepest analysis JSON:", parsedResult);
 
+    const now = new Date().toISOString();
+    const deepestAnalyzedAt = existingPost.deepest_analyzed_at ?? now;
+    const deepestAnalysisCompletedAt =
+      existingPost.deepest_analysis_completed_at ?? now;
+
     const { error: updateError } = await supabase
       .from("posts")
       .update({
         analysis_stage: "deepest",
         status: "completed",
-        deepest_analyzed_at: new Date().toISOString(),
-        deepest_analysis_completed_at: new Date().toISOString(),
+        deepest_analyzed_at: deepestAnalyzedAt,
+        deepest_analysis_completed_at: deepestAnalysisCompletedAt,
 
         deepest_escalation_level: normalizedEscalation,
         deepest_strategic_summary: parsedResult.strategic_summary ?? null,
