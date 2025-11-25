@@ -250,7 +250,7 @@ const AIAnalysis = () => {
       console.log("▶️ Running deepest analysis for post", postId);
 
       const { data, error } = await supabase.functions.invoke("deepest-analysis", {
-        body: { post_id: postId },
+        body: { postId: postId },
       });
 
       if (error) {
