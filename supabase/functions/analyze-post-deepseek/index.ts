@@ -55,6 +55,13 @@ function normalizeSentiment(
   return null;
 }
 
+function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
+  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) return "deepest";
+  if (post?.deep_analyzed_at) return "deep";
+  if (post?.quick_analyzed_at) return "quick";
+  return post?.analysis_stage ?? null;
+}
+
 function cleanJsonFromModel(raw: string): any {
   const cleaned = raw
     .replace(/```json\s*/gi, "")
@@ -134,15 +141,7 @@ serve(async (req) => {
 
     const startTime = Date.now();
 
-    const {
-      postId,
-      title,
-      contents,
-      source,
-      language,
-      published_at,
-      quickDetectionResult,
-    } = await req.json();
+    const { postId } = await req.json();
 
     if (!postId) {
       return new Response(
@@ -154,7 +153,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`🚀 Starting deep analysis for post ${postId}: ${title}`);
+    console.log(`🚀 Starting deep analysis for post ${postId}`);
 
     if (!DEEPSEEK_API_KEY) {
       throw new Error("DEEPSEEK_API_KEY not configured");
@@ -175,44 +174,27 @@ serve(async (req) => {
       ? `نتایج غربالگری سریع (در پایگاه داده):
 - is_psyop: ${existingPost.is_psyop}
 - psyop_confidence: ${existingPost.psyop_confidence}
+- threat_level: ${existingPost.threat_level}
+- psyop_risk_score: ${existingPost.psyop_risk_score}
 - stance_type: ${existingPost.stance_type}
 - psyop_category: ${existingPost.psyop_category}
 - psyop_techniques: ${
-        Array.isArray(existingPost.psyop_technique)
-          ? existingPost.psyop_technique.join(", ")
-          : existingPost.psyop_technique
-      }
+          Array.isArray(existingPost.psyop_techniques)
+            ? existingPost.psyop_techniques.join(", ")
+            : existingPost.psyop_techniques
+        }
 
 `
       : "";
 
     // 2) ساخت پرامپت فارسی برای DeepSeek
-    const userPrompt = `${
-      quickDetectionResult
-        ? `نتیجه غربالگری سریع (ارسال‌شده در درخواست):
-- is_psyop: ${
-            quickDetectionResult.is_psyop ??
-            (quickDetectionResult?.psyop_confidence ? "Yes" : "Uncertain")
-          }
-- psyop_confidence: ${quickDetectionResult.psyop_confidence}
-- threat_level: ${quickDetectionResult.threat_level}
-- primary_target: ${quickDetectionResult.primary_target || "نامشخص"}
-- psyop_category: ${quickDetectionResult.psyop_category || "نامشخص"}
-- psyop_techniques: ${
-            Array.isArray(quickDetectionResult.psyop_technique)
-              ? quickDetectionResult.psyop_technique.join(", ")
-              : quickDetectionResult.psyop_technique || "نامشخص"
-          }
+    const userPrompt = `${quickScreeningContext}تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده:
 
-`
-        : ""
-    }${quickScreeningContext}تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده:
-
-عنوان: ${title}
-محتوا: ${contents}
-منبع: ${source}
-زبان: ${language}
-تاریخ: ${published_at}
+عنوان: ${existingPost?.title ?? "(none)"}
+محتوا: ${existingPost?.contents ?? existingPost?.summary ?? ""}
+منبع: ${existingPost?.source ?? "نامشخص"}
+زبان: ${existingPost?.language ?? "نامشخص"}
+تاریخ: ${existingPost?.published_at ?? "نامشخص"}
 
 خروجی باید فقط یک شیء JSON با ساختار زیر باشد (بدون هیچ متن اضافی یا مارک‌داون). توجه کن که تمام فیلدهای متنی (به‌جز techniques و keywords) باید حتماً به زبان فارسی باشند:
 
@@ -330,9 +312,8 @@ serve(async (req) => {
 
     // 5) آپدیت ردیف posts
     const completionTimestamp = new Date().toISOString();
-    const nextStage = existingPost?.analysis_stage === "deepest"
-      ? "deepest"
-      : "deep";
+    const currentStage = deriveCurrentStage(existingPost);
+    const nextStage = currentStage === "deepest" ? "deepest" : "deep";
 
     const updateData: Record<string, any> = {
       analysis_summary: extendedSummary ?? existingPost?.analysis_summary ?? null,
@@ -346,22 +327,31 @@ serve(async (req) => {
         psychologicalObjectives ?? existingPost?.psychological_objectives ?? null,
       manipulation_intensity:
         manipulationIntensity ?? existingPost?.manipulation_intensity ?? null,
-      techniques: techniques ?? existingPost?.techniques ?? existingPost?.psyop_technique ?? null,
+      techniques:
+        techniques ?? existingPost?.techniques ?? existingPost?.psyop_techniques ?? null,
       recommended_actions:
         recommendedActions ?? existingPost?.recommended_actions ?? null,
       recommended_action: recommendedActions
         ? recommendedActions.join("\n")
         : existingPost?.recommended_action ?? null,
+
       deep_main_topic: existingPost?.deep_main_topic ?? narrativeCore ?? null,
       deep_smart_summary:
         extendedSummary ?? narrativeCore ?? existingPost?.deep_smart_summary ?? null,
+      deep_extended_summary:
+        extendedSummary ?? existingPost?.deep_extended_summary ?? null,
+      deep_psychological_objectives:
+        psychologicalObjectives ?? existingPost?.deep_psychological_objectives ?? null,
+      deep_manipulation_intensity:
+        manipulationIntensity ?? existingPost?.deep_manipulation_intensity ?? null,
+      deep_techniques:
+        techniques ?? existingPost?.deep_techniques ?? existingPost?.psyop_techniques ?? null,
+      deep_keywords: keywords ?? existingPost?.deep_keywords ?? existingPost?.keywords ?? null,
+      deep_recommended_actions:
+        recommendedActions ?? existingPost?.deep_recommended_actions ?? null,
       deep_recommended_action: recommendedActions
         ? recommendedActions.join("\n")
         : existingPost?.deep_recommended_action ?? null,
-      deep_psychological_objectives:
-        psychologicalObjectives ?? existingPost?.deep_psychological_objectives ?? null,
-      deep_techniques:
-        techniques ?? existingPost?.deep_techniques ?? existingPost?.psyop_technique ?? null,
 
       // Preserve quick-screen fields when Deep is missing values
       is_psyop: typeof analysisResult?.is_psyop === "boolean"
@@ -375,14 +365,19 @@ serve(async (req) => {
 
       // ✅ sentiment را نرمال و ذخیره می‌کنیم تا با کانسترینت DB سازگار باشد
       sentiment: sentimentValue ?? existingPost?.sentiment ?? null,
+      urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
+      virality_potential:
+        viralityPotential ?? existingPost?.virality_potential ?? null,
+
+      // Deep-level mirrors
+      deep_sentiment: sentimentValue ?? existingPost?.deep_sentiment ?? null,
+      deep_urgency_level: urgencyLevel ?? existingPost?.deep_urgency_level ?? null,
+      deep_virality_potential:
+        viralityPotential ?? existingPost?.deep_virality_potential ?? null,
 
       threat_level: existingPost?.threat_level ?? null,
       confidence: existingPost?.psyop_confidence ?? null,
       key_points: existingPost?.key_points ?? null,
-
-      urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
-      virality_potential:
-        viralityPotential ?? existingPost?.virality_potential ?? null,
 
       analyzed_at: completionTimestamp,
       analysis_model: "deepseek-chat",

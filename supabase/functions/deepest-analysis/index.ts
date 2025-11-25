@@ -23,6 +23,13 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
+function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
+  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) return "deepest";
+  if (post?.deep_analyzed_at) return "deep";
+  if (post?.quick_analyzed_at) return "quick";
+  return post?.analysis_stage ?? null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -68,6 +75,15 @@ serve(async (req) => {
       );
     }
 
+    const currentStage = deriveCurrentStage(post);
+    if (currentStage !== "deep" && currentStage !== "deepest") {
+      console.warn(`Skipping deepest analysis for post ${postId}: stage=${currentStage}`);
+      return new Response(
+        JSON.stringify({ error: "Post not ready for deepest analysis" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     let relatedPosts = null;
     if (post.source) {
       const { data: relatedData, error: relatedError } = await supabase
@@ -100,6 +116,7 @@ serve(async (req) => {
       .update({
         analysis_stage: "deepest",
         status: "completed",
+        deepest_analyzed_at: new Date().toISOString(),
         deepest_analysis_completed_at: new Date().toISOString(),
 
         deepest_escalation_level: normalizedEscalation,

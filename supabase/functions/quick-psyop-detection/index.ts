@@ -6,6 +6,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
+  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) return "deepest";
+  if (post?.deep_analyzed_at) return "deep";
+  if (post?.quick_analyzed_at) return "quick";
+  return post?.analysis_stage ?? null;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -15,8 +22,15 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { postId, title, source, language } = await req.json();
-    
+    const { postId } = await req.json();
+
+    if (!postId) {
+      return new Response(
+        JSON.stringify({ error: "postId is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     console.log(`Quick screening post: ${postId}`);
     
     // Get DeepSeek API key
@@ -34,21 +48,32 @@ serve(async (req) => {
     const thresholds = await loadPsyopThresholds(supabase);
     console.log("Quick detection thresholds:", thresholds);
 
+    // Load post content and metadata
+    const { data: postContent, error: contentErr } = await supabase
+      .from("posts")
+      .select(
+        "id, title, source, language, contents, summary, analysis_stage, quick_analyzed_at, deep_analyzed_at, deepest_analyzed_at, deepest_analysis_completed_at, is_psyop, psyop_confidence, psyop_risk_score, threat_level, psyop_category, psyop_techniques, stance_type, primary_target",
+      )
+      .eq("id", postId)
+      .single();
+
+    if (contentErr || !postContent) {
+      console.error("Failed to fetch post for quick analysis", contentErr);
+      return new Response(
+        JSON.stringify({ error: "Post not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     // Load entity list for reference
     const { data: entities } = await supabase
       .from('resistance_entities')
       .select('name_english, name_persian, name_arabic')
       .eq('active', true);
-    
+
     const entityList = entities?.map(e =>
       `${e.name_persian} (${e.name_arabic} / ${e.name_english})`
     ).join(', ') || '';
-
-    const { data: postContent, error: contentErr } = await supabase
-      .from("posts")
-      .select("contents, summary")
-      .eq("id", postId)
-      .single();
 
     const rawSummary = (postContent?.summary || "").trim();
     const rawContents = (postContent?.contents || "").trim();
@@ -80,7 +105,13 @@ serve(async (req) => {
     const snippet = combined.slice(0, MAX_CHARS);
 
     // Build quick screening prompt
-    const prompt = buildQuickPrompt(title, source, language, entityList, snippet);
+    const prompt = buildQuickPrompt(
+      postContent.title,
+      postContent.source,
+      postContent.language,
+      entityList,
+      snippet,
+    );
     
     // Call DeepSeek API with retry logic
     let deepseekData;
@@ -247,18 +278,28 @@ serve(async (req) => {
 
     console.log('Final normalized result:', normalizedResult);
 
+    const completionTimestamp = new Date().toISOString();
+    const currentStage = deriveCurrentStage(postContent);
+
+    const updateData: Record<string, any> = {
+      is_psyop: normalizedResult.is_psyop,
+      psyop_confidence: normalizedResult.psyop_confidence,
+      threat_level: normalizedResult.threat_level,
+      primary_target: normalizedResult.primary_target,
+      psyop_risk_score: riskScore,
+      stance_type: stanceType,
+      psyop_category: psyopCategory,
+      psyop_techniques: psyopTechniques,
+      quick_analyzed_at: postContent.quick_analyzed_at ?? completionTimestamp,
+    };
+
+    if (!postContent.deep_analyzed_at && !postContent.deepest_analysis_completed_at && !postContent.deepest_analyzed_at) {
+      updateData.analysis_stage = currentStage === "deep" || currentStage === "deepest" ? currentStage : "quick";
+    }
+
     const { error: updateError } = await supabase
       .from("posts")
-      .update({
-        is_psyop: normalizedResult.is_psyop,
-        psyop_confidence: normalizedResult.psyop_confidence,
-        threat_level: normalizedResult.threat_level,
-        primary_target: normalizedResult.primary_target,
-        psyop_risk_score: riskScore,
-        stance_type: stanceType,
-        psyop_category: psyopCategory,
-        psyop_techniques: psyopTechniques,
-      })
+      .update(updateData)
       .eq("id", postId);
 
     if (updateError) {
