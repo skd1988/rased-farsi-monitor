@@ -2,124 +2,39 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { startJobRun, finishJobRun } from "../_shared/cronMonitor.ts";
 
+// Helpful sanity queries for validating stage counts:
+// SELECT count(*) FROM posts WHERE is_psyop = true;
+// SELECT count(*) FROM posts WHERE is_psyop = true AND quick_analyzed_at IS NOT NULL AND deep_analyzed_at IS NULL AND deepest_analysis_completed_at IS NULL;
+// SELECT count(*) FROM posts WHERE is_psyop = true AND deep_analyzed_at IS NOT NULL AND deepest_analysis_completed_at IS NULL;
+// SELECT count(*) FROM posts WHERE is_psyop = true AND deepest_analysis_completed_at IS NOT NULL;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface Post {
-  id: string;
-  title: string;
-  contents: string;
-  source: string;
-  language: string;
-  published_at: string;
+interface StageResult {
+  processed: number;
+  succeeded: number;
+  failed: number;
 }
 
-interface QueueItem {
-  id: string;
-  post_id: string;
-  priority: number;
-  posts: Post;
-}
-
-interface QuickAnalysisResult {
-  is_psyop?: boolean | null;
-  psyop_confidence?: number | null;
-  threat_level?: string | null;
-  psyop_risk_score?: number | null;
-  stance_type?: string | null;
-  psyop_category?: string | null;
-  psyop_techniques?: unknown;
-  primary_target?: string | null;
-}
-
-function normalizeQuickResult(raw: any): QuickAnalysisResult {
-  const psyopRiskScore = typeof raw?.psyop_risk_score === "number"
-    ? raw.psyop_risk_score
-    : typeof raw?.riskScore === "number"
-      ? raw.riskScore
-      : null;
-
-  const psyopConfidence = typeof raw?.psyop_confidence === "number"
-    ? raw.psyop_confidence
-    : typeof raw?.confidence === "number"
-      ? raw.confidence
-      : null;
-
-  return {
-    is_psyop: raw?.is_psyop ?? null,
-    psyop_confidence: psyopConfidence,
-    threat_level: raw?.threat_level ?? raw?.threatLevel ?? null,
-    psyop_risk_score: psyopRiskScore,
-    stance_type: raw?.stance_type ?? raw?.stanceType ?? null,
-    psyop_category: raw?.psyop_category ?? raw?.psyopCategory ?? null,
-    psyop_techniques: raw?.psyop_techniques ?? raw?.psyopTechniques,
-    primary_target: raw?.primary_target ?? raw?.primaryTarget ?? null,
-  };
-}
-
-function needsDeepAnalysis(
-  post: QuickAnalysisResult & { postId: string }
-): boolean {
-  const threatLevel = post.threat_level;
-  const psyopConfidence = post.psyop_confidence ?? 0;
-  const psyopCategory = post.psyop_category;
-  const isPsyop = post.is_psyop === true;
-
-  const result = Boolean(
-    isPsyop ||
-    (threatLevel === "High" || threatLevel === "Critical") ||
-    (threatLevel === "Medium" && psyopConfidence >= 70) ||
-    (psyopCategory === "potential_psyop" || psyopCategory === "confirmed_psyop")
-  );
-
-  console.log("⚠️ [AutoAnalyzer] needsDeepAnalysis?", {
-    postId: post.postId,
-    is_psyop: post.is_psyop,
-    threat_level: threatLevel,
-    psyop_confidence: post.psyop_confidence,
-    psyop_category: psyopCategory,
-    result,
+async function callEdgeFunction(url: string, body: Record<string, unknown>, serviceKey: string) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify(body),
   });
 
-  return result;
-}
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`${url} failed with status ${response.status}: ${text}`);
+  }
 
-function shouldRunDeepest(
-  post: QuickAnalysisResult & { postId: string }
-): boolean {
-  const threatLevel = post.threat_level;
-  const psyopCategory = post.psyop_category;
-  const stanceType = post.stance_type;
-  const riskScore = post.psyop_risk_score ?? 0;
-  const isPsyop = post.is_psyop === true;
-
-  const meetsRiskThreshold = riskScore >= 80;
-  const meetsThreatOrCategory =
-    threatLevel === "High" ||
-    threatLevel === "Critical" ||
-    psyopCategory === "confirmed_psyop" ||
-    psyopCategory === "suspected_psyop";
-
-  const result = Boolean(
-    isPsyop &&
-    meetsRiskThreshold &&
-    meetsThreatOrCategory &&
-    stanceType === "hostile_propaganda"
-  );
-
-  console.log("⚠️ [AutoAnalyzer] shouldRunDeepest?", {
-    postId: post.postId,
-    is_psyop: post.is_psyop,
-    threat_level: threatLevel,
-    psyop_risk_score: post.psyop_risk_score,
-    stance_type: stanceType,
-    psyop_category: psyopCategory,
-    result,
-  });
-
-  return result;
+  return response;
 }
 
 serve(async (req) => {
@@ -140,11 +55,6 @@ serve(async (req) => {
     // Initialize Supabase client with service role
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const deepseekApiKey = Deno.env.get('DEEPSEEK_API_KEY');
-
-    if (!deepseekApiKey) {
-      throw new Error('DEEPSEEK_API_KEY not configured');
-    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -173,286 +83,125 @@ serve(async (req) => {
       .eq('config_key', 'batch_size')
       .single();
 
-    const batchSize = parseInt(batchConfig?.config_value || '20');
+    const batchSize = parseInt(batchConfig?.config_value || '20', 10);
 
-    // Get pending items from queue
-    const { data: queueItems, error: queueError } = await supabase
-      .from('analysis_queue')
-      .select(`
-        id,
-        post_id,
-        priority,
-        posts (
-          id,
-          title,
-          contents,
-          source,
-          language,
-          published_at
-        )
-      `)
-      .eq('status', 'pending')
-      .order('priority', { ascending: true })
+    const totals: StageResult = { processed: 0, succeeded: 0, failed: 0 };
+
+    // --------------------
+    // QUICK SCREENING
+    // --------------------
+    const { data: quickCandidates, error: quickError } = await supabase
+      .from('posts')
+      .select('id')
+      .is('quick_analyzed_at', null)
       .order('created_at', { ascending: true })
       .limit(batchSize);
 
-    if (queueError) {
-      throw queueError;
-    }
+    if (quickError) throw quickError;
 
-    if (!queueItems || queueItems.length === 0) {
-      console.log('📭 No pending posts in queue');
-      const response = new Response(
-        JSON.stringify({ message: 'No pending posts', processed: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-      httpStatus = response.status;
-      await finishJobRun(runId, "success", httpStatus, undefined, { jobName });
-      return response;
-    }
+    console.log(`🧭 Quick screening candidates: ${quickCandidates?.length || 0}`);
 
-    console.log(`📊 Processing ${queueItems.length} posts from queue`);
-
-    let processed = 0;
-    let succeeded = 0;
-    let failed = 0;
-
-    // Process each item
-    for (const item of queueItems as QueueItem[]) {
+    for (const candidate of quickCandidates ?? []) {
       try {
-        // Mark as processing
-        await supabase
-          .from('analysis_queue')
-          .update({
-            status: 'processing',
-            started_at: new Date().toISOString()
-          })
-          .eq('id', item.id);
-
-        console.log(`🔍 [AutoAnalyzer] Running QUICK analysis for post ${item.post_id}...`);
-
-        // Call quick-psyop-detection first (stage 1)
-        const quickResponse = await fetch(`${supabaseUrl}/functions/v1/quick-psyop-detection`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`
-          },
-          body: JSON.stringify({
-            postId: item.post_id,
-            title: item.posts.title,
-            contents: item.posts.contents,
-            source: item.posts.source,
-            language: item.posts.language,
-            published_at: item.posts.published_at
-          })
-        });
-
-        if (!quickResponse.ok) {
-          throw new Error(`Quick analysis failed: ${quickResponse.status}`);
-        }
-
-        const quickData = await quickResponse.json();
-        const quickResult = quickData.result || quickData;
-
-        const isPsyop =
-          quickResult.is_psyop === true ||
-          quickResult.is_psyop === "Yes";
-
-        const threatLevel: string = quickResult.threat_level || "Low";
-
-        const riskScore: number =
-          typeof quickResult.psyop_risk_score === "number"
-            ? quickResult.psyop_risk_score
-            : typeof quickResult.riskScore === "number"
-              ? quickResult.riskScore
-              : 0;
-
-        const isHighThreat =
-          threatLevel === "High" || threatLevel === "Critical";
-
-        const needsDeepestFlag =
-          quickResult.needs_deepest_analysis === true;
-
-        console.log(
-          `✅ Quick analysis: is_psyop=${isPsyop}, threat=${threatLevel}, risk=${riskScore}`
+        await callEdgeFunction(
+          `${supabaseUrl}/functions/v1/quick-psyop-detection`,
+          { postId: candidate.id },
+          supabaseServiceKey,
         );
-
-        // Update post with quick analysis results
-        await supabase
-          .from("posts")
-          .update({
-            is_psyop: isPsyop,
-            psyop_confidence: quickResult.psyop_confidence ?? null,
-            psyop_risk_score: riskScore,
-            threat_level: threatLevel,
-            analysis_stage: "quick",
-            quick_analyzed_at: new Date().toISOString(),
-            analyzed_at: new Date().toISOString()
-          })
-          .eq("id", item.post_id);
-
-        // Decide what to run next (Option B):
-        // - All PsyOp posts => run Deep
-        // - Only high-risk PsyOp => run Deepest as an extra stage
-        let shouldRunDeep = false;
-        let shouldRunDeepest = false;
-
-        if (isPsyop) {
-          shouldRunDeep = true;
-
-          if (isHighThreat || riskScore >= 80 || needsDeepestFlag) {
-            shouldRunDeepest = true;
-          }
-        }
-
-        // STAGE 2: Deep analysis (always for PsyOp posts)
-        if (shouldRunDeep) {
-          console.log(`🔬 Running deep analysis for PsyOp post...`);
-          const deepResponse = await fetch(
-            `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${supabaseServiceKey}`
-              },
-              body: JSON.stringify({
-                postId: item.post_id,
-                title: item.posts.title,
-                contents: item.posts.contents,
-                source: item.posts.source,
-                language: item.posts.language,
-                published_at: item.posts.published_at,
-                quickDetectionResult: quickResult
-              })
-            }
-          );
-
-          if (!deepResponse.ok) {
-            console.warn(
-              `⚠️ Deep analysis failed for post ${item.post_id}: ${deepResponse.status}`
-            );
-            // Continue with quick-only data; stage stays "quick"
-          } else {
-            console.log(`✅ Deep analysis completed for post ${item.post_id}`);
-            // Mark post as deep-analyzed
-            await supabase
-              .from("posts")
-              .update({
-                analysis_stage: "deep",
-                deep_analyzed_at: new Date().toISOString()
-              })
-              .eq("id", item.post_id);
-          }
-        }
-
-        // STAGE 3: Deepest (crisis) analysis for high-risk PsyOp posts
-        if (shouldRunDeepest) {
-          console.log(`🧠 Running deepest (crisis) analysis for post ${item.post_id}...`);
-          const deepestResponse = await fetch(
-            `${supabaseUrl}/functions/v1/analyze-post-deepest`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${supabaseServiceKey}`
-              },
-              body: JSON.stringify({
-                postId: item.post_id,
-                quickResult: quickResult
-              })
-            }
-          );
-
-          if (!deepestResponse.ok) {
-            console.warn(
-              `⚠️ Deepest analysis failed for post ${item.post_id}: ${deepestResponse.status}`
-            );
-          } else {
-            console.log(`🔥 Deepest (crisis) analysis completed for post ${item.post_id}`);
-            await supabase
-              .from("posts")
-              .update({
-                analysis_stage: "deepest",
-                deepest_analysis_completed_at: new Date().toISOString()
-              })
-              .eq("id", item.post_id);
-          }
-        }
-
-        // Mark queue item as completed
-        await supabase
-          .from('analysis_queue')
-          .update({ 
-            status: 'completed',
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', item.id);
-
-        succeeded++;
-        processed++;
-
+        totals.succeeded += 1;
       } catch (error) {
-        console.error(`❌ Error processing post ${item.post_id}:`, error);
-        
-        // Update queue with error
-        const { data: currentItem } = await supabase
-          .from('analysis_queue')
-          .select('retry_count, max_retries')
-          .eq('id', item.id)
-          .single();
-
-        const retryCount = (currentItem?.retry_count || 0) + 1;
-        const maxRetries = currentItem?.max_retries || 3;
-
-        if (retryCount >= maxRetries) {
-          // Max retries reached, mark as failed
-          await supabase
-            .from('analysis_queue')
-            .update({
-              status: 'failed',
-              error_message: error.message,
-              completed_at: new Date().toISOString()
-            })
-            .eq('id', item.id);
-        } else {
-          // Reset to pending for retry
-          await supabase
-            .from('analysis_queue')
-            .update({
-              status: 'pending',
-              retry_count: retryCount,
-              error_message: error.message
-            })
-            .eq('id', item.id);
-        }
-
-        failed++;
-        processed++;
+        console.error(`❌ Quick analysis failed for post ${candidate.id}:`, error);
+        totals.failed += 1;
       }
+      totals.processed += 1;
+    }
+
+    // --------------------
+    // DEEP ANALYSIS
+    // --------------------
+    const { data: deepCandidates, error: deepError } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('is_psyop', true)
+      .not('quick_analyzed_at', 'is', null)
+      .is('deep_analyzed_at', null)
+      .gte('psyop_risk_score', 60)
+      .in('threat_level', ['Medium', 'High', 'Critical'])
+      .order('created_at', { ascending: true })
+      .limit(batchSize);
+
+    if (deepError) throw deepError;
+
+    console.log(`🔬 Deep analysis candidates: ${deepCandidates?.length || 0}`);
+
+    for (const candidate of deepCandidates ?? []) {
+      try {
+        await callEdgeFunction(
+          `${supabaseUrl}/functions/v1/analyze-post-deepseek`,
+          { postId: candidate.id },
+          supabaseServiceKey,
+        );
+        totals.succeeded += 1;
+      } catch (error) {
+        console.error(`❌ Deep analysis failed for post ${candidate.id}:`, error);
+        totals.failed += 1;
+      }
+      totals.processed += 1;
+    }
+
+    // --------------------
+    // DEEPEST ANALYSIS
+    // --------------------
+    const { data: deepestCandidates, error: deepestError } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('is_psyop', true)
+      .not('deep_analyzed_at', 'is', null)
+      .is('deepest_analysis_completed_at', null)
+      .gte('psyop_risk_score', 80)
+      .in('threat_level', ['High', 'Critical'])
+      .order('created_at', { ascending: true })
+      .limit(batchSize);
+
+    if (deepestError) throw deepestError;
+
+    console.log(`🧠 Deepest analysis candidates: ${deepestCandidates?.length || 0}`);
+
+    for (const candidate of deepestCandidates ?? []) {
+      try {
+        await callEdgeFunction(
+          `${supabaseUrl}/functions/v1/deepest-analysis`,
+          { postId: candidate.id },
+          supabaseServiceKey,
+        );
+        totals.succeeded += 1;
+      } catch (error) {
+        console.error(`❌ Deepest analysis failed for post ${candidate.id}:`, error);
+        totals.failed += 1;
+      }
+      totals.processed += 1;
     }
 
     // Update stats
     await supabase.rpc('increment_auto_analysis_stats', {
       p_date: new Date().toISOString().split('T')[0],
-      p_analyzed: succeeded,
-      p_failed: failed
+      p_analyzed: totals.succeeded,
+      p_failed: totals.failed,
     });
 
-    console.log(`✅ Auto Analyzer completed: ${succeeded} succeeded, ${failed} failed`);
+    console.log(`✅ Auto Analyzer completed: ${totals.succeeded} succeeded, ${totals.failed} failed`);
 
     const response = new Response(
       JSON.stringify({
         success: true,
-        processed,
-        succeeded,
-        failed,
-        message: `Processed ${processed} posts`
+        processed: totals.processed,
+        succeeded: totals.succeeded,
+        failed: totals.failed,
+        message: `Processed ${totals.processed} analyses across stages`,
       }),
       {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
     httpStatus = response.status;
@@ -464,11 +213,11 @@ serve(async (req) => {
     const response = new Response(
       JSON.stringify({
         success: false,
-        error: error.message
+        error: (error as Error).message,
       }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
     httpStatus = response.status;
