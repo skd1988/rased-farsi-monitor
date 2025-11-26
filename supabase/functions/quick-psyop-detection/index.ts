@@ -6,12 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
-  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) return "deepest";
-  if (post?.deep_analyzed_at) return "deep";
-  if (post?.quick_analyzed_at) return "quick";
-  return post?.analysis_stage ?? null;
-}
 
 // NOTE: This function expects a post ID.
 // We accept { postId }, { id } or { post_id } in the request body
@@ -297,28 +291,21 @@ serve(async (req) => {
 
     console.log('Final normalized result:', normalizedResult);
 
-    const completionTimestamp = new Date().toISOString();
-    const currentStage = deriveCurrentStage(post);
+   const completionTimestamp = new Date().toISOString();
 
-    const updateData: Record<string, any> = {
-      is_psyop: normalizedResult.is_psyop,
-      psyop_confidence: normalizedResult.psyop_confidence,
-      threat_level: normalizedResult.threat_level,
-      primary_target: normalizedResult.primary_target,
-      psyop_risk_score: riskScore,
-      stance_type: stanceType,
-      psyop_category: psyopCategory,
-      psyop_techniques: psyopTechniques,
-      quick_analyzed_at: completionTimestamp,
-    };
+const updateData: Record<string, any> = {
+  is_psyop: normalizedResult.is_psyop,
+  psyop_confidence: normalizedResult.psyop_confidence,
+  threat_level: normalizedResult.threat_level,
+  primary_target: normalizedResult.primary_target,
+  psyop_risk_score: riskScore,
+  stance_type: stanceType,
+  psyop_category: psyopCategory,
+  psyop_techniques: psyopTechniques,
+  quick_analyzed_at: post.quick_analyzed_at ?? completionTimestamp,
+  // ❌ هیچ مقداردهی برای analysis_stage اینجا نمی‌زنیم
+};
 
-    if (!post.deep_analyzed_at && !post.deepest_analysis_completed_at && !post.deepest_analyzed_at) {
-      if (currentStage === "deep" || currentStage === "deepest") {
-        updateData.analysis_stage = currentStage;
-      } else if (!currentStage || currentStage === "quick") {
-        updateData.analysis_stage = "quick";
-      }
-    }
 
     const { error: updateError } = await supabase
       .from("posts")
