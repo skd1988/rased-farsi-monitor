@@ -31,12 +31,25 @@ type PostRow = {
 const DEEP_BATCH_SIZE = 20;
 
 function isValidForAnalysis(post: PostRow): boolean {
-  // پست آرشیو شده یا بدون محتوا را کلاً وارد چرخه نکن
   if (!post) return false;
+
+  // پست آرشیوشده کلاً نباید وارد چرخه شود
   if (post.status === "Archived") return false;
-  if (post.contents === null || post.contents.trim() === "") return false;
+
+  // محتوا باید رشته‌ی غیرخالی باشد
+  const contents: unknown = (post as any).contents;
+
+  if (typeof contents !== "string") {
+    return false;
+  }
+
+  if (contents.trim() === "") {
+    return false;
+  }
+
   return true;
 }
+
 
 async function getQuickCandidates(supabase: any, batchSize: number) {
   return supabase
