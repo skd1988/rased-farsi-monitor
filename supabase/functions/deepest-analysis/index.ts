@@ -1,5 +1,25 @@
+// supabase/functions/deepest-analysis/index.ts
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ──────────────────────────────
+// ENV & GLOBALS
+// ──────────────────────────────
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY =
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY") ?? "";
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+}
+
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,21 +29,11 @@ const corsHeaders = {
 
 const validEscalationLevels = ["Low", "Medium", "High", "Critical"] as const;
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY") ?? "";
+// ──────────────────────────────
+// Helpers
+// ──────────────────────────────
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-}
-
-const supabase =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    : null;
-
-function resolveAnalysisStageFromTimestamps(
+function resolveStageFromTimestamps(
   post: any,
 ): "quick" | "deep" | "deepest" | null {
   const hasQuick = !!post?.quick_analyzed_at;
@@ -35,6 +45,194 @@ function resolveAnalysisStageFromTimestamps(
   if (hasQuick) return "quick";
   return null;
 }
+
+async function callDeepseekWithRetry(
+  prompt: string,
+  maxRetries = 3,
+): Promise<string> {
+  if (!DEEPSEEK_API_KEY) {
+    throw new Error("DeepSeek API key not configured");
+  }
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.15,
+          max_tokens: 800,
+        }),
+      });
+
+      if (!res.ok) {
+        if (
+          (res.status === 429 || res.status === 503) &&
+          attempt < maxRetries - 1
+        ) {
+          const backoffDelay = Math.pow(2, attempt) * 2000;
+          console.log(
+            `⏳ Rate limited, retrying after ${backoffDelay}ms (attempt ${
+              attempt + 1
+            }/${maxRetries})...`,
+          );
+          await new Promise((r) => setTimeout(r, backoffDelay));
+          continue;
+        }
+        const txt = await res.text();
+        console.error("DeepSeek API error:", res.status, txt);
+        throw new Error(`DeepSeek API error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const content: string =
+        data?.choices?.[0]?.message?.content ??
+        '{"escalation_level":"High","strategic_summary":"خروجی مدل خالی بود.","key_risks":null,"audience_segments":null,"recommended_actions":null,"monitoring_indicators":null}';
+
+      console.log("Raw DeepSeek response (deepest):", content);
+      return content;
+    } catch (err) {
+      lastError = err;
+      if (attempt === maxRetries - 1) break;
+      const backoffDelay = Math.pow(2, attempt) * 2000;
+      console.log(
+        `⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`,
+      );
+      await new Promise((r) => setTimeout(r, backoffDelay));
+    }
+  }
+
+  throw lastError ?? new Error("DeepSeek call failed");
+}
+
+function parseDeepestResult(rawContent: string) {
+  let result: any = {};
+
+  try {
+    const cleaned = rawContent
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .trim();
+
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("No JSON object found in response");
+    }
+
+    const jsonString = jsonMatch[0];
+
+    try {
+      result = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.warn("JSON parse error, attempting fix", parseError);
+      const fixedJson = jsonString
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]")
+        .replace(/'/g, "\"")
+        .replace(/(\w+)\s*:/g, '"$1":');
+      result = JSON.parse(fixedJson);
+    }
+  } catch (error) {
+    console.error("Failed to parse DeepSeek response", error);
+    result = {
+      escalation_level: "High",
+      strategic_summary:
+        "خروجی مدل به‌درستی پارس نشد؛ این متن جایگزین موقت است.",
+      key_risks: null,
+      audience_segments: null,
+      recommended_actions: null,
+      monitoring_indicators: null,
+    };
+  }
+
+  return result;
+}
+
+function normalizeEscalationLevel(level: unknown) {
+  if (typeof level === "string") {
+    const normalized = level.trim();
+    const match = validEscalationLevels.find(
+      (val) => val.toLowerCase() === normalized.toLowerCase(),
+    );
+    if (match) return match;
+  }
+  return "High";
+}
+
+function buildDeepestPrompt(post: any, relatedPosts: any[]) {
+  const postSnippet = (post.analysis_summary || post.contents || "").slice(
+    0,
+    2000,
+  );
+
+  const relatedSection = relatedPosts
+    .slice(0, 5)
+    .map(
+      (p: any, idx: number) =>
+        `پست مرتبط ${idx + 1}: ${p.title || "(untitled)"}\nخلاصه: ${
+          p.analysis_summary || ""
+        }`,
+    )
+    .join("\n\n");
+
+  const relatedBlock = relatedSection
+    ? `\n\nنمونه‌هایی از پست‌های مشابه اخیر:\n${relatedSection}`
+    : "";
+
+  return `شما یک تحلیلگر ارشد جنگ شناختی و عملیات روانی هستید که باید عمیق‌ترین ارزیابی بحران را ارائه دهید. تمام متن‌های خروجی (به جز مقادیر انگلیسی در فیلدهای کلیدی) باید فارسی باشند و پاسخ فقط به صورت JSON بازگردد.
+
+اطلاعات پست:
+- عنوان: ${post.title || "(none)"}
+- منبع: ${post.source || "(unknown)"}
+- زبان: ${post.language || "(unknown)"}
+- متن/خلاصه: ${postSnippet}
+
+فراداده غربالگری سریع:
+- is_psyop: ${post.is_psyop}
+- psyop_risk_score: ${post.psyop_risk_score}
+- threat_level: ${post.threat_level}
+- stance_type: ${post.stance_type}
+- psyop_category: ${post.psyop_category}
+- psyop_techniques: ${
+    Array.isArray(post.psyop_techniques)
+      ? post.psyop_techniques.join(", ")
+      : post.psyop_techniques || ""
+  }
+- psyop_review_status: ${post.psyop_review_status}
+
+فراداده تحلیل عمیق:
+- analysis_summary: ${post.analysis_summary}
+- narrative_core: ${post.narrative_core}
+- urgency_level: ${post.urgency_level}
+- virality_potential: ${post.virality_potential}${relatedBlock}
+
+دستورالعمل: فقط یک شیء JSON معتبر و بدون هیچ متن اضافی برگردان. همه متن‌ها باید فارسی باشند. ساختار دقیق خروجی:
+
+{
+  "escalation_level": "High",
+  "strategic_summary": "چند جمله فارسی درباره اهمیت استراتژیک این محتوا.",
+  "key_risks": ["ریسک ۱ به فارسی","ریسک ۲ به فارسی"],
+  "audience_segments": ["عموم مردم","رسانه‌های منطقه‌ای"],
+  "recommended_actions": ["اقدام ۱ به فارسی","اقدام ۲ به فارسی"],
+  "monitoring_indicators": ["شاخص ۱ به فارسی","شاخص ۲ به فارسی"]
+}
+
+قواعد:
+- escalation_level فقط یکی از Low، Medium، High، Critical باشد.
+- strategic_summary باید ۳ تا ۶ جمله فارسی باشد.
+- تمام آرایه‌ها باید آیتم‌های کوتاه و عملی فارسی داشته باشند.
+- هیچ توضیح یا متن دیگری خارج از JSON برنگردان.`;
+}
+
+// ──────────────────────────────
+// HTTP handler
+// ──────────────────────────────
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -49,7 +247,9 @@ serve(async (req) => {
       throw new Error("DeepSeek API key not configured");
     }
 
-    const { postId } = await req.json();
+    const body = await req.json();
+    const { postId } = body as { postId?: string };
+
     if (!postId) {
       return new Response(
         JSON.stringify({ error: "postId is required" }),
@@ -60,10 +260,12 @@ serve(async (req) => {
       );
     }
 
+    console.log(`🚀 Starting deepest analysis for post ${postId}`);
+
     const { data: existingPost, error: postError } = await supabase
       .from("posts")
       .select(
-        "id, title, source, language, contents, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_core, urgency_level, virality_potential",
+        "id, title, source, language, contents, is_psyop, psyop_risk_score, threat_level, stance_type, psyop_category, psyop_techniques, psyop_review_status, analysis_summary, narrative_core, urgency_level, virality_potential, analysis_stage, quick_analyzed_at, deep_analyzed_at, deepest_analyzed_at, deepest_analysis_completed_at",
       )
       .eq("id", postId)
       .single();
@@ -79,19 +281,14 @@ serve(async (req) => {
       );
     }
 
-    const rawStage = existingPost?.analysis_stage ?? null;
-    const resolvedStage = resolveAnalysisStageFromTimestamps(existingPost);
-    const effectiveStage = resolvedStage ?? rawStage;
+    const rawStage = existingPost.analysis_stage ?? null;
+    const resolvedStage = resolveStageFromTimestamps(existingPost);
 
     console.log(
       `🔎 Deepest-analysis stage check for post ${postId}: resolved=${resolvedStage}, raw=${rawStage}`,
     );
 
-    if (effectiveStage !== "deep" && effectiveStage !== "deepest") {
-      console.warn(
-        `⛔ Post ${postId} is not ready for deepest analysis (resolved stage: ${resolvedStage}, raw: ${rawStage})`,
-      );
-
+    if (resolvedStage !== "deep" && resolvedStage !== "deepest") {
       return new Response(
         JSON.stringify({
           success: false,
@@ -106,9 +303,8 @@ serve(async (req) => {
       );
     }
 
-    console.log(`🚀 Starting deepest analysis for post ${postId}`);
-
-    let relatedPosts = null;
+    // پست‌های مرتبط با همان منبع
+    let relatedPosts: any[] = [];
     if (existingPost.source) {
       const { data: relatedData, error: relatedError } = await supabase
         .from("posts")
@@ -126,9 +322,9 @@ serve(async (req) => {
       }
     }
 
-    const prompt = buildDeepestPrompt(existingPost, relatedPosts ?? []);
-    const llmResult = await callDeepseekWithRetry(prompt, DEEPSEEK_API_KEY);
-    const parsedResult = parseDeepestResult(llmResult);
+    const prompt = buildDeepestPrompt(existingPost, relatedPosts);
+    const llmRaw = await callDeepseekWithRetry(prompt);
+    const parsedResult = parseDeepestResult(llmRaw);
     const normalizedEscalation = normalizeEscalationLevel(
       parsedResult.escalation_level,
     );
@@ -136,18 +332,43 @@ serve(async (req) => {
     console.log("✅ Parsed deepest analysis JSON:", parsedResult);
 
     const now = new Date().toISOString();
-    const deepestAnalyzedAt = existingPost.deepest_analyzed_at ?? now;
+    const deepestAnalyzedAt =
+      existingPost.deepest_analyzed_at ?? now;
     const deepestAnalysisCompletedAt =
       existingPost.deepest_analysis_completed_at ?? now;
-const { error: updateError } = await supabase
-  .from("posts")
-  .update({
-    status: "completed",
-    deepest_analyzed_at: deepestAnalyzedAt,
-    deepest_analysis_completed_at: deepestAnalysisCompletedAt,
-    ...
-  })
-  .eq("id", postId);
+
+    const updatePayload = {
+      analysis_stage: "deepest",
+      status: "completed",
+      deepest_analyzed_at: deepestAnalyzedAt,
+      deepest_analysis_completed_at: deepestAnalysisCompletedAt,
+      deepest_escalation_level: normalizedEscalation,
+      deepest_strategic_summary: parsedResult.strategic_summary ?? null,
+      deepest_key_risks: Array.isArray(parsedResult.key_risks)
+        ? parsedResult.key_risks
+        : null,
+      deepest_audience_segments: Array.isArray(
+        parsedResult.audience_segments,
+      )
+        ? parsedResult.audience_segments
+        : null,
+      deepest_recommended_actions: Array.isArray(
+        parsedResult.recommended_actions,
+      )
+        ? parsedResult.recommended_actions
+        : null,
+      deepest_monitoring_indicators: Array.isArray(
+        parsedResult.monitoring_indicators,
+      )
+        ? parsedResult.monitoring_indicators
+        : null,
+      deepest_raw: parsedResult,
+    };
+
+    const { error: updateError } = await supabase
+      .from("posts")
+      .update(updatePayload)
+      .eq("id", postId);
 
     if (updateError) {
       console.error("Failed to update post", updateError);
@@ -174,7 +395,9 @@ const { error: updateError } = await supabase
       recommended_actions: Array.isArray(parsedResult.recommended_actions)
         ? parsedResult.recommended_actions
         : null,
-      monitoring_indicators: Array.isArray(parsedResult.monitoring_indicators)
+      monitoring_indicators: Array.isArray(
+        parsedResult.monitoring_indicators,
+      )
         ? parsedResult.monitoring_indicators
         : null,
     };
@@ -184,7 +407,7 @@ const { error: updateError } = await supabase
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Unexpected error", err);
+    console.error("Unexpected error in deepest-analysis", err);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
       {
@@ -194,132 +417,3 @@ const { error: updateError } = await supabase
     );
   }
 });
-
-function buildDeepestPrompt(post: any, relatedPosts: any[]) {
-  const postSnippet = (post.analysis_summary || post.contents || "").slice(0, 2000);
-  const relatedSection = relatedPosts
-    .slice(0, 5)
-    .map(
-      (p, idx) =>
-        `پست مرتبط ${idx + 1}: ${p.title || "(untitled)"}\nخلاصه: ${
-          p.analysis_summary || ""
-        }`,
-    )
-    .join("\n\n");
-  const relatedBlock = relatedSection
-    ? `\n\nنمونه‌هایی از پست‌های مشابه اخیر:\n${relatedSection}`
-    : "";
-
-  return `شما یک تحلیلگر ارشد جنگ شناختی و عملیات روانی هستید که باید عمیق‌ترین ارزیابی بحران را ارائه دهید. تمام متن‌های خروجی (به جز مقادیر انگلیسی در فیلدهای کلیدی) باید فارسی باشند و پاسخ فقط به صورت JSON بازگردد.
-\nاطلاعات پست:\n- عنوان: ${post.title || "(none)"}\n- منبع: ${post.source || "(unknown)"}\n- زبان: ${post.language || "(unknown)"}\n- متن/خلاصه: ${postSnippet}\n\nفراداده غربالگری سریع:\n- is_psyop: ${post.is_psyop}\n- psyop_risk_score: ${post.psyop_risk_score}\n- threat_level: ${post.threat_level}\n- stance_type: ${post.stance_type}\n- psyop_category: ${post.psyop_category}\n- psyop_techniques: ${post.psyop_techniques?.join(", ") || ""}\n- psyop_review_status: ${post.psyop_review_status}\n\nفراداده تحلیل عمیق:\n- analysis_summary: ${post.analysis_summary}\n- narrative_core: ${post.narrative_core}\n- urgency_level: ${post.urgency_level}\n- virality_potential: ${post.virality_potential}${relatedBlock}\n\nدستورالعمل: فقط یک شیء JSON معتبر و بدون هیچ متن اضافی برگردان. همه متن‌ها باید فارسی باشند. ساختار دقیق خروجی:
-{"escalation_level":"High","strategic_summary":"چند جمله فارسی درباره اهمیت استراتژیک این محتوا.","key_risks":["ریسک ۱ به فارسی","ریسک ۲ به فارسی"],"audience_segments":["عموم مردم","رسانه‌های منطقه‌ای"],"recommended_actions":["اقدام ۱ به فارسی","اقدام ۲ به فارسی"],"monitoring_indicators":["شاخص ۱ به فارسی","شاخص ۲ به فارسی"]}
-قواعد: escalation_level فقط یکی از Low، Medium، High، Critical باشد. strategic_summary باید ۳ تا ۶ جمله فارسی باشد. تمام آرایه‌ها باید آیتم‌های کوتاه و عملی فارسی داشته باشند. هیچ توضیح یا متن دیگری خارج از JSON برنگردان.`;
-}
-
-async function callDeepseekWithRetry(prompt: string, apiKey: string) {
-  const maxRetries = 3;
-  let responseContent = "";
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const deepseekResponse = await fetch(
-        "https://api.deepseek.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "deepseek-chat",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.15,
-            max_tokens: 800,
-          }),
-        },
-      );
-      if (!deepseekResponse.ok) {
-        if (
-          (deepseekResponse.status === 429 || deepseekResponse.status === 503) &&
-          attempt < maxRetries - 1
-        ) {
-          const backoffDelay = Math.pow(2, attempt) * 2000;
-          console.log(
-            `⏳ Rate limited, retrying after ${backoffDelay}ms (attempt ${
-              attempt + 1
-            }/${maxRetries})...`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, backoffDelay));
-          continue;
-        }
-        const errorText = await deepseekResponse.text();
-        console.error(
-          "DeepSeek API error:",
-          deepseekResponse.status,
-          errorText,
-        );
-        throw new Error(`DeepSeek API error: ${deepseekResponse.status}`);
-      }
-      const deepseekData = await deepseekResponse.json();
-      responseContent = deepseekData.choices?.[0]?.message?.content || "";
-      console.log("Raw DeepSeek response:", responseContent);
-      return responseContent;
-    } catch (error) {
-      if (attempt === maxRetries - 1) throw error;
-      const backoffDelay = Math.pow(2, attempt) * 2000;
-      console.log(
-        `⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, backoffDelay));
-    }
-  }
-  return responseContent;
-}
-
-function parseDeepestResult(rawContent: string) {
-  let result: any = {};
-  try {
-    const cleanedContent = rawContent
-      .replace(/```json\n?/gi, "")
-      .replace(/```\n?/g, "")
-      .trim();
-    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No JSON object found in response");
-    }
-    const jsonString = jsonMatch[0];
-    try {
-      result = JSON.parse(jsonString);
-    } catch (parseError) {
-      console.warn("JSON parse error, attempting fix", parseError);
-      const fixedJson = jsonString
-        .replace(/,\s*}/g, "}")
-        .replace(/,\s*]/g, "]")
-        .replace(/'/g, "\"")
-        .replace(/(\w+)\s*:/g, '"$1":');
-      result = JSON.parse(fixedJson);
-    }
-  } catch (error) {
-    console.error("Failed to parse DeepSeek response", error);
-    result = {
-      escalation_level: "High",
-      strategic_summary:
-        "خروجی مدل به‌درستی پارس نشد؛ این متن جایگزین موقت است.",
-      key_risks: null,
-      audience_segments: null,
-      recommended_actions: null,
-      monitoring_indicators: null,
-    };
-  }
-  return result;
-}
-
-function normalizeEscalationLevel(level: unknown) {
-  if (typeof level === "string") {
-    const normalized = level.trim();
-    const match = validEscalationLevels.find(
-      (val) => val.toLowerCase() === normalized.toLowerCase(),
-    );
-    if (match) return match;
-  }
-  return "High";
-}
