@@ -7,7 +7,10 @@ import { FileText, Download } from "lucide-react";
 import AnalysisCard from "@/components/analysis/AnalysisCard";
 import AnalysisDetailModal from "@/components/analysis/AnalysisDetailModal";
 import BulkAnalysisModal from "@/components/analysis/BulkAnalysisModal";
-import { resolveAnalysisStage } from "@/components/analysis/analysisUtils";
+import {
+  resolveAnalysisStage,
+  normalizeSentimentValue,
+} from "@/components/analysis/analysisUtils";
 import type { AnalyzedPost } from "@/types/analysis";
 import {
   Pagination,
@@ -96,7 +99,10 @@ const AIAnalysis = () => {
 
     // Sentiment filter
     if (sentimentFilter !== "all") {
-      filtered = filtered.filter((post) => post.sentiment === sentimentFilter);
+      filtered = filtered.filter((post) => {
+        const normalized = normalizeSentimentValue(post.sentiment as any);
+        return normalized === sentimentFilter;
+      });
     }
 
     // Topic filter
@@ -229,7 +235,9 @@ const AIAnalysis = () => {
     analyzed: posts.length,
     critical: posts.filter((p) => p.threat_level === "Critical").length,
     high: posts.filter((p) => p.threat_level === "High").length,
-    negative: posts.filter((p) => p.sentiment === "Negative").length,
+    negative: posts
+      .filter((p) => normalizeSentimentValue(p.sentiment as any) === "Negative")
+      .length,
 
     // 3-level PsyOp stats (using resolver)
     psyop: psyopPosts.length,
