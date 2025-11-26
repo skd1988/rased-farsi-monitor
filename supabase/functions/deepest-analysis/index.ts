@@ -139,37 +139,15 @@ serve(async (req) => {
     const deepestAnalyzedAt = existingPost.deepest_analyzed_at ?? now;
     const deepestAnalysisCompletedAt =
       existingPost.deepest_analysis_completed_at ?? now;
-
-    const { error: updateError } = await supabase
-      .from("posts")
-      .update({
-        analysis_stage: "deepest",
-        status: "completed",
-        deepest_analyzed_at: deepestAnalyzedAt,
-        deepest_analysis_completed_at: deepestAnalysisCompletedAt,
-
-        deepest_escalation_level: normalizedEscalation,
-        deepest_strategic_summary: parsedResult.strategic_summary ?? null,
-        deepest_key_risks: Array.isArray(parsedResult.key_risks)
-          ? parsedResult.key_risks
-          : null,
-        deepest_audience_segments: Array.isArray(parsedResult.audience_segments)
-          ? parsedResult.audience_segments
-          : null,
-        deepest_recommended_actions: Array.isArray(
-          parsedResult.recommended_actions,
-        )
-          ? parsedResult.recommended_actions
-          : null,
-        deepest_monitoring_indicators: Array.isArray(
-          parsedResult.monitoring_indicators,
-        )
-          ? parsedResult.monitoring_indicators
-          : null,
-
-        deepest_raw: parsedResult,
-      })
-      .eq("id", postId);
+const { error: updateError } = await supabase
+  .from("posts")
+  .update({
+    status: "completed",
+    deepest_analyzed_at: deepestAnalyzedAt,
+    deepest_analysis_completed_at: deepestAnalysisCompletedAt,
+    ...
+  })
+  .eq("id", postId);
 
     if (updateError) {
       console.error("Failed to update post", updateError);
