@@ -8,6 +8,7 @@ import AnalysisCard from "@/components/analysis/AnalysisCard";
 import AnalysisDetailModal from "@/components/analysis/AnalysisDetailModal";
 import BulkAnalysisModal from "@/components/analysis/BulkAnalysisModal";
 import { resolveAnalysisStage } from "@/components/analysis/analysisUtils";
+import type { AnalyzedPost } from "@/types/analysis";
 import {
   Pagination,
   PaginationContent,
@@ -21,66 +22,8 @@ import StatsCard from "@/components/analysis/StatsCard";
 import { useAnalyzedPosts } from "@/hooks/useAnalyzedPosts";
 import { supabase } from "@/integrations/supabase/client";
 
-interface AnalyzedPost {
-  id: string;
-  title: string;
-  contents: string;
-  source: string;
-  author: string;
-  published_at: string;
-
-  // General AI analysis
-  analysis_summary: string | null;
-  sentiment: string | null;
-  sentiment_score: number | null;
-  main_topic: string | null;
-  threat_level: string | null;
-  confidence: number | null;
-  key_points: string[] | null;
-  recommended_action: string | null;
-  analyzed_at: string | null;
-  processing_time: number | null;
-  article_url: string | null;
-  keywords: string[] | null;
-  language: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  analysis_model: string | null;
-  quick_summary?: string | null;
-  deep_summary?: string | null;
-  deep_smart_summary?: string | null;
-  deepest_smart_summary?: string | null;
-  extended_summary?: string | null;
-  narrative_core?: string | null;
-  crisis_extended_summary?: string | null;
-  crisis_narrative_core?: string | null;
-
-  // PsyOp fields
-  is_psyop: boolean | null;
-  psyop_risk_score: number | null;
-  psyop_category: string | null;
-  psyop_techniques: string[] | null;
-  stance_type: string | null;
-
-  // 3-level analysis stage
-  analysis_stage: "quick" | "deep" | "deepest" | null;
-  quick_analyzed_at: string | null;
-  deep_analyzed_at: string | null;
-  deepest_analysis_completed_at: string | null;
-
-  // Deepest-level (crisis) analysis details
-  deepest_escalation_level: string | null;
-  deepest_strategic_summary: string | null;
-  deepest_key_risks: string[] | null;
-  deepest_audience_segments: string[] | null;
-  deepest_recommended_actions: string[] | null;
-  deepest_monitoring_indicators: string[] | null;
-}
-
 const AIAnalysis = () => {
-  const { posts: rawPosts, loading, error, refetch } = useAnalyzedPosts();
-  const posts = rawPosts as unknown as AnalyzedPost[];
+  const { posts, loading, error, refetch } = useAnalyzedPosts();
   const [filteredPosts, setFilteredPosts] = useState<AnalyzedPost[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [threatFilter, setThreatFilter] = useState<string>("all");
