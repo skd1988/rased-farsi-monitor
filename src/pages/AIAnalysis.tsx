@@ -67,6 +67,10 @@ const AIAnalysis = () => {
     }
   }, [error, toast]);
 
+  const getResolvedStage = (post: AnalyzedPost) => {
+    return post.resolved_stage ?? resolveAnalysisStage(post);
+  };
+
   const applyFilters = () => {
     let filtered = [...posts];
 
@@ -120,14 +124,14 @@ const AIAnalysis = () => {
     // Stage filter: Quick / Deep / Deepest
     if (stageFilter !== "all") {
       filtered = filtered.filter(
-        (p) => resolveAnalysisStage(p as any) === stageFilter
+        (post) => getResolvedStage(post) === stageFilter
       );
     }
 
     // Only posts with deepest (crisis) analysis
     if (deepestOnly) {
       filtered = filtered.filter(
-        (p) => resolveAnalysisStage(p as any) === "deepest"
+        (post) => getResolvedStage(post) === "deepest"
       );
     }
 
@@ -242,13 +246,13 @@ const AIAnalysis = () => {
     // 3-level PsyOp stats (using resolver)
     psyop: psyopPosts.length,
     quickOnly: psyopPosts.filter(
-      (p) => resolveAnalysisStage(p as any) === "quick"
+      (post) => getResolvedStage(post) === "quick"
     ).length,
     deep: psyopPosts.filter(
-      (p) => resolveAnalysisStage(p as any) === "deep"
+      (post) => getResolvedStage(post) === "deep"
     ).length,
     deepest: psyopPosts.filter(
-      (p) => resolveAnalysisStage(p as any) === "deepest"
+      (post) => getResolvedStage(post) === "deepest"
     ).length,
   };
 
