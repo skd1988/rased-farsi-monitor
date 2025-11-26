@@ -42,12 +42,13 @@ async function getQuickCandidates(supabase: any, batchSize: number) {
   return supabase
     .from('posts')
     .select('*')
-    .is('is_psyop', null)
+    .is('quick_analyzed_at', null)
     .neq('status', 'Archived')
     .not('contents', 'is', null)
     .order('inoreader_timestamp_usec', { ascending: true })
     .limit(batchSize);
 }
+
 
 async function getDeepCandidates(supabase: any) {
   return supabase
