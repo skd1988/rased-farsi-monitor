@@ -14,7 +14,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 }
 
-// فقط یک بار کلاینت را می‌سازیم
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -56,7 +55,9 @@ function normalizeSentiment(
 }
 
 function deriveCurrentStage(post: any): "quick" | "deep" | "deepest" | null {
-  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) return "deepest";
+  if (post?.deepest_analysis_completed_at || post?.deepest_analyzed_at) {
+    return "deepest";
+  }
   if (post?.deep_analyzed_at) return "deep";
   if (post?.quick_analyzed_at) return "quick";
   return post?.analysis_stage ?? null;
@@ -117,7 +118,9 @@ async function callDeepseekWithRetry(
       lastError = err;
       if (attempt === maxRetries - 1) break;
       const delay = Math.pow(2, attempt) * 3000;
-      console.log(`⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`);
+      console.log(
+        `⏳ Retrying after error (attempt ${attempt + 1}/${maxRetries})...`,
+      );
       await new Promise((r) => setTimeout(r, delay));
     }
   }
@@ -139,9 +142,14 @@ serve(async (req) => {
       throw new Error("Supabase client not initialized");
     }
 
+    if (!DEEPSEEK_API_KEY) {
+      throw new Error("DEEPSEEK_API_KEY not configured");
+    }
+
     const startTime = Date.now();
 
-    const { postId } = await req.json();
+    const body = await req.json();
+    const { postId } = body as { postId?: string };
 
     if (!postId) {
       return new Response(
@@ -155,10 +163,6 @@ serve(async (req) => {
 
     console.log(`🚀 Starting deep analysis for post ${postId}`);
 
-    if (!DEEPSEEK_API_KEY) {
-      throw new Error("DEEPSEEK_API_KEY not configured");
-    }
-
     // 1) خواندن پست برای داشتن context کامل
     const { data: existingPost, error: fetchError } = await supabase
       .from("posts")
@@ -166,12 +170,18 @@ serve(async (req) => {
       .eq("id", postId)
       .single();
 
-    if (fetchError) {
+    if (fetchError || !existingPost) {
       console.error("Failed to fetch post for context:", fetchError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Post not found" }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
-    const quickScreeningContext = existingPost
-      ? `نتایج غربالگری سریع (در پایگاه داده):
+    const quickScreeningContext = `نتایج غربالگری سریع (در پایگاه داده):
 - is_psyop: ${existingPost.is_psyop}
 - psyop_confidence: ${existingPost.psyop_confidence}
 - threat_level: ${existingPost.threat_level}
@@ -179,13 +189,12 @@ serve(async (req) => {
 - stance_type: ${existingPost.stance_type}
 - psyop_category: ${existingPost.psyop_category}
 - psyop_techniques: ${
-          Array.isArray(existingPost.psyop_techniques)
-            ? existingPost.psyop_techniques.join(", ")
-            : existingPost.psyop_techniques
-        }
+      Array.isArray(existingPost.psyop_techniques)
+        ? existingPost.psyop_techniques.join(", ")
+        : existingPost.psyop_techniques
+    }
 
-`
-      : "";
+`;
 
     // 2) ساخت پرامپت فارسی برای DeepSeek
     const userPrompt = `${quickScreeningContext}تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده:
@@ -263,9 +272,15 @@ serve(async (req) => {
     const data = await callDeepseekWithRetry(deepseekBody);
 
     // 4) نرمال‌سازی خروجی
-    let analysisResult;
+    let analysisResult: any;
     try {
-      const content = data.choices[0].message.content;
+      const content =
+        data?.choices?.[0]?.message?.content ??
+        JSON.stringify(
+          {
+            error: "Empty content from DeepSeek",
+          },
+        );
       analysisResult = cleanJsonFromModel(content);
       console.log("✅ Parsed deep analysis JSON:", analysisResult);
     } catch (e) {
@@ -292,8 +307,10 @@ serve(async (req) => {
       analysisResult?.sentiment,
       allowedSentimentValues,
     );
+
     const sentimentValue =
       normalizeSentiment(sentimentRaw ?? existingPost?.sentiment ?? null);
+
     const urgencyLevel = normalizeChoice(
       analysisResult?.urgency_level,
       allowedUrgencyValues,
@@ -312,102 +329,117 @@ serve(async (req) => {
 
     // 5) آپدیت ردیف posts
     const completionTimestamp = new Date().toISOString();
-const updateData: Record<string, any> = {
+    const currentStage = deriveCurrentStage(existingPost);
+    const nextStage = currentStage === "deepest" ? "deepest" : "deep";
 
-  // Summary fields
-  analysis_summary: extendedSummary ?? existingPost?.analysis_summary ?? null,
-  main_topic: existingPost?.main_topic ?? null,
-  keywords: keywords ?? existingPost?.keywords ?? null,
+    const updateData: Record<string, any> = {
+      // Summary fields
+      analysis_summary:
+        extendedSummary ?? existingPost?.analysis_summary ?? null,
+      main_topic: existingPost?.main_topic ?? null,
+      keywords: keywords ?? existingPost?.keywords ?? null,
 
-  // Deep Analysis fields
-  narrative_core: narrativeCore ?? existingPost?.narrative_core ?? null,
-  extended_summary: extendedSummary ?? existingPost?.extended_summary ?? null,
-  psychological_objectives:
-    psychologicalObjectives ?? existingPost?.psychological_objectives ?? null,
+      // Deep Analysis fields
+      narrative_core: narrativeCore ?? existingPost?.narrative_core ?? null,
+      extended_summary:
+        extendedSummary ?? existingPost?.extended_summary ?? null,
+      psychological_objectives:
+        psychologicalObjectives ??
+        existingPost?.psychological_objectives ??
+        null,
+      manipulation_intensity:
+        manipulationIntensity ??
+        existingPost?.manipulation_intensity ??
+        null,
+      techniques:
+        techniques ??
+        existingPost?.techniques ??
+        existingPost?.psyop_techniques ??
+        null,
+      recommended_actions:
+        recommendedActions ?? existingPost?.recommended_actions ?? null,
+      recommended_action: recommendedActions
+        ? recommendedActions.join("\n")
+        : existingPost?.recommended_action ?? null,
 
-  manipulation_intensity:
-    manipulationIntensity ?? existingPost?.manipulation_intensity ?? null,
+      // Deep mirrors
+      deep_main_topic: narrativeCore ?? existingPost?.deep_main_topic ?? null,
+      deep_smart_summary:
+        extendedSummary ??
+        narrativeCore ??
+        existingPost?.deep_smart_summary ??
+        null,
+      deep_extended_summary:
+        extendedSummary ?? existingPost?.deep_extended_summary ?? null,
+      deep_psychological_objectives:
+        psychologicalObjectives ??
+        existingPost?.deep_psychological_objectives ??
+        null,
+      deep_manipulation_intensity:
+        manipulationIntensity ??
+        existingPost?.deep_manipulation_intensity ??
+        null,
+      deep_techniques:
+        techniques ??
+        existingPost?.deep_techniques ??
+        existingPost?.psyop_techniques ??
+        null,
+      deep_keywords:
+        keywords ??
+        existingPost?.deep_keywords ??
+        existingPost?.keywords ??
+        null,
+      deep_recommended_actions:
+        recommendedActions ??
+        existingPost?.deep_recommended_actions ??
+        null,
+      deep_recommended_action: recommendedActions
+        ? recommendedActions.join("\n")
+        : existingPost?.deep_recommended_action ?? null,
 
-  techniques:
-    techniques ??
-    existingPost?.techniques ??
-    existingPost?.psyop_techniques ??
-    null,
+      // Quick-screen preserved / optional overrides
+      is_psyop:
+        typeof analysisResult?.is_psyop === "boolean"
+          ? analysisResult.is_psyop
+          : existingPost?.is_psyop ?? null,
+      psyop_confidence: existingPost?.psyop_confidence ?? null,
+      psyop_risk_score: existingPost?.psyop_risk_score ?? null,
+      psyop_category:
+        analysisResult?.psyop_category ??
+        existingPost?.psyop_category ??
+        null,
+      narrative_theme:
+        analysisResult?.narrative_theme ??
+        existingPost?.narrative_theme ??
+        null,
 
-  recommended_actions:
-    recommendedActions ?? existingPost?.recommended_actions ?? null,
+      sentiment: sentimentValue ?? existingPost?.sentiment ?? null,
+      urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
+      virality_potential:
+        viralityPotential ?? existingPost?.virality_potential ?? null,
 
-  recommended_action: recommendedActions
-    ? recommendedActions.join("\n")
-    : existingPost?.recommended_action ?? null,
+      deep_sentiment: sentimentValue ?? existingPost?.deep_sentiment ?? null,
+      deep_urgency_level:
+        urgencyLevel ?? existingPost?.deep_urgency_level ?? null,
+      deep_virality_potential:
+        viralityPotential ??
+        existingPost?.deep_virality_potential ??
+        null,
 
-  // Deep mirrors
-  deep_main_topic: narrativeCore ?? existingPost?.deep_main_topic ?? null,
-  deep_smart_summary:
-    extendedSummary ??
-    narrativeCore ??
-    existingPost?.deep_smart_summary ??
-    null,
-  deep_extended_summary:
-    extendedSummary ?? existingPost?.deep_extended_summary ?? null,
-  deep_psychological_objectives:
-    psychologicalObjectives ??
-    existingPost?.deep_psychological_objectives ??
-    null,
-  deep_manipulation_intensity:
-    manipulationIntensity ??
-    existingPost?.deep_manipulation_intensity ??
-    null,
-  deep_techniques:
-    techniques ??
-    existingPost?.deep_techniques ??
-    existingPost?.psyop_techniques ??
-    null,
-  deep_keywords:
-    keywords ??
-    existingPost?.deep_keywords ??
-    existingPost?.keywords ??
-    null,
-  deep_recommended_actions:
-    recommendedActions ??
-    existingPost?.deep_recommended_actions ??
-    null,
-  deep_recommended_action: recommendedActions
-    ? recommendedActions.join("\n")
-    : existingPost?.deep_recommended_action ?? null,
+      threat_level: existingPost?.threat_level ?? null,
+      confidence: existingPost?.psyop_confidence ?? null,
+      key_points: existingPost?.key_points ?? null,
 
-  // Quick-screen preserved
-  is_psyop: existingPost?.is_psyop ?? null,
-  psyop_confidence: existingPost?.psyop_confidence ?? null,
-  psyop_risk_score: existingPost?.psyop_risk_score ?? null,
-  psyop_category: existingPost?.psyop_category ?? null,
-  narrative_theme: existingPost?.narrative_theme ?? null,
+      // Required system fields
+      analyzed_at: completionTimestamp,
+      analysis_model: "deepseek-chat",
+      processing_time: processingTime / 1000,
 
-  sentiment: sentimentValue ?? existingPost?.sentiment ?? null,
-  urgency_level: urgencyLevel ?? existingPost?.urgency_level ?? null,
-  virality_potential:
-    viralityPotential ?? existingPost?.virality_potential ?? null,
-
-  deep_sentiment: sentimentValue ?? existingPost?.deep_sentiment ?? null,
-  deep_urgency_level: urgencyLevel ?? existingPost?.deep_urgency_level ?? null,
-  deep_virality_potential:
-    viralityPotential ?? existingPost?.deep_virality_potential ?? null,
-
-  threat_level: existingPost?.threat_level ?? null,
-  confidence: existingPost?.psyop_confidence ?? null,
-  key_points: existingPost?.key_points ?? null,
-
-  // Required system fields
-  analyzed_at: completionTimestamp,
-  analysis_model: "deepseek-chat",
-  processing_time: processingTime / 1000,
-
-  status: "completed",
-  analysis_stage: "deep",
-  deep_analyzed_at: completionTimestamp,
-};
-
-
+      status: "completed",
+      analysis_stage: nextStage,
+      deep_analyzed_at:
+        existingPost?.deep_analyzed_at ?? completionTimestamp,
+    };
 
     const { error: updateError } = await supabase
       .from("posts")
@@ -420,16 +452,21 @@ const updateData: Record<string, any> = {
     }
 
     console.log(
-      `📌 Deep analysis update => status: completed | stage: deep | deep_analyzed_at: ${completionTimestamp}`,
+      `📌 Deep analysis update => status: completed | stage: ${nextStage} | deep_analyzed_at: ${updateData.deep_analyzed_at}`,
     );
 
     // 6) ثبت لاگ مصرف API
+    const usage = data?.usage || {};
+    const inputTokens = usage.prompt_tokens || 0;
+    const outputTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || inputTokens + outputTokens;
+
     await supabase.from("api_usage_logs").insert({
       model_used: "deepseek-chat",
-      input_tokens: data.usage?.prompt_tokens || 0,
-      output_tokens: data.usage?.completion_tokens || 0,
-      total_tokens: data.usage?.total_tokens || 0,
-      cost_usd: (data.usage?.total_tokens || 0) * 0.00000014,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      cost_usd: totalTokens * 0.00000014,
       response_time_ms: processingTime,
       status: "success",
       post_id: postId,
