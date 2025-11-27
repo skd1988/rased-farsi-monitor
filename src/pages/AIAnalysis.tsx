@@ -11,7 +11,6 @@ import {
   resolveAnalysisStage,
   normalizeSentimentValue,
 } from "@/components/analysis/analysisUtils";
-import type { AnalyzedPost } from "@/types/analysis";
 import {
   Pagination,
   PaginationContent,
@@ -24,6 +23,7 @@ import {
 import StatsCard from "@/components/analysis/StatsCard";
 import { useAnalyzedPosts } from "@/hooks/useAnalyzedPosts";
 import { supabase } from "@/integrations/supabase/client";
+import { AnalyzedPost } from "@/types/analysis";
 
 const AIAnalysis = () => {
   const { posts, loading, error, refetch } = useAnalyzedPosts();
