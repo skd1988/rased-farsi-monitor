@@ -25,6 +25,80 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const DEEPSEEK_INPUT_PRICE_PER_M = 0.14;  // USD per 1M input tokens
+const DEEPSEEK_OUTPUT_PRICE_PER_M = 0.28; // USD per 1M output tokens
+
+type DeepseekUsage = {
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+};
+
+function calculateDeepseekCosts(usage: DeepseekUsage) {
+  const inputTokens = usage?.prompt_tokens ?? 0;
+  const outputTokens = usage?.completion_tokens ?? 0;
+  const totalTokens =
+    usage?.total_tokens ?? inputTokens + outputTokens;
+
+  const cost_input_usd =
+    (inputTokens / 1_000_000) * DEEPSEEK_INPUT_PRICE_PER_M;
+  const cost_output_usd =
+    (outputTokens / 1_000_000) * DEEPSEEK_OUTPUT_PRICE_PER_M;
+  const cost_usd = cost_input_usd + cost_output_usd;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  };
+}
+
+async function logDeepseekUsage(
+  supabase: any,
+  params: {
+    endpoint: string;
+    usage: DeepseekUsage;
+    responseTimeMs?: number;
+    postId?: string | null;
+    questionSnippet?: string | null;
+    functionName?: string | null;
+  },
+) {
+  if (!supabase) return;
+
+  const {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  } = calculateDeepseekCosts(params.usage || {});
+
+  try {
+    await supabase.from("api_usage_logs").insert({
+      endpoint: params.endpoint,
+      function_name: params.functionName ?? params.endpoint,
+      model_used: "deepseek-chat",
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      cost_input_usd,
+      cost_output_usd,
+      cost_usd,
+      response_time_ms: params.responseTimeMs ?? null,
+      status: "success",
+      post_id: params.postId ?? null,
+      question: params.questionSnippet ?? null,
+    });
+  } catch (error) {
+    console.error("Failed to log DeepSeek API usage:", error);
+  }
+}
+
 // ──────────────────────────────
 // Helper functions
 // ──────────────────────────────
@@ -457,19 +531,13 @@ serve(async (req) => {
 
     // 6) ثبت لاگ مصرف API
     const usage = data?.usage || {};
-    const inputTokens = usage.prompt_tokens || 0;
-    const outputTokens = usage.completion_tokens || 0;
-    const totalTokens = usage.total_tokens || inputTokens + outputTokens;
 
-    await supabase.from("api_usage_logs").insert({
-      model_used: "deepseek-chat",
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      total_tokens: totalTokens,
-      cost_usd: totalTokens * 0.00000014,
-      response_time_ms: processingTime,
-      status: "success",
-      post_id: postId,
+    await logDeepseekUsage(supabase, {
+      endpoint: "deep-analysis",
+      functionName: "analyze-post-deepseek",
+      usage,
+      responseTimeMs: processingTime,
+      postId: postId,
     });
 
     console.log(`✅ Successfully analyzed post ${postId}`);

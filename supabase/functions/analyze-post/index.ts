@@ -8,6 +8,80 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const DEEPSEEK_INPUT_PRICE_PER_M = 0.14;  // USD per 1M input tokens
+const DEEPSEEK_OUTPUT_PRICE_PER_M = 0.28; // USD per 1M output tokens
+
+type DeepseekUsage = {
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+};
+
+function calculateDeepseekCosts(usage: DeepseekUsage) {
+  const inputTokens = usage?.prompt_tokens ?? 0;
+  const outputTokens = usage?.completion_tokens ?? 0;
+  const totalTokens =
+    usage?.total_tokens ?? inputTokens + outputTokens;
+
+  const cost_input_usd =
+    (inputTokens / 1_000_000) * DEEPSEEK_INPUT_PRICE_PER_M;
+  const cost_output_usd =
+    (outputTokens / 1_000_000) * DEEPSEEK_OUTPUT_PRICE_PER_M;
+  const cost_usd = cost_input_usd + cost_output_usd;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  };
+}
+
+async function logDeepseekUsage(
+  supabase: any,
+  params: {
+    endpoint: string;
+    usage: DeepseekUsage;
+    responseTimeMs?: number;
+    postId?: string | null;
+    questionSnippet?: string | null;
+    functionName?: string | null;
+  },
+) {
+  if (!supabase) return;
+
+  const {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  } = calculateDeepseekCosts(params.usage || {});
+
+  try {
+    await supabase.from("api_usage_logs").insert({
+      endpoint: params.endpoint,
+      function_name: params.functionName ?? params.endpoint,
+      model_used: "deepseek-chat",
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      cost_input_usd,
+      cost_output_usd,
+      cost_usd,
+      response_time_ms: params.responseTimeMs ?? null,
+      status: "success",
+      post_id: params.postId ?? null,
+      question: params.questionSnippet ?? null,
+    });
+  } catch (error) {
+    console.error("Failed to log DeepSeek API usage:", error);
+  }
+}
+
 interface ChatRequest {
   question: string;
   conversationHistory?: Array<{ role: string; content: string }>;
@@ -100,10 +174,18 @@ serve(async (req) => {
     // Call DeepSeek API (using same method as analyze-post)
     const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
 
-    // Log API usage
-    await logAPIUsage(supabase, question, aiResponse.usage);
+    const responseTime = Date.now() - startTime;
 
-    const processingTime = Date.now() - startTime;
+    // Log API usage
+    await logDeepseekUsage(supabase, {
+      endpoint: "analyze-post",
+      functionName: "analyze-post",
+      usage: aiResponse.usage || {},
+      responseTimeMs: responseTime,
+      questionSnippet: question?.substring(0, 200) ?? null,
+    });
+
+    const processingTime = responseTime;
     console.log(`Response generated in ${processingTime}ms`);
 
     return new Response(
@@ -353,30 +435,6 @@ ${Object.keys(summary.bySentiment).length > 0 ? "احساسات: " + JSON.string
 ${Object.keys(summary.byThreat).length > 0 ? "سطح تهدید: " + JSON.stringify(summary.byThreat) : ""}
 
 نمونه مطالب: ${JSON.stringify(summary.samplePosts)}`;
-}
-
-async function logAPIUsage(supabase: any, question: string, usage: any) {
-  try {
-    const inputCost = (usage.prompt_tokens * 0.27) / 1000000;
-    const outputCost = (usage.completion_tokens * 1.1) / 1000000;
-    const totalCost = inputCost + outputCost;
-
-    await supabase.from("api_usage_logs").insert({
-      endpoint: "chat",
-      question: question.substring(0, 200),
-      tokens_used: usage.total_tokens,
-      input_tokens: usage.prompt_tokens,
-      output_tokens: usage.completion_tokens,
-      model_used: "deepseek-chat",
-      status: "success",
-      cost_usd: totalCost,
-    });
-
-    console.log(`API usage logged: ${usage.total_tokens} tokens, $${totalCost.toFixed(6)}`);
-  } catch (error) {
-    console.error("Error logging API usage:", error);
-    // Don't throw - logging failure shouldn't break the chat
-  }
 }
 
 async function loadPsyopThresholds(supabase: any): Promise<PsyopThresholds> {
