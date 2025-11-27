@@ -23,6 +23,40 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import { format, subDays } from 'date-fns';
 import { faIR } from 'date-fns/locale';
 
+const targetNameTranslations: Record<string, string> = {
+  // Entities (examples – extend as needed)
+  'Islamic Republic of Iran': 'جمهوری اسلامی ایران',
+  'Hezbollah Lebanon': 'حزب‌الله لبنان',
+  'Hamas Palestine': 'حماس فلسطین',
+  'Popular Mobilization Forces': 'حشد الشعبی عراق',
+  'Axis of Resistance': 'محور مقاومت',
+  'Muslim Brotherhood': 'اخوان‌المسلمین',
+  "Hay'at Tahrir al-Sham": 'هیئت تحریر الشام',
+
+  // Persons (if any well-known English-only names exist, add here)
+  // 'Qassem Soleimani': 'قاسم سلیمانی',
+};
+
+const translateTargetName = (
+  englishName?: string | null,
+  persianName?: string | null
+): string => {
+  // 1) prefer explicit Persian if available
+  const persian = (persianName || '').trim();
+  if (persian) return persian;
+
+  // 2) try dictionary on raw English
+  const rawEn = (englishName || '').trim();
+  if (!rawEn) return '';
+
+  if (targetNameTranslations[rawEn]) {
+    return targetNameTranslations[rawEn];
+  }
+
+  // 3) fallback: return original English
+  return rawEn;
+};
+
 console.log('🔴 [TargetAnalysis] FILE LOADED');
 
 const TargetAnalysis = () => {
@@ -340,8 +374,14 @@ const TargetAnalysis = () => {
         (p.name_arabic && stat.name_arabic && p.name_arabic === stat.name_arabic)
       );
 
+      const displayNamePersian = translateTargetName(
+        stat.name_english,
+        stat.name_persian
+      );
+
       return {
         ...stat,
+        name_persian: displayNamePersian,
         photo_url: profile?.photo_url,
         photo_source: profile?.photo_source,
         topVectors: Array.from(stat.topVectors.entries())
@@ -349,7 +389,11 @@ const TargetAnalysis = () => {
           .slice(0, 5)
           .map(([vector]) => translatePsyopTechnique(vector)),
         weekTrend: stat.weekAttacks > 0
-          ? Math.round(((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) / stat.weekAttacks) * 100)
+          ? Math.round(
+              ((stat.weekAttacks - (stat.totalAttacks - stat.weekAttacks) / 4) /
+                stat.weekAttacks) *
+                100
+            )
           : 0,
       };
     }).sort((a, b) => b.totalAttacks - a.totalAttacks);
@@ -548,8 +592,14 @@ const TargetAnalysis = () => {
         (p.name_arabic && stat.name_arabic && p.name_arabic === stat.name_arabic)
       );
 
+      const displayNamePersian = translateTargetName(
+        stat.name_english,
+        stat.name_persian
+      );
+
       return {
         ...stat,
+        name_persian: displayNamePersian,
         photo_url: profile?.photo_url,
         photo_source: profile?.photo_source,
         topAccusations: Array.from(stat.topAccusations.entries())
