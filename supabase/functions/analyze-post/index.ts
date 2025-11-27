@@ -9,6 +9,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+
 interface ChatRequest {
   question: string;
   conversationHistory?: Array<{ role: string; content: string }>;
@@ -38,9 +43,6 @@ serve(async (req) => {
     }
 
     // 2. Create authenticated Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
@@ -80,15 +82,11 @@ serve(async (req) => {
       });
     }
 
-    // Use service role key for database operations
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const deepseekApiKey = Deno.env.get("DEEPSEEK_API_KEY");
 
     if (!deepseekApiKey) {
       throw new Error("DEEPSEEK_API_KEY not configured");
     }
-
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     const thresholds = await loadPsyopThresholds(supabaseAdmin);
     console.log("Deep analysis using psyop thresholds:", thresholds);
