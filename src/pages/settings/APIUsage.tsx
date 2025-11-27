@@ -29,6 +29,8 @@ interface UsageLog {
   output_tokens: number;
   total_tokens: number;
   cost_usd: number;
+  cost_input_usd: number | null;
+  cost_output_usd: number | null;
   response_time_ms: number;
   status: string;
   error_message: string | null;
@@ -471,13 +473,23 @@ const APIUsage = () => {
         <Card className="p-6 bg-muted/50">
           <p className="text-sm text-muted-foreground mb-1">Input Tokens</p>
           <p className="text-2xl font-bold mb-1">{recentLogs.reduce((sum, log) => sum + log.input_tokens, 0).toLocaleString()}</p>
-          <p className="text-sm text-muted-foreground">≈ ${(recentLogs.reduce((sum, log) => sum + log.input_tokens, 0) * 0.27 / 1000000).toFixed(4)}</p>
+          <p className="text-sm text-muted-foreground">
+            ≈ $
+            {recentLogs
+              .reduce((sum, log) => sum + (log.cost_input_usd ?? 0), 0)
+              .toFixed(4)}
+          </p>
         </Card>
 
         <Card className="p-6 bg-muted/50">
           <p className="text-sm text-muted-foreground mb-1">Output Tokens</p>
           <p className="text-2xl font-bold mb-1">{recentLogs.reduce((sum, log) => sum + log.output_tokens, 0).toLocaleString()}</p>
-          <p className="text-sm text-muted-foreground">≈ ${(recentLogs.reduce((sum, log) => sum + log.output_tokens, 0) * 1.10 / 1000000).toFixed(4)}</p>
+          <p className="text-sm text-muted-foreground">
+            ≈ $
+            {recentLogs
+              .reduce((sum, log) => sum + (log.cost_output_usd ?? 0), 0)
+              .toFixed(4)}
+          </p>
         </Card>
 
         <Card className="p-6 bg-primary/10">
