@@ -7,6 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+
 
 // NOTE: This function expects a post ID.
 // We accept { postId }, { id } or { post_id } in the request body
@@ -39,20 +43,14 @@ serve(async (req) => {
       throw new Error("DeepSeek API key not configured");
     }
     
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    
-    const thresholds = await loadPsyopThresholds(supabase);
+    const thresholds = await loadPsyopThresholds(supabaseAdmin);
     console.log("Quick detection thresholds:", thresholds);
 
     // NOTE:
     // We ALWAYS load the post from "posts" table by its primary key only.
     // Do not add extra filters (status, timestamps, etc.) here,
     // otherwise auto-analyzer will see false "Post not found" errors.
-    const { data: post, error: fetchError } = await supabase
+    const { data: post, error: fetchError } = await supabaseAdmin
       .from("posts")
       .select("*")
       .eq("id", effectivePostId)
@@ -80,7 +78,7 @@ serve(async (req) => {
     }
 
     // Load entity list for reference
-    const { data: entities } = await supabase
+    const { data: entities } = await supabaseAdmin
       .from('resistance_entities')
       .select('name_english, name_persian, name_arabic')
       .eq('active', true);
@@ -308,7 +306,7 @@ const updateData: Record<string, any> = {
 };
 
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("posts")
       .update(updateData)
       .eq("id", effectivePostId);
@@ -320,7 +318,7 @@ const updateData: Record<string, any> = {
     const responseTime = Date.now() - startTime;
 
     // Log API usage
-    await logDeepseekUsage(supabase, {
+    await logDeepseekUsage(supabaseAdmin, {
       endpoint: "quick-psyop-detection",
       functionName: "quick-psyop-detection",
       usage: deepseekData?.usage || {},

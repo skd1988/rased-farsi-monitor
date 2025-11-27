@@ -86,6 +86,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    const supabaseAdmin = supabaseService;
 
     console.log(`Processing question: "${question}"`);
 
@@ -98,7 +99,7 @@ serve(async (req) => {
     const responseTime = Date.now() - startTime;
 
     // Log API usage
-    await logDeepseekUsage(supabaseService, {
+    await logDeepseekUsage(supabaseAdmin, {
       endpoint: "chat-assistant",
       functionName: "chat-assistant",
       usage: aiResponse.usage || {},
