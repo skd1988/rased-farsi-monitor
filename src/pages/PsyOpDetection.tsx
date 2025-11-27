@@ -102,6 +102,7 @@ const PsyOpDetection = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [globalPsyops, setGlobalPsyops] = useState<PsyOpPost[]>([]);
   const ITEMS_PER_PAGE = 20;
 
   const [deepestLoadingId, setDeepestLoadingId] = useState<string | null>(null);
@@ -141,6 +142,8 @@ const PsyOpDetection = () => {
     console.log('🟢 [PsyOpDetection] COMPONENT MOUNTED!');
     console.log('🟢 [PsyOpDetection] Location:', window.location.href);
 
+    fetchGlobalStats();
+
     return () => {
       console.log('🔵 [PsyOpDetection] COMPONENT UNMOUNTING');
     };
@@ -157,6 +160,34 @@ const PsyOpDetection = () => {
     });
     fetchPosts();
   }, [currentPage, threatLevelFilter, psyopTypeFilter, dateRange, riskFilter]);
+
+  const fetchGlobalStats = async () => {
+    try {
+      console.log('⏳ [PsyOpDetection] fetchGlobalStats started');
+      const { data, error } = await supabase
+        .from('posts')
+        .select(
+          `
+          id,
+          is_psyop,
+          psyop_confidence,
+          psyop_risk_score,
+          threat_level,
+          analysis_stage,
+          quick_analyzed_at,
+          deep_analyzed_at,
+          deepest_analysis_completed_at
+          `
+        )
+        .eq('is_psyop', true);
+
+      if (error) throw error;
+      setGlobalPsyops(data || []);
+      console.log('✅ [PsyOpDetection] Global PsyOps for stats:', data?.length || 0);
+    } catch (error) {
+      console.error('❌ [PsyOpDetection] Error fetching global stats:', error);
+    }
+  };
 
   const fetchPosts = async () => {
     try {
@@ -422,19 +453,21 @@ const PsyOpDetection = () => {
 
   // Quick stats
   const stats = useMemo(() => {
-    const psyops = filteredPosts.filter(p => p.is_psyop === true);
+    const psyops = globalPsyops.filter(p => p.is_psyop === true);
     return {
       total: psyops.length,
       critical: psyops.filter(p => p.threat_level === 'Critical').length,
       high: psyops.filter(p => p.threat_level === 'High').length,
       avgConfidence: psyops.length > 0
-        ? Math.round(psyops.reduce((sum, p) => sum + (p.psyop_confidence || 0), 0) / psyops.length)
+        ? Math.round(
+            psyops.reduce((sum, p) => sum + (p.psyop_confidence || 0), 0) / psyops.length
+          )
         : 0,
       quickOnly: psyops.filter(p => resolveAnalysisStage(p as any) === 'quick').length,
       deepCount: psyops.filter(p => resolveAnalysisStage(p as any) === 'deep').length,
       deepestCount: psyops.filter(p => resolveAnalysisStage(p as any) === 'deepest').length,
     };
-  }, [filteredPosts]);
+  }, [globalPsyops]);
 
   // Count by filter
   const counts = useMemo(() => {
