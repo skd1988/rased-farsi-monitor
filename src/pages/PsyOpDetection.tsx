@@ -75,7 +75,7 @@ interface PsyOpPost {
   sentiment: string | null;
   keywords: string[] | null;
   urgency_level?: string | null;
-  virality_potential?: number | null;
+  virality_potential?: "Low" | "Medium" | "High" | null;
   psyop_reviewed_at?: string | null;
   psyop_review_notes?: string | null;
 }
@@ -407,7 +407,14 @@ const PsyOpDetection = () => {
         return aOrder - bOrder;
       });
     } else if (sortBy === 'virality') {
-      sorted.sort((a, b) => (b.virality_potential || 0) - (a.virality_potential || 0));
+      const rank = (value: PsyOpPost["virality_potential"]): number => {
+        if (value === "Low") return 0;
+        if (value === "Medium") return 1;
+        if (value === "High") return 2;
+        return -1;
+      };
+
+      sorted.sort((a, b) => rank(b.virality_potential ?? null) - rank(a.virality_potential ?? null));
     }
     
     return sorted;
