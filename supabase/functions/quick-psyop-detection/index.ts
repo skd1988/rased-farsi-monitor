@@ -6,6 +6,80 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const DEEPSEEK_INPUT_PRICE_PER_M = 0.14;  // USD per 1M input tokens
+const DEEPSEEK_OUTPUT_PRICE_PER_M = 0.28; // USD per 1M output tokens
+
+type DeepseekUsage = {
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+};
+
+function calculateDeepseekCosts(usage: DeepseekUsage) {
+  const inputTokens = usage?.prompt_tokens ?? 0;
+  const outputTokens = usage?.completion_tokens ?? 0;
+  const totalTokens =
+    usage?.total_tokens ?? inputTokens + outputTokens;
+
+  const cost_input_usd =
+    (inputTokens / 1_000_000) * DEEPSEEK_INPUT_PRICE_PER_M;
+  const cost_output_usd =
+    (outputTokens / 1_000_000) * DEEPSEEK_OUTPUT_PRICE_PER_M;
+  const cost_usd = cost_input_usd + cost_output_usd;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  };
+}
+
+async function logDeepseekUsage(
+  supabase: any,
+  params: {
+    endpoint: string;
+    usage: DeepseekUsage;
+    responseTimeMs?: number;
+    postId?: string | null;
+    questionSnippet?: string | null;
+    functionName?: string | null;
+  },
+) {
+  if (!supabase) return;
+
+  const {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  } = calculateDeepseekCosts(params.usage || {});
+
+  try {
+    await supabase.from("api_usage_logs").insert({
+      endpoint: params.endpoint,
+      function_name: params.functionName ?? params.endpoint,
+      model_used: "deepseek-chat",
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      cost_input_usd,
+      cost_output_usd,
+      cost_usd,
+      response_time_ms: params.responseTimeMs ?? null,
+      status: "success",
+      post_id: params.postId ?? null,
+      question: params.questionSnippet ?? null,
+    });
+  } catch (error) {
+    console.error("Failed to log DeepSeek API usage:", error);
+  }
+}
+
 
 // NOTE: This function expects a post ID.
 // We accept { postId }, { id } or { post_id } in the request body
@@ -319,14 +393,12 @@ const updateData: Record<string, any> = {
     const responseTime = Date.now() - startTime;
 
     // Log API usage
-    await logAPIUsage(supabase, {
-      endpoint: 'quick-psyop-detection',
-      tokens_used: deepseekData.usage.total_tokens,
-      input_tokens: deepseekData.usage.prompt_tokens,
-      output_tokens: deepseekData.usage.completion_tokens,
-      model: 'deepseek-chat',
-      post_id: effectivePostId,
-      response_time: responseTime
+    await logDeepseekUsage(supabase, {
+      endpoint: "quick-psyop-detection",
+      functionName: "quick-psyop-detection",
+      usage: deepseekData?.usage || {},
+      responseTimeMs: responseTime,
+      postId: effectivePostId,
     });
     
     console.log(`Quick detection completed in ${responseTime}ms:`, normalizedResult);
@@ -600,32 +672,6 @@ function calculateRiskScore(result: any): number {
   score += Math.min(techBonus, 20);
 
   return Math.min(100, Math.max(0, Math.round(score)));
-}
-
-async function logAPIUsage(supabase: any, data: any) {
-  const cost = calculateCost(data.input_tokens, data.output_tokens);
-  
-  try {
-    await supabase.from('api_usage_logs').insert({
-      model_used: data.model,
-      input_tokens: data.input_tokens,
-      output_tokens: data.output_tokens,
-      total_tokens: data.tokens_used,
-      cost_usd: cost,
-      response_time_ms: data.response_time,
-      post_id: data.post_id,
-      status: 'success'
-    });
-  } catch (error) {
-    console.error("Failed to log API usage:", error);
-  }
-}
-
-function calculateCost(inputTokens: number, outputTokens: number): number {
-  // DeepSeek pricing: $0.27/M input, $1.10/M output
-  const inputCost = (inputTokens / 1_000_000) * 0.27;
-  const outputCost = (outputTokens / 1_000_000) * 1.10;
-  return inputCost + outputCost;
 }
 
 type PsyopThresholds = {

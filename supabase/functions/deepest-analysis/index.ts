@@ -33,6 +33,80 @@ const validEscalationLevels = ["Low", "Medium", "High", "Critical"] as const;
 // Helpers
 // ──────────────────────────────
 
+const DEEPSEEK_INPUT_PRICE_PER_M = 0.14;  // USD per 1M input tokens
+const DEEPSEEK_OUTPUT_PRICE_PER_M = 0.28; // USD per 1M output tokens
+
+type DeepseekUsage = {
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+};
+
+function calculateDeepseekCosts(usage: DeepseekUsage) {
+  const inputTokens = usage?.prompt_tokens ?? 0;
+  const outputTokens = usage?.completion_tokens ?? 0;
+  const totalTokens =
+    usage?.total_tokens ?? inputTokens + outputTokens;
+
+  const cost_input_usd =
+    (inputTokens / 1_000_000) * DEEPSEEK_INPUT_PRICE_PER_M;
+  const cost_output_usd =
+    (outputTokens / 1_000_000) * DEEPSEEK_OUTPUT_PRICE_PER_M;
+  const cost_usd = cost_input_usd + cost_output_usd;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  };
+}
+
+async function logDeepseekUsage(
+  supabase: any,
+  params: {
+    endpoint: string;
+    usage: DeepseekUsage;
+    responseTimeMs?: number;
+    postId?: string | null;
+    questionSnippet?: string | null;
+    functionName?: string | null;
+  },
+) {
+  if (!supabase) return;
+
+  const {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost_input_usd,
+    cost_output_usd,
+    cost_usd,
+  } = calculateDeepseekCosts(params.usage || {});
+
+  try {
+    await supabase.from("api_usage_logs").insert({
+      endpoint: params.endpoint,
+      function_name: params.functionName ?? params.endpoint,
+      model_used: "deepseek-chat",
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      cost_input_usd,
+      cost_output_usd,
+      cost_usd,
+      response_time_ms: params.responseTimeMs ?? null,
+      status: "success",
+      post_id: params.postId ?? null,
+      question: params.questionSnippet ?? null,
+    });
+  } catch (error) {
+    console.error("Failed to log DeepSeek API usage:", error);
+  }
+}
+
 function resolveStageFromTimestamps(
   post: any,
 ): "quick" | "deep" | "deepest" | null {
@@ -49,7 +123,7 @@ function resolveStageFromTimestamps(
 async function callDeepseekWithRetry(
   prompt: string,
   maxRetries = 3,
-): Promise<string> {
+): Promise<any> {
   if (!DEEPSEEK_API_KEY) {
     throw new Error("DeepSeek API key not configured");
   }
@@ -96,7 +170,7 @@ async function callDeepseekWithRetry(
         '{"escalation_level":"High","strategic_summary":"خروجی مدل خالی بود.","key_risks":null,"audience_segments":null,"recommended_actions":null,"monitoring_indicators":null}';
 
       console.log("Raw DeepSeek response (deepest):", content);
-      return content;
+      return data;
     } catch (err) {
       lastError = err;
       if (attempt === maxRetries - 1) break;
@@ -239,6 +313,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     if (!supabase) {
       throw new Error("Supabase client not initialized");
@@ -323,7 +399,11 @@ serve(async (req) => {
     }
 
     const prompt = buildDeepestPrompt(existingPost, relatedPosts);
-    const llmRaw = await callDeepseekWithRetry(prompt);
+    const deepseekData = await callDeepseekWithRetry(prompt);
+    const fallbackContent =
+      '{"escalation_level":"High","strategic_summary":"خروجی مدل خالی بود.","key_risks":null,"audience_segments":null,"recommended_actions":null,"monitoring_indicators":null}';
+    const llmRaw =
+      deepseekData?.choices?.[0]?.message?.content ?? fallbackContent;
     const parsedResult = parseDeepestResult(llmRaw);
     const normalizedEscalation = normalizeEscalationLevel(
       parsedResult.escalation_level,
@@ -380,6 +460,17 @@ serve(async (req) => {
         },
       );
     }
+
+    const processingTime = Date.now() - startTime;
+    const usage = deepseekData?.usage || {};
+
+    await logDeepseekUsage(supabase, {
+      endpoint: "deepest-analysis",
+      functionName: "deepest-analysis",
+      usage,
+      responseTimeMs: processingTime,
+      postId: postId,
+    });
 
     const responsePayload = {
       post_id: postId,
