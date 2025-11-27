@@ -215,7 +215,7 @@ const PsyOpDetection = () => {
       }
       
       if (psyopTypeFilter !== 'All') {
-        query = query.contains('psyop_technique', [psyopTypeFilter]);
+        query = query.contains('psyop_techniques', [psyopTypeFilter]);
       }
       
       if (dateRange?.from) {
