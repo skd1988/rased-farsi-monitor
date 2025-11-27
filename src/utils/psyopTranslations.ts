@@ -16,6 +16,11 @@ export const psyopTechniqueTranslations: Record<string, string> = {
   'Disinformation': 'اطلاعات نادرست',
   'Propaganda': 'تبلیغات',
   'Character Assassination': 'ترور شخصیت',
+  demonization: 'شیطان‌سازی',
+  division_creation: 'ایجاد تفرقه',
+  disinformation: 'اطلاعات نادرست',
+  fear_mongering: 'ایجاد ترس',
+  character_assassination: 'ترور شخصیت',
   'Divide and Conquer': 'تفرقه‌اندازی',
   'Victimhood Narrative': 'روایت قربانی‌سازی',
   'Discrediting': 'بی‌اعتبارسازی',
@@ -31,7 +36,27 @@ export const psyopTechniqueTranslations: Record<string, string> = {
  * @returns The Persian translation, or the original if no translation exists
  */
 export const translatePsyopTechnique = (technique: string): string => {
-  return psyopTechniqueTranslations[technique] || technique;
+  if (!technique) return technique;
+
+  const raw = technique.trim();
+
+  if (psyopTechniqueTranslations[raw]) {
+    return psyopTechniqueTranslations[raw];
+  }
+
+  const normalized = raw
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+  if (psyopTechniqueTranslations[normalized]) {
+    return psyopTechniqueTranslations[normalized];
+  }
+
+  return raw;
 };
 
 /**
