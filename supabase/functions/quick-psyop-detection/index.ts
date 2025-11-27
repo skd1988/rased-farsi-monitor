@@ -267,6 +267,9 @@ serve(async (req) => {
     const psyopTechniques = Array.isArray(result.psyop_techniques)
       ? result.psyop_techniques
       : null;
+    const targetPersons = Array.isArray(result.target_persons)
+      ? result.target_persons.filter((name: unknown) => typeof name === "string" && name.trim().length > 0)
+      : [];
 
     // Validate and normalize result
     const riskScore = calculateRiskScore(result);
@@ -285,25 +288,27 @@ serve(async (req) => {
       needs_deep_analysis: needsDeep,
       needs_deepest_analysis: needsDeepest,
       stage: "quick_detection",
-      parsing_status: parsingStatus
+      parsing_status: parsingStatus,
+      target_persons: targetPersons,
     };
 
     console.log('Final normalized result:', normalizedResult);
 
-   const completionTimestamp = new Date().toISOString();
+    const completionTimestamp = new Date().toISOString();
 
-const updateData: Record<string, any> = {
-  is_psyop: normalizedResult.is_psyop,
-  psyop_confidence: normalizedResult.psyop_confidence,
-  threat_level: normalizedResult.threat_level,
-  primary_target: normalizedResult.primary_target,
-  psyop_risk_score: riskScore,
-  stance_type: stanceType,
-  psyop_category: psyopCategory,
-  psyop_techniques: psyopTechniques,
-  quick_analyzed_at: post.quick_analyzed_at ?? completionTimestamp,
-  // ❌ هیچ مقداردهی برای analysis_stage اینجا نمی‌زنیم
-};
+    const updateData: Record<string, any> = {
+      is_psyop: normalizedResult.is_psyop,
+      psyop_confidence: normalizedResult.psyop_confidence,
+      threat_level: normalizedResult.threat_level,
+      primary_target: normalizedResult.primary_target,
+      psyop_risk_score: riskScore,
+      stance_type: stanceType,
+      psyop_category: psyopCategory,
+      psyop_techniques: psyopTechniques,
+      target_persons: normalizedResult.target_persons,
+      quick_analyzed_at: post.quick_analyzed_at ?? completionTimestamp,
+      // ❌ هیچ مقداردهی برای analysis_stage اینجا نمی‌زنیم
+    };
 
 
     const { error: updateError } = await supabaseAdmin
@@ -437,6 +442,11 @@ Then, based on that internal reasoning (which you do NOT output), answer these:
 - The **English name** of the main target entity from the provided entities list,
 - Or null if there is no clear specific target.
 
+5) target_persons (array of strings):
+- List up to 5 key individuals (persons) who are the target of the attack, e.g. political leaders, commanders, spokespeople.
+- Use their names as they appear in the text (Persian/Arabic/English).
+- If there is no clear person target, return [].
+
 =====================
 OUTPUT FORMAT (JSON ONLY)
 =====================
@@ -450,7 +460,8 @@ Return **only** a single JSON object, with this exact structure:
   "primary_target": "Hezbollah Lebanon",
   "stance_type": "hostile_propaganda",
   "psyop_category": "confirmed_psyop",
-  "psyop_techniques": ["demonization", "fear_mongering"]
+  "psyop_techniques": ["demonization", "fear_mongering"],
+  "target_persons": ["Example Person"]
 }
 
 Rules:
@@ -458,6 +469,7 @@ Rules:
 - confidence: must be an integer between 0 and 100.
 - threat_level: exactly one of "Low", "Medium", "High", "Critical".
 - primary_target: must be one of the English names from the entities list above, or null.
+- target_persons: array of person names (strings), max 5 entries, [] if none clearly targeted.
 - stance_type:
   - "supportive"
   - "neutral"
@@ -477,6 +489,16 @@ Rules:
     - "character_assassination"
     - "agenda_shifting"
     - "disinformation"
+
+The final JSON MUST have exactly these fields:
+- "is_psyop": boolean
+- "confidence": integer
+- "threat_level": string
+- "primary_target": string or null
+- "psyop_category": string or null
+- "psyop_techniques": array of strings
+- "stance_type": string or null
+- "target_persons": array of strings
 
 Do NOT include any explanation, commentary, or extra text. Return only valid JSON.`;
 }
