@@ -158,6 +158,16 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
 
   const currentStatus = statusConfig[alertStatus as keyof typeof statusConfig] || statusConfig['Unresolved'];
 
+  const primaryTarget: string | null =
+    (post.primary_target as string | null | undefined) ?? null;
+
+  const targetEntities: string[] =
+    Array.isArray(post.target_entity)
+      ? post.target_entity
+      : post.target_entity
+        ? [post.target_entity]
+        : [];
+
   return (
     <Card className={cn(
       'relative overflow-hidden transition-all hover:shadow-lg border-l-4',
@@ -286,19 +296,38 @@ const PsyOpCard: React.FC<PsyOpCardProps> = ({
             <span>هدف:</span>
           </div>
           <div className="flex flex-wrap gap-1">
-            {post.target_entity && Array.isArray(post.target_entity) && post.target_entity.length > 0 ? (
+            {primaryTarget ? (
               <>
                 <Badge className="bg-danger text-white text-sm">
-                  {post.target_entity[0]}
+                  {primaryTarget}
                 </Badge>
-                {post.target_entity.slice(1, 3).map((entity: string, idx: number) => (
+                {targetEntities
+                  .filter((entity) => entity && entity !== primaryTarget)
+                  .slice(0, 2)
+                  .map((entity, idx) => (
+                    <Badge key={idx} variant="secondary" className="text-xs">
+                      {entity}
+                    </Badge>
+                  ))}
+                {targetEntities.filter((entity) => entity && entity !== primaryTarget).length > 2 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{targetEntities.filter((entity) => entity && entity !== primaryTarget).length - 2} دیگر
+                  </Badge>
+                )}
+              </>
+            ) : targetEntities.length > 0 ? (
+              <>
+                <Badge className="bg-danger text-white text-sm">
+                  {targetEntities[0]}
+                </Badge>
+                {targetEntities.slice(1, 3).map((entity, idx) => (
                   <Badge key={idx} variant="secondary" className="text-xs">
                     {entity}
                   </Badge>
                 ))}
-                {post.target_entity.length > 3 && (
+                {targetEntities.length > 3 && (
                   <Badge variant="outline" className="text-xs">
-                    +{post.target_entity.length - 3} دیگر
+                    +{targetEntities.length - 3} دیگر
                   </Badge>
                 )}
               </>
