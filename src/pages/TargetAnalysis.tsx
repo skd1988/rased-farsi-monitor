@@ -207,35 +207,57 @@ const TargetAnalysis = () => {
           }
         }
 
-        // Extract names from parsed entity
-        const namePersian = parsedEntity.name_persian?.trim() || '';
-        const nameEnglish = parsedEntity.name_english?.trim() || '';
-        const nameArabic = parsedEntity.name_arabic?.trim() || '';
+        // Extract raw names
+        const namePersianRaw = parsedEntity.name_persian ?? '';
+        const nameEnglishRaw = parsedEntity.name_english ?? '';
+        const nameArabicRaw = parsedEntity.name_arabic ?? '';
+
+        // Clean names
+        const namePersian = namePersianRaw.toString().trim();
+        const nameEnglish = nameEnglishRaw.toString().trim();
+        const nameArabic = nameArabicRaw.toString().trim();
 
         // Skip invalid names
-        if (!namePersian && !nameEnglish && !nameArabic) {
+        if (!namePersian && !nameEnglish && !nameArabic) return;
+
+        if (
+          namePersian === 'نامشخص' ||
+          namePersian === 'Unknown' ||
+          nameEnglish === 'Unknown' ||
+          namePersian.includes('{')
+        ) {
           return;
         }
 
-        if (namePersian === 'نامشخص' || namePersian === 'Unknown' ||
-            nameEnglish === 'Unknown' || namePersian.includes('{')) {
-          return;
-        }
+        // Normalization helper (case-insensitive + single spaces)
+        const normalize = (s: string | null | undefined) =>
+          (s || '')
+            .toString()
+            .trim()
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
 
-        // Find entity in resistance_entities table
-        const entity = entities.find(e =>
-          e.name_persian === namePersian ||
-          e.name_english === nameEnglish
-        );
+        // Normalized input variants
+        const np = normalize(namePersian);
+        const ne = normalize(nameEnglish);
+        const na = normalize(nameArabic);
 
-        // Decide on a canonical key: prefer DB Persian name if available
-        const canonicalPersian =
-          (entity?.name_persian || namePersian || '').trim();
-        const canonicalEnglish =
-          (entity?.name_english || nameEnglish || '').trim();
-        const canonicalArabic =
-          (entity?.name_arabic || nameArabic || '').trim();
+        // Robust entity match in DB (case-insensitive, Persian/English)
+        const entity = entities.find((e) => {
+          const ep = normalize(e.name_persian);
+          const ee = normalize(e.name_english);
+          return (
+            (ep && (ep === np || ep === ne || ep === na)) ||
+            (ee && (ee === np || ee === ne || ee === na))
+          );
+        });
 
+        // Canonical names (prefer DB Persian if exists)
+        const canonicalPersian = (entity?.name_persian || namePersian || '').trim();
+        const canonicalEnglish = (entity?.name_english || nameEnglish || '').trim();
+        const canonicalArabic = (entity?.name_arabic || nameArabic || '').trim();
+
+        // FINAL KEY FOR THE MAP → ALWAYS PERSIAN WHEN AVAILABLE
         const entityKey =
           canonicalPersian || canonicalEnglish || canonicalArabic;
 
