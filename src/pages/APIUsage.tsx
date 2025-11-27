@@ -38,6 +38,8 @@ interface DeepSeekUsageLog {
   output_tokens: number;
   total_tokens: number;
   cost_usd: number;
+  cost_input_usd: number | null;
+  cost_output_usd: number | null;
   response_time_ms: number;
   status: string;
   error_message: string | null;
