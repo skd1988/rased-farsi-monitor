@@ -9,6 +9,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+
 interface ChatRequest {
   question: string;
   conversationHistory?: Array<{ role: string; content: string }>;
@@ -31,11 +36,8 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
     // Create client with user's auth token
-    const supabase = createClient(supabaseUrl, supabaseKey, {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
@@ -81,17 +83,10 @@ serve(async (req) => {
       throw new Error("DEEPSEEK_API_KEY not configured");
     }
 
-    // Use service role key for database operations
-    const supabaseService = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    const supabaseAdmin = supabaseService;
-
     console.log(`Processing question: "${question}"`);
 
     // Fetch relevant data from Supabase
-    const relevantData = await fetchRelevantData(supabaseService, question);
+    const relevantData = await fetchRelevantData(supabaseAdmin, question);
 
     // Call DeepSeek API (using same method as analyze-post)
     const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
