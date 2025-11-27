@@ -64,6 +64,9 @@ interface PsyOpPost {
   deepest_recommended_actions?: string[] | null;
   deepest_monitoring_indicators?: string[] | null;
 
+  // New canonical Quick-stage field
+  primary_target?: string | null;
+
   // Additional fields preserved from previous interface
   narrative_theme: string | null;
   psyop_technique: string[] | null;
@@ -177,6 +180,7 @@ const PsyOpDetection = () => {
       stance_type,
       psyop_category,
       psyop_techniques,
+      primary_target,
       psyop_review_status,
       analysis_stage,
       quick_analyzed_at,
