@@ -228,12 +228,21 @@ const TargetAnalysis = () => {
           e.name_english === nameEnglish
         );
 
-        // Use the first available name as key
-        const entityKey = namePersian || nameEnglish || nameArabic;
+        // Decide on a canonical key: prefer DB Persian name if available
+        const canonicalPersian =
+          (entity?.name_persian || namePersian || '').trim();
+        const canonicalEnglish =
+          (entity?.name_english || nameEnglish || '').trim();
+        const canonicalArabic =
+          (entity?.name_arabic || nameArabic || '').trim();
+
+        const entityKey =
+          canonicalPersian || canonicalEnglish || canonicalArabic;
+
         const entityInfo = {
-          name_persian: namePersian || entity?.name_persian || '',
-          name_english: nameEnglish || entity?.name_english || '',
-          name_arabic: nameArabic || entity?.name_arabic || '',
+          name_persian: canonicalPersian,
+          name_english: canonicalEnglish,
+          name_arabic: canonicalArabic,
           entity_type: entity?.entity_type || 'Organization',
           location: entity?.location || 'نامشخص'
         };
