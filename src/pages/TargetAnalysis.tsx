@@ -170,110 +170,134 @@ const TargetAnalysis = () => {
     const stats = new Map();
 
     posts.forEach(post => {
-      if (post.target_entity && Array.isArray(post.target_entity)) {
-        post.target_entity.forEach((entityName: any) => {
-          // Parse entity - handle both string and object formats
-          let parsedEntity = entityName;
-          if (typeof entityName === 'string') {
-            try {
-              parsedEntity = JSON.parse(entityName);
-            } catch {
-              parsedEntity = { name_persian: entityName };
-            }
-          }
+      const targets: any[] = [];
 
-          // Extract names from parsed entity
-          const namePersian = parsedEntity.name_persian?.trim() || '';
-          const nameEnglish = parsedEntity.name_english?.trim() || '';
-          const nameArabic = parsedEntity.name_arabic?.trim() || '';
-
-          // Skip invalid names
-          if (!namePersian && !nameEnglish && !nameArabic) {
-            return;
-          }
-
-          if (namePersian === 'نامشخص' || namePersian === 'Unknown' ||
-              nameEnglish === 'Unknown' || namePersian.includes('{')) {
-            return;
-          }
-
-          // Find entity in resistance_entities table
-          const entity = entities.find(e =>
-            e.name_persian === namePersian ||
-            e.name_english === nameEnglish
+      // 1) Add primary_target if present
+      if (post.primary_target) {
+        const rawName = String(post.primary_target).trim();
+        if (rawName) {
+          const matchedEntity = entities.find(e =>
+            e.name_english === rawName || e.name_persian === rawName
           );
 
-          // Use the first available name as key
-          const entityKey = namePersian || nameEnglish || nameArabic;
-          const entityInfo = {
-            name_persian: namePersian || entity?.name_persian || '',
-            name_english: nameEnglish || entity?.name_english || '',
-            name_arabic: nameArabic || entity?.name_arabic || '',
-            entity_type: entity?.entity_type || 'Organization',
-            location: entity?.location || 'نامشخص'
+          const primaryParsed = {
+            name_persian: matchedEntity?.name_persian || rawName,
+            name_english: matchedEntity?.name_english || '',
+            name_arabic: matchedEntity?.name_arabic || '',
           };
 
-          if (!stats.has(entityKey)) {
-            stats.set(entityKey, {
-              ...entityInfo,
-              totalAttacks: 0,
-              weekAttacks: 0,
-              threatDistribution: { Critical: 0, High: 0, Medium: 0, Low: 0 },
-              topVectors: new Map<string, number>(),
-              timeline: Array(30).fill(0),
-
-              // NEW: 3-level analysis counts
-              quickOnlyCount: 0,
-              deepCount: 0,
-              deepestCount: 0,
-              hasDeepest: false,
-            });
-          }
-
-          const stat = stats.get(entityKey);
-
-          // Total attacks
-          stat.totalAttacks++;
-
-          // Week attacks
-          const weekAgo = subDays(new Date(), 7);
-          if (new Date(post.published_at) >= weekAgo) {
-            stat.weekAttacks++;
-          }
-
-          // NEW: 3-level stage counters for PsyOp posts
-          if (post.is_psyop) {
-            if (post.analysis_stage === 'quick') {
-              stat.quickOnlyCount++;
-            }
-            if (post.analysis_stage === 'deep') {
-              stat.deepCount++;
-            }
-            if (post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at) {
-              stat.deepestCount++;
-              stat.hasDeepest = true;
-            }
-          }
-
-          // Threat distribution
-          if (post.threat_level) {
-            stat.threatDistribution[post.threat_level]++;
-          }
-
-          // Top vectors
-          if (post.psyop_technique && Array.isArray(post.psyop_technique)) {
-            post.psyop_technique.forEach((tech: string) => {
-              stat.topVectors.set(tech, (stat.topVectors.get(tech) || 0) + 1);
-            });
-          }
-
-          // Timeline
-          const daysDiff = Math.floor((new Date().getTime() - new Date(post.published_at).getTime()) / (1000 * 60 * 60 * 24));
-          if (daysDiff >= 0 && daysDiff < 30) {
-            stat.timeline[29 - daysDiff]++;
-          }
-        });
+          targets.push(primaryParsed);
+        }
       }
+
+      // 2) Add legacy target_entity entries if present
+      if (post.target_entity && Array.isArray(post.target_entity)) {
+        targets.push(...post.target_entity);
+      }
+
+      // 3) Process all targets (new + legacy) with existing logic
+      targets.forEach((entityName: any) => {
+        // Parse entity - handle both string and object formats
+        let parsedEntity = entityName;
+        if (typeof entityName === 'string') {
+          try {
+            parsedEntity = JSON.parse(entityName);
+          } catch {
+            parsedEntity = { name_persian: entityName };
+          }
+        }
+
+        // Extract names from parsed entity
+        const namePersian = parsedEntity.name_persian?.trim() || '';
+        const nameEnglish = parsedEntity.name_english?.trim() || '';
+        const nameArabic = parsedEntity.name_arabic?.trim() || '';
+
+        // Skip invalid names
+        if (!namePersian && !nameEnglish && !nameArabic) {
+          return;
+        }
+
+        if (namePersian === 'نامشخص' || namePersian === 'Unknown' ||
+            nameEnglish === 'Unknown' || namePersian.includes('{')) {
+          return;
+        }
+
+        // Find entity in resistance_entities table
+        const entity = entities.find(e =>
+          e.name_persian === namePersian ||
+          e.name_english === nameEnglish
+        );
+
+        // Use the first available name as key
+        const entityKey = namePersian || nameEnglish || nameArabic;
+        const entityInfo = {
+          name_persian: namePersian || entity?.name_persian || '',
+          name_english: nameEnglish || entity?.name_english || '',
+          name_arabic: nameArabic || entity?.name_arabic || '',
+          entity_type: entity?.entity_type || 'Organization',
+          location: entity?.location || 'نامشخص'
+        };
+
+        if (!stats.has(entityKey)) {
+          stats.set(entityKey, {
+            ...entityInfo,
+            totalAttacks: 0,
+            weekAttacks: 0,
+            threatDistribution: { Critical: 0, High: 0, Medium: 0, Low: 0 },
+            topVectors: new Map<string, number>(),
+            timeline: Array(30).fill(0),
+
+            // NEW: 3-level analysis counts
+            quickOnlyCount: 0,
+            deepCount: 0,
+            deepestCount: 0,
+            hasDeepest: false,
+          });
+        }
+
+        const stat = stats.get(entityKey);
+
+        // Total attacks
+        stat.totalAttacks++;
+
+        // Week attacks
+        const weekAgo = subDays(new Date(), 7);
+        if (new Date(post.published_at) >= weekAgo) {
+          stat.weekAttacks++;
+        }
+
+        // NEW: 3-level stage counters for PsyOp posts
+        if (post.is_psyop) {
+          if (post.analysis_stage === 'quick') {
+            stat.quickOnlyCount++;
+          }
+          if (post.analysis_stage === 'deep') {
+            stat.deepCount++;
+          }
+          if (post.analysis_stage === 'deepest' || post.deepest_analysis_completed_at) {
+            stat.deepestCount++;
+            stat.hasDeepest = true;
+          }
+        }
+
+        // Threat distribution
+        if (post.threat_level) {
+          stat.threatDistribution[post.threat_level]++;
+        }
+
+        // Top vectors
+        if (post.psyop_technique && Array.isArray(post.psyop_technique)) {
+          post.psyop_technique.forEach((tech: string) => {
+            stat.topVectors.set(tech, (stat.topVectors.get(tech) || 0) + 1);
+          });
+        }
+
+        // Timeline
+        const daysDiff = Math.floor((new Date().getTime() - new Date(post.published_at).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysDiff >= 0 && daysDiff < 30) {
+          stat.timeline[29 - daysDiff]++;
+        }
+      });
     });
 
     // Convert to array and process
