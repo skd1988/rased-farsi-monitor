@@ -20,6 +20,8 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
+const supabaseAdmin = supabase;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -459,7 +461,7 @@ serve(async (req) => {
     // 6) ثبت لاگ مصرف API
     const usage = data?.usage || {};
 
-    await logDeepseekUsage(supabase, {
+    await logDeepseekUsage(supabaseAdmin, {
       endpoint: "deep-analysis",
       functionName: "analyze-post-deepseek",
       usage,

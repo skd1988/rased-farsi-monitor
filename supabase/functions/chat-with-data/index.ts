@@ -68,12 +68,12 @@ serve(async (req) => {
       throw new Error("DEEPSEEK_API_KEY not configured");
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log(`Processing question: "${question}"`);
 
     // Fetch relevant data from Supabase
-    const relevantData = await fetchRelevantData(supabase, question);
+    const relevantData = await fetchRelevantData(supabaseAdmin, question);
 
     // Call DeepSeek API
     const aiResponse = await callDeepSeekAPI(deepseekApiKey, question, relevantData, conversationHistory);
@@ -81,7 +81,7 @@ serve(async (req) => {
     const responseTime = Date.now() - startTime;
 
     // Log API usage
-    await logDeepseekUsage(supabase, {
+    await logDeepseekUsage(supabaseAdmin, {
       endpoint: "chat-with-data",
       functionName: "chat-with-data",
       usage: aiResponse.usage || {},

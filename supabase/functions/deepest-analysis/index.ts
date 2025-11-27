@@ -22,6 +22,8 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
+const supabaseAdmin = supabase;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -387,7 +389,7 @@ serve(async (req) => {
     const processingTime = Date.now() - startTime;
     const usage = deepseekData?.usage || {};
 
-    await logDeepseekUsage(supabase, {
+    await logDeepseekUsage(supabaseAdmin, {
       endpoint: "deepest-analysis",
       functionName: "deepest-analysis",
       usage,
