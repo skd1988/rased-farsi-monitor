@@ -3,7 +3,7 @@ import { Globe, RefreshCw, Loader2, CheckCircle, XCircle, Wand2 } from 'lucide-r
 import { supabase } from '@/integrations/supabase/client';
 import { TargetAvatar } from '@/components/targets/TargetAvatar';
 import { fetchPhotosForTargets } from '@/lib/photoFetcher';
-import { toast } from 'sonner';
+import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -28,6 +28,7 @@ interface TargetItem {
 }
 
 export default function PhotoManagement() {
+  const { toast } = useToast();
   const [targets, setTargets] = useState<TargetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
@@ -238,17 +239,17 @@ export default function PhotoManagement() {
 
     } catch (error) {
       console.error('Failed to fetch targets:', error);
-      toast.error('خطا در بارگذاری اهداف');
+      toast({ title: 'خطا در بارگذاری اهداف', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   }
-  
+
   async function handleFetchFromWikipedia() {
     const targetsWithoutPhotos = targets.filter(t => !t.photo_url);
-    
+
     if (targetsWithoutPhotos.length === 0) {
-      toast.info('همه اهداف دارای تصویر هستند');
+      toast({ title: 'همه اهداف دارای تصویر هستند', variant: 'default' });
       return;
     }
     
@@ -262,16 +263,16 @@ export default function PhotoManagement() {
         targetsWithoutPhotos,
         (current, total) => setProgress({ current, total })
       );
-      
+
       console.log(`✅ Fetch complete. Got ${results.size} photos from Wikipedia`);
-      toast.success(`${results.size} تصویر از Wikipedia دریافت و ذخیره شد`);
-      
+      toast({ title: `${results.size} تصویر از Wikipedia دریافت و ذخیره شد`, variant: 'default' });
+
       // Refresh targets
       await fetchTargets();
-      
+
     } catch (error) {
       console.error('❌ Failed to fetch from Wikipedia:', error);
-      toast.error('خطا در دریافت تصاویر از Wikipedia');
+      toast({ title: 'خطا در دریافت تصاویر از Wikipedia', variant: 'destructive' });
     } finally {
       setFetching(false);
       setProgress({ current: 0, total: 0 });
@@ -360,7 +361,11 @@ export default function PhotoManagement() {
       toast({ title: 'نام فارسی ذخیره شد', variant: 'default' });
     } catch (error) {
       console.error('Failed to save Persian name', error);
-      toast({ title: 'خطا در ذخیره نام فارسی', variant: 'destructive' });
+      toast({
+        title: 'خطا در ذخیره نام فارسی',
+        description: error instanceof Error ? error.message : undefined,
+        variant: 'destructive',
+      });
     } finally {
       setSavingNameId(null);
     }
@@ -393,7 +398,11 @@ export default function PhotoManagement() {
       }
     } catch (error) {
       console.error('Failed to suggest name', error);
-      toast({ title: 'خطا در دریافت پیشنهاد نام', variant: 'destructive' });
+      toast({
+        title: 'خطا در دریافت پیشنهاد نام',
+        description: error instanceof Error ? error.message : undefined,
+        variant: 'destructive',
+      });
     } finally {
       setSuggestingNameId(null);
     }
