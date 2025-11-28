@@ -393,17 +393,28 @@ export default function PhotoManagement() {
   };
 
   const handleSuggestPersianName = async (target: TargetItem) => {
-    if (!target.name_english && !target.name_arabic) {
-      toast({ title: 'نام انگلیسی یا عربی یافت نشد', variant: 'destructive' });
+    const hasAnyName =
+      !!(target.name_english && target.name_english.trim()) ||
+      !!(target.name_arabic && target.name_arabic.trim()) ||
+      !!(target.name_persian && target.name_persian.trim());
+
+    if (!hasAnyName) {
+      toast({
+        title: 'نام انگلیسی یا عربی یافت نشد',
+        description: 'برای پیشنهاد هوشمند حداقل یکی از نام‌های فارسی، انگلیسی یا عربی لازم است.',
+        variant: 'destructive',
+      });
       return;
     }
 
     setSuggestingNameId(target.key);
+
     try {
       console.log('[PhotoManagement] Requesting suggest-target-name', {
         kind: target.kind,
         name_english: target.name_english,
         name_arabic: target.name_arabic,
+        name_persian: target.name_persian,
       });
 
       const { data, error } = await supabase.functions.invoke('suggest-target-name', {
@@ -411,6 +422,7 @@ export default function PhotoManagement() {
           kind: target.kind,
           name_english: target.name_english,
           name_arabic: target.name_arabic,
+          name_persian: target.name_persian,
         },
       });
 
