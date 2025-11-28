@@ -215,16 +215,22 @@ export default function PhotoManagement() {
           }
         }
 
-        const hasPersianName = !!canonicalPersian;
-
         const profile = profiles?.find(p =>
           p.name_english === target.name_english ||
           p.name_persian === target.name_persian
         );
 
+        const finalPersianName =
+          (canonicalPersian && canonicalPersian.trim()) ||
+          (profile?.name_persian && profile.name_persian.trim()) ||
+          (target.name_persian && target.name_persian.trim()) ||
+          '';
+
+        const hasPersianName = !!finalPersianName;
+
         return {
           ...target,
-          name_persian: canonicalPersian,
+          name_persian: finalPersianName,
           linkedEntityId,
           linkedPersonId,
           hasPersianName,
@@ -333,6 +339,18 @@ export default function PhotoManagement() {
           entityId = data.id;
         }
 
+        await supabase
+          .from('target_profiles')
+          .upsert(
+            {
+              name_english: target.name_english,
+              name_persian: newName,
+              photo_url: target.photo_url ?? null,
+              photo_source: target.photo_source ?? null,
+            },
+            { onConflict: 'name_english' }
+          );
+
         setTargets((prev) =>
           prev.map((t) =>
             t.key === target.key
@@ -369,6 +387,18 @@ export default function PhotoManagement() {
           if (error) throw error;
           personId = data.id;
         }
+
+        await supabase
+          .from('target_profiles')
+          .upsert(
+            {
+              name_english: target.name_english,
+              name_persian: newName,
+              photo_url: target.photo_url ?? null,
+              photo_source: target.photo_source ?? null,
+            },
+            { onConflict: 'name_english' }
+          );
 
         setTargets((prev) =>
           prev.map((t) =>
