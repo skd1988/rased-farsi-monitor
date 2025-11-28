@@ -18,6 +18,8 @@ interface TargetItem {
   name_persian?: string;
   name_english?: string;
   name_arabic?: string;
+  entity_type?: string;
+  location?: string;
   postsCount: number;
   photo_url?: string | null;
   photo_source?: string | null;
@@ -110,6 +112,8 @@ export default function PhotoManagement() {
               name_persian: persianName,
               name_english: englishName,
               name_arabic: arabicName,
+              entity_type: parsedEntity.entity_type,
+              location: parsedEntity.location,
               postsCount: 0,
               photo_url: null,
               photo_source: null,
@@ -304,12 +308,17 @@ export default function PhotoManagement() {
             .eq('id', entityId);
           if (error) throw error;
         } else {
+          const entityType = target.entity_type || 'Organization';
+          const location = target.location || 'نامشخص';
+
           const { data, error } = await supabase
             .from('resistance_entities')
             .insert({
               name_persian: newName,
               name_english: target.name_english,
               name_arabic: target.name_arabic,
+              entity_type: entityType,
+              location,
               active: true,
             })
             .select('id')
