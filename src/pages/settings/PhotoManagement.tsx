@@ -300,6 +300,10 @@ export default function PhotoManagement() {
     try {
       if (target.kind === 'entity') {
         let entityId = target.linkedEntityId;
+        const entityType =
+          target.entity_type && typeof target.entity_type === 'string'
+            ? target.entity_type
+            : 'Organization';
 
         if (entityId) {
           const { error } = await supabase
@@ -308,19 +312,21 @@ export default function PhotoManagement() {
             .eq('id', entityId);
           if (error) throw error;
         } else {
-          const entityType = target.entity_type || 'Organization';
-          const location = target.location || 'نامشخص';
+          const insertPayload: any = {
+            name_persian: newName,
+            name_english: target.name_english,
+            name_arabic: target.name_arabic,
+            entity_type: entityType,
+            active: true,
+          };
+
+          if (target.location && typeof target.location === 'string' && target.location.trim() !== '') {
+            insertPayload.location = target.location.trim();
+          }
 
           const { data, error } = await supabase
             .from('resistance_entities')
-            .insert({
-              name_persian: newName,
-              name_english: target.name_english,
-              name_arabic: target.name_arabic,
-              entity_type: entityType,
-              location,
-              active: true,
-            })
+            .insert(insertPayload)
             .select('id')
             .single();
           if (error) throw error;
@@ -330,7 +336,13 @@ export default function PhotoManagement() {
         setTargets((prev) =>
           prev.map((t) =>
             t.key === target.key
-              ? { ...t, name_persian: newName, hasPersianName: true, linkedEntityId: entityId }
+              ? {
+                  ...t,
+                  name_persian: newName,
+                  hasPersianName: true,
+                  linkedEntityId: entityId,
+                  entity_type: entityType,
+                }
               : t
           )
         );
