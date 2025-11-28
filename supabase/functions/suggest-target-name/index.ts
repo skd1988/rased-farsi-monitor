@@ -60,6 +60,10 @@ serve(async (req: Request): Promise<Response> => {
     const kind = body.kind as "entity" | "person" | undefined;
     const nameEnglish = (body.name_english ?? "").toString().trim();
     const nameArabic = (body.name_arabic ?? "").toString().trim();
+    const namePersian = (body.name_persian ?? "").toString().trim();
+
+    const hasAnyName =
+      !!nameEnglish.length || !!nameArabic.length || !!namePersian.length;
 
     if (!kind) {
       return new Response(
@@ -74,10 +78,11 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!nameEnglish && !nameArabic) {
+    if (!hasAnyName) {
       return new Response(
         JSON.stringify({
-          error: "At least one of name_english or name_arabic is required",
+          error:
+            "At least one of name_english, name_arabic or name_persian is required",
         }),
         {
           status: 400,
@@ -102,6 +107,7 @@ serve(async (req: Request): Promise<Response> => {
 نوع هدف: ${kind === "entity" ? "نهاد / سازمان" : "فرد"}
 نام انگلیسی: ${nameEnglish || "-"}
 نام عربی: ${nameArabic || "-"}
+نام فارسی فعلی (اگر وجود دارد): ${namePersian || "-"}
 
 لطفاً فقط یک خروجی JSON برگردان:
 {
