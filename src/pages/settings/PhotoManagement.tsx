@@ -298,6 +298,64 @@ export default function PhotoManagement() {
   const statsWithPhoto = targets.filter(t => t.photo_url).length;
   const statsWithoutPhoto = targets.filter(t => !t.photo_url).length;
 
+  async function upsertTargetProfile(target: TargetItem, newName: string) {
+    // if we have neither english nor persian name, nothing to persist
+    if (
+      !((target.name_english && target.name_english.trim()) ||
+        (newName && newName.trim()))
+    ) {
+      return;
+    }
+
+    const identifierValue =
+      (target.name_english && target.name_english.trim()) ||
+      newName.trim();
+    const identifierColumn =
+      (target.name_english && target.name_english.trim())
+        ? 'name_english'
+        : 'name_persian';
+
+    const profilePayload = {
+      name_english: target.name_english ?? null,
+      name_persian: newName,
+      photo_url: target.photo_url ?? null,
+      photo_source: target.photo_source ?? null,
+    };
+
+    // Try to find existing profile
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('target_profiles')
+      .select('id')
+      .eq(identifierColumn, identifierValue)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('[PhotoManagement] Failed to fetch target_profile', fetchError);
+      throw fetchError;
+    }
+
+    if (existingProfile) {
+      const { error: updateError } = await supabase
+        .from('target_profiles')
+        .update(profilePayload)
+        .eq(identifierColumn, identifierValue);
+
+      if (updateError) {
+        console.error('[PhotoManagement] Failed to update target_profile', updateError);
+        throw updateError;
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from('target_profiles')
+        .insert(profilePayload);
+
+      if (insertError) {
+        console.error('[PhotoManagement] Failed to insert target_profile', insertError);
+        throw insertError;
+      }
+    }
+  }
+
   const handleSavePersianName = async (target: TargetItem) => {
     const newName = (editPersianNames[target.key] ?? target.name_persian ?? '').trim();
     if (!newName) return;
@@ -347,22 +405,7 @@ export default function PhotoManagement() {
           });
         }
 
-        const { error: profileError } = await supabase
-          .from('target_profiles')
-          .upsert(
-            {
-              name_english: target.name_english,
-              name_persian: newName,
-              photo_url: target.photo_url ?? null,
-              photo_source: target.photo_source ?? null,
-            },
-            { onConflict: 'name_english' }
-          );
-
-        if (profileError) {
-          console.error('Failed to upsert target_profiles (entity)', profileError);
-          throw profileError;
-        }
+        await upsertTargetProfile(target, newName);
 
         setTargets((prev) =>
           prev.map((t) =>
@@ -409,22 +452,7 @@ export default function PhotoManagement() {
           });
         }
 
-        const { error: profileError } = await supabase
-          .from('target_profiles')
-          .upsert(
-            {
-              name_english: target.name_english,
-              name_persian: newName,
-              photo_url: target.photo_url ?? null,
-              photo_source: target.photo_source ?? null,
-            },
-            { onConflict: 'name_english' }
-          );
-
-        if (profileError) {
-          console.error('Failed to upsert target_profiles (person)', profileError);
-          throw profileError;
-        }
+        await upsertTargetProfile(target, newName);
 
         setTargets((prev) =>
           prev.map((t) =>
