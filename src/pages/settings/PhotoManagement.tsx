@@ -356,6 +356,48 @@ export default function PhotoManagement() {
     }
   }
 
+  async function verifyEntityPersianName(entityId: string, expected: string) {
+    const { data, error } = await supabase
+      .from('resistance_entities')
+      .select('id, name_persian')
+      .eq('id', entityId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[PhotoManagement] Failed to verify entity Persian name', error);
+      throw error;
+    }
+
+    console.log('[PhotoManagement] Verified entity Persian name from DB', data);
+
+    if (!data || (data.name_persian || '').trim() !== expected.trim()) {
+      const msg = `[PhotoManagement] Entity Persian name mismatch after save. Expected="${expected}", got="${data?.name_persian ?? ''}"`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
+  async function verifyPersonPersianName(personId: string, expected: string) {
+    const { data, error } = await supabase
+      .from('resistance_persons')
+      .select('id, name_persian')
+      .eq('id', personId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[PhotoManagement] Failed to verify person Persian name', error);
+      throw error;
+    }
+
+    console.log('[PhotoManagement] Verified person Persian name from DB', data);
+
+    if (!data || (data.name_persian || '').trim() !== expected.trim()) {
+      const msg = `[PhotoManagement] Person Persian name mismatch after save. Expected="${expected}", got="${data?.name_persian ?? ''}"`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
   const handleSavePersianName = async (target: TargetItem) => {
     const newName = (editPersianNames[target.key] ?? target.name_persian ?? '').trim();
     if (!newName) return;
@@ -405,6 +447,8 @@ export default function PhotoManagement() {
           });
         }
 
+        await verifyEntityPersianName(entityId, newName);
+
         await upsertTargetProfile(target, newName);
 
         setTargets((prev) =>
@@ -451,6 +495,8 @@ export default function PhotoManagement() {
             name_persian: newName,
           });
         }
+
+        await verifyPersonPersianName(personId, newName);
 
         await upsertTargetProfile(target, newName);
 
