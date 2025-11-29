@@ -211,6 +211,7 @@ serve(async (req) => {
 خروجی باید فقط یک شیء JSON با ساختار زیر باشد (بدون هیچ متن اضافی یا مارک‌داون). توجه کن که تمام فیلدهای متنی (به‌جز techniques و keywords) باید حتماً به زبان فارسی باشند:
 
 {
+  "narrative_theme": "یک برچسب انگلیسی برای نوع/تم اصلی روایت از بین گزینه‌های از پیش‌تعریف‌شده (مثلاً Demonization، Delegitimization، Victimization، Fear-Mongering، Divide & Conquer، False Flag، Whitewashing، Attack، Defense، Supportive یا Unknown).",
   "narrative_core": "یک خلاصه ۲ تا ۳ جمله‌ای فارسی از هسته اصلی روایت و چارچوب ذهنی محتوا.",
   "extended_summary": "یک خلاصه بلندتر فارسی (یک یا دو پاراگراف) که پیام‌ها و جهت‌گیری کلی محتوا را توضیح می‌دهد.",
   "psychological_objectives": [
@@ -240,6 +241,18 @@ serve(async (req) => {
 قوانین مهم:
 - تمام متن‌ها (narrative_core، extended_summary، psychological_objectives، recommended_actions) باید فارسی باشند.
 - فقط مقادیر techniques و keywords می‌توانند انگلیسی باشند.
+- narrative_theme باید حتماً یک رشته انگلیسی و یکی از گزینه‌های زیر باشد:
+  - "Demonization"
+  - "Delegitimization"
+  - "Victimization"
+  - "Fear-Mongering"
+  - "Divide & Conquer"
+  - "False Flag"
+  - "Whitewashing"
+  - "Attack"
+  - "Defense"
+  - "Supportive"
+  - "Unknown"
 - manipulation_intensity باید فقط یکی از این مقادیر باشد: "Low" | "Medium" | "High".
 - sentiment باید یکی از این مقادیر باشد: "positive" | "negative" | "neutral".
 - urgency_level باید یکی از این مقادیر باشد: "Low" | "Medium" | "High" | "Critical".
