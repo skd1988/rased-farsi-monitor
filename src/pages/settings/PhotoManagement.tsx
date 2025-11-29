@@ -94,19 +94,23 @@ export default function PhotoManagement() {
           : [];
 
         postEntities.forEach((entity: any) => {
-          let parsed = entity;
+          let parsedEntity = entity;
           if (typeof entity === 'string') {
             try {
-              parsed = JSON.parse(entity);
+              parsedEntity = JSON.parse(entity);
             } catch {
-              parsed = { name_persian: entity };
+              parsedEntity = { name_persian: entity };
             }
           }
 
-          const persianName = parsed.name_persian;
-          const englishName = parsed.name_english;
-          const arabicName = parsed.name_arabic;
-          const key = englishName || persianName || arabicName;
+          const persianName = parsedEntity.name_persian;
+          const englishName = parsedEntity.name_english;
+          const arabicName = parsedEntity.name_arabic;
+
+          // Use a normalized key so that small differences in spelling/spacing
+          // don’t create duplicate cards for the same entity.
+          const rawKey = englishName || persianName || arabicName;
+          const key = normalize(rawKey);
 
           if (!key) return;
 
@@ -117,12 +121,12 @@ export default function PhotoManagement() {
               name_persian: persianName,
               name_english: englishName,
               name_arabic: arabicName,
-              entity_type: parsed.entity_type,
-              location: parsed.location,
+              entity_type: parsedEntity.entity_type,
+              location: parsedEntity.location,
               postsCount: 0,
               photo_url: null,
               photo_source: null,
-              position: parsed.position,
+              position: parsedEntity.position,
               hasPersianName: !!persianName,
               linkedEntityId: null,
               linkedPersonId: null,
@@ -138,19 +142,22 @@ export default function PhotoManagement() {
         // اشخاص
         const postPersons = Array.isArray(post.target_persons) ? post.target_persons : [];
         postPersons.forEach((person: any) => {
-          let parsed = person;
+          let parsedPerson = person;
           if (typeof person === 'string') {
             try {
-              parsed = JSON.parse(person);
+              parsedPerson = JSON.parse(person);
             } catch {
-              parsed = { name_persian: person };
+              parsedPerson = { name_persian: person };
             }
           }
 
-          const persianName = parsed.name_persian;
-          const englishName = parsed.name_english;
-          const arabicName = parsed.name_arabic;
-          const key = englishName || persianName || arabicName;
+          const persianName = parsedPerson.name_persian;
+          const englishName = parsedPerson.name_english;
+          const arabicName = parsedPerson.name_arabic;
+
+          // Normalized key to merge slightly different spellings
+          const rawKey = englishName || persianName || arabicName;
+          const key = normalize(rawKey);
 
           if (!key) return;
 
@@ -164,7 +171,7 @@ export default function PhotoManagement() {
               postsCount: 0,
               photo_url: null,
               photo_source: null,
-              position: parsed.position,
+              position: parsedPerson.position,
               hasPersianName: !!persianName,
               linkedEntityId: null,
               linkedPersonId: null,
