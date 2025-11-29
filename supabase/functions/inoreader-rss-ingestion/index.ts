@@ -557,6 +557,8 @@ function extractPostData(item: any, folder: any): any {
   // Detect source type
   const sourceUrl = item.canonical?.[0]?.href || item.origin?.htmlUrl || '';
   const sourceType = detectSourceType(sourceUrl);
+  const sourceName = item.origin?.title || '';
+  const sourceCountry = detectCountryFromSource(sourceName, sourceUrl);
 
   return {
     // Required fields
@@ -579,6 +581,7 @@ function extractPostData(item: any, folder: any): any {
 
     // Optional
     author: item.author || null,
+    source_country: sourceCountry || null,
     source_type: sourceType,
     article_url: sourceUrl
   };
@@ -588,25 +591,48 @@ function extractPostData(item: any, folder: any): any {
  * تشخیص زبان محتوا
  */
 function detectLanguage(title: string, content: string): string {
-  const text = (title + ' ' + content).toLowerCase();
+  const text = (title + ' ' + content).trim();
+  if (!text) return 'Unknown';
 
-  // Persian patterns
-  if (/[\u0600-\u06FF]/.test(text)) {
-    if (/[است|های|برای|این|که|از|با|به|در]/.test(text)) {
-      return 'Persian';
+  const lower = text.toLowerCase();
+
+  // Character counts
+  let persianChars = 0;
+  let arabicChars = 0;
+  let latinChars = 0;
+
+  for (const ch of lower) {
+    const code = ch.charCodeAt(0);
+    // Arabic/Persian block
+    if (code >= 0x0600 && code <= 0x06FF) {
+      if (/[اآبپتثجدچحخدذرزژسشصضطظعغفقکگلمنوهی]/.test(ch)) {
+        persianChars++;
+      } else {
+        arabicChars++;
+      }
+    } else if ((code >= 0x0041 && code <= 0x005A) || (code >= 0x0061 && code <= 0x007A)) {
+      latinChars++;
     }
   }
 
-  // Arabic patterns
-  if (/[\u0600-\u06FF]/.test(text)) {
-    if (/[هذا|هذه|الذي|التي|على|في|من|إلى]/.test(text)) {
-      return 'Arabic';
-    }
-  }
+  // Keyword boosts
+  const persianWords = /(است|های|برای|این|که|از|با|به|در|می‌|خواهد|کند|کرد)/;
+  const arabicWords = /(هذا|هذه|الذي|التي|على|في|من|إلى|عن|كان|قال)/;
 
-  // English
-  if (/[a-zA-Z]/.test(text)) {
+  if (persianWords.test(lower)) persianChars += 10;
+  if (arabicWords.test(lower)) arabicChars += 10;
+
+  // Dominant language detection
+  if (latinChars > persianChars && latinChars > arabicChars && latinChars > 5) {
     return 'English';
+  }
+
+  if (persianChars >= arabicChars && persianChars > 5) {
+    return 'Persian';
+  }
+
+  if (arabicChars > persianChars && arabicChars > 5) {
+    return 'Arabic';
   }
 
   return 'Unknown';
@@ -637,6 +663,40 @@ function detectSourceType(url: string): string {
   }
 
   return 'website';
+}
+
+function detectCountryFromSource(sourceName: string, sourceUrl: string): string | null {
+  const name = (sourceName || '').toLowerCase();
+  const url = (sourceUrl || '').toLowerCase();
+
+  // 1) تشخیص بر اساس دامنه‌ی اینترنتی
+  if (url.includes('.ir') || url.endsWith('.ir/')) return 'ایران';
+  if (url.includes('.qa')) return 'قطر';
+  if (url.includes('.sa')) return 'عربستان سعودی';
+  if (url.includes('.ae')) return 'امارات';
+  if (url.includes('.tr')) return 'ترکیه';
+  if (url.includes('.ru')) return 'روسیه';
+  if (url.includes('.uk') || url.includes('.co.uk')) return 'بریتانیا';
+  if (url.includes('.us') || url.includes('.gov')) return 'آمریکا';
+  if (url.includes('.fr')) return 'فرانسه';
+  if (url.includes('.de')) return 'آلمان';
+  if (url.includes('.il')) return 'رژیم صهیونیستی';
+
+  // 2) تشخیص بر اساس نام منبع (الگوهای رایج)
+  if (name.includes('press tv') || name.includes('irib') || name.includes('العالم')) return 'ایران';
+  if (name.includes('al jazeera') || name.includes('الجزیره')) return 'قطر';
+  if (name.includes('alarabiya') || name.includes('العربية')) return 'عربستان سعودی';
+  if (name.includes('sky news arabia')) return 'امارات';
+  if (name.includes('bbc')) return 'بریتانیا';
+  if (name.includes('cnn')) return 'آمریکا';
+  if (name.includes('fox news')) return 'آمریکا';
+  if (name.includes('rt ') || name.includes('russia today')) return 'روسیه';
+  if (name.includes('dw') || name.includes('deutsche welle')) return 'آلمان';
+  if (name.includes('france 24')) return 'فرانسه';
+  if (name.includes('haaretz') || name.includes('times of israel') || name.includes('ynet')) return 'رژیم صهیونیستی';
+
+  // 3) اگر هیچ چیز پیدا نشد
+  return null;
 }
 
 /**
