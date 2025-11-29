@@ -317,6 +317,10 @@ export default function PhotoManagement() {
             .update({ name_persian: newName })
             .eq('id', entityId);
           if (error) throw error;
+          console.log('[PhotoManagement] Saved entity Persian name', {
+            entityId,
+            name_persian: newName,
+          });
         } else {
           const insertPayload: any = {
             name_persian: newName,
@@ -337,9 +341,13 @@ export default function PhotoManagement() {
             .single();
           if (error) throw error;
           entityId = data.id;
+          console.log('[PhotoManagement] Saved entity Persian name', {
+            entityId,
+            name_persian: newName,
+          });
         }
 
-        await supabase
+        const { error: profileError } = await supabase
           .from('target_profiles')
           .upsert(
             {
@@ -350,6 +358,11 @@ export default function PhotoManagement() {
             },
             { onConflict: 'name_english' }
           );
+
+        if (profileError) {
+          console.error('Failed to upsert target_profiles (entity)', profileError);
+          throw profileError;
+        }
 
         setTargets((prev) =>
           prev.map((t) =>
@@ -373,6 +386,10 @@ export default function PhotoManagement() {
             .update({ name_persian: newName })
             .eq('id', personId);
           if (error) throw error;
+          console.log('[PhotoManagement] Saved person Persian name', {
+            personId,
+            name_persian: newName,
+          });
         } else {
           const { data, error } = await supabase
             .from('resistance_persons')
@@ -386,9 +403,13 @@ export default function PhotoManagement() {
             .single();
           if (error) throw error;
           personId = data.id;
+          console.log('[PhotoManagement] Saved person Persian name', {
+            personId,
+            name_persian: newName,
+          });
         }
 
-        await supabase
+        const { error: profileError } = await supabase
           .from('target_profiles')
           .upsert(
             {
@@ -400,6 +421,11 @@ export default function PhotoManagement() {
             { onConflict: 'name_english' }
           );
 
+        if (profileError) {
+          console.error('Failed to upsert target_profiles (person)', profileError);
+          throw profileError;
+        }
+
         setTargets((prev) =>
           prev.map((t) =>
             t.key === target.key
@@ -408,6 +434,8 @@ export default function PhotoManagement() {
           )
         );
       }
+
+      await fetchTargets();
 
       toast({ title: 'نام فارسی ذخیره شد', variant: 'default' });
     } catch (error) {
