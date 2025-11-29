@@ -221,8 +221,8 @@ export default function PhotoManagement() {
         );
 
         const finalPersianName =
-          (canonicalPersian && canonicalPersian.trim()) ||
           (profile?.name_persian && profile.name_persian.trim()) ||
+          (canonicalPersian && canonicalPersian.trim()) ||
           (target.name_persian && target.name_persian.trim()) ||
           '';
 
