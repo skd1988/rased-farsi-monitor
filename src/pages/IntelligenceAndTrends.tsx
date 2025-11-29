@@ -41,6 +41,7 @@ const IntelligenceAndTrends = () => {
   // Platform Intelligence
   const [platformData, setPlatformData] = useState<any[]>([]);
   const [platformTactics, setPlatformTactics] = useState<any[]>([]);
+  const [socialPlatformData, setSocialPlatformData] = useState<any[]>([]);
   
   // Geographic Intelligence
   const [geoData, setGeoData] = useState<any[]>([]);
@@ -88,6 +89,7 @@ const IntelligenceAndTrends = () => {
         fetchKeywordIntelligence(),
         fetchTemporalIntelligence(),
         fetchPlatformIntelligence(),
+        fetchSocialPlatformIntelligence(),   // 👈 این را اضافه کن
         fetchGeographicIntelligence(),
         fetchNarratives(),
         fetchDeepestInsights()
@@ -279,6 +281,7 @@ const IntelligenceAndTrends = () => {
       .not('source_type', 'is', null);
 
     if (psyopOnly) query = query.eq('is_psyop', true);
+    if (threatFilter !== 'all') query = query.eq('threat_level', threatFilter);
 
     const { data } = await query;
 
@@ -310,6 +313,53 @@ const IntelligenceAndTrends = () => {
 
       setPlatformData(platformStats);
       setPlatformTactics(platformStats.sort((a: any, b: any) => b.psyopRate - a.psyopRate).slice(0, 5));
+    }
+  };
+
+  const fetchSocialPlatformIntelligence = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('social_media_channels')
+        .select('platform, last_30days_psyop_count, historical_psyop_count')
+        .not('platform', 'is', null);
+
+      if (error) {
+        console.error('[Intelligence] Error fetching social platforms:', error);
+        setSocialPlatformData([]);
+        return;
+      }
+
+      if (!data) {
+        setSocialPlatformData([]);
+        return;
+      }
+
+      const map: Record<string, { channels: number; psyops30d: number; psyopsAll: number }> = {};
+
+      data.forEach((row: any) => {
+        const platform = row.platform || 'Other';
+        if (!map[platform]) {
+          map[platform] = { channels: 0, psyops30d: 0, psyopsAll: 0 };
+        }
+        map[platform].channels += 1;
+        map[platform].psyops30d += row.last_30days_psyop_count || 0;
+        map[platform].psyopsAll += row.historical_psyop_count || 0;
+      });
+
+      const result = Object.entries(map).map(([platform, stats]) => ({
+        platform,
+        channels: stats.channels,
+        psyops30d: stats.psyops30d,
+        psyopsAll: stats.psyopsAll,
+      }));
+
+      // مرتب‌سازی بر اساس PsyOp های ۳۰ روز اخیر
+      result.sort((a, b) => (b.psyops30d || 0) - (a.psyops30d || 0));
+
+      setSocialPlatformData(result);
+    } catch (err) {
+      console.error('[Intelligence] Unexpected error in fetchSocialPlatformIntelligence:', err);
+      setSocialPlatformData([]);
     }
   };
 
@@ -1080,6 +1130,28 @@ const IntelligenceAndTrends = () => {
                   <Tooltip />
                   <Legend />
                 </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>توزیع پلتفرم‌های شبکه‌های اجتماعی</CardTitle>
+              <CardDescription>
+                پلتفرم‌های اصلی شبکه‌های اجتماعی بر اساس کانال‌های ثبت‌شده و میزان عملیات جنگ روانی
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={socialPlatformData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="platform" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="psyops30d" name="حملات ۳۰ روز اخیر" />
+                  <Bar dataKey="channels" name="تعداد کانال‌ها" />
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
