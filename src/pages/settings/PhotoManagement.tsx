@@ -29,6 +29,14 @@ interface TargetItem {
   linkedPersonId?: string | null;
 }
 
+const normalize = (s?: string | null) =>
+  (s || '')
+    .toString()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[--–—'"«»„،,:؛.()]/g, '')
+    .toLowerCase();
+
 export default function PhotoManagement() {
   const { toast } = useToast();
   const [targets, setTargets] = useState<TargetItem[]>([]);
@@ -36,71 +44,68 @@ export default function PhotoManagement() {
   const [fetching, setFetching] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [filter, setFilter] = useState<'all' | 'with-photo' | 'without-photo'>('all');
-  const [entities, setEntities] = useState<any[]>([]);
-  const [persons, setPersons] = useState<any[]>([]);
   const [editPersianNames, setEditPersianNames] = useState<Record<string, string>>({});
   const [savingNameId, setSavingNameId] = useState<string | null>(null);
   const [suggestingNameId, setSuggestingNameId] = useState<string | null>(null);
-  
+
   useEffect(() => {
     fetchTargets();
   }, []);
-  
+
   async function fetchTargets() {
     setLoading(true);
 
     try {
-      const [postsResponse, profilesResponse, entitiesResponse, personsResponse] = await Promise.all([
-        supabase.from('posts').select('target_entity, target_persons').eq('is_psyop', true),
-        supabase.from('target_profiles').select('name_english, name_persian, photo_url, photo_source'),
-        supabase
-          .from('resistance_entities')
-          .select('id, name_persian, name_english, name_arabic, active')
-          .eq('active', true),
-        supabase
-          .from('resistance_persons')
-          .select('id, name_persian, name_english, name_arabic, active, role, entity_id')
-          .eq('active', true)
-      ]);
+      const [postsResponse, profilesResponse, entitiesResponse, personsResponse] =
+        await Promise.all([
+          supabase.from('posts').select('target_entity, target_persons').eq('is_psyop', true),
+          supabase
+            .from('target_profiles')
+            .select('name_english, name_persian, photo_url, photo_source'),
+          supabase
+            .from('resistance_entities')
+            .select('id, name_persian, name_english, name_arabic, active')
+            .eq('active', true),
+          supabase
+            .from('resistance_persons')
+            .select('id, name_persian, name_english, name_arabic, active, role, entity_id')
+            .eq('active', true),
+        ]);
 
       if (postsResponse.error) throw postsResponse.error;
       if (profilesResponse.error) throw profilesResponse.error;
       if (entitiesResponse.error) throw entitiesResponse.error;
       if (personsResponse.error) throw personsResponse.error;
 
-      const posts = postsResponse.data;
-      const profiles = profilesResponse.data;
-      const entitiesData = entitiesResponse.data || [];
-      const personsData = personsResponse.data || [];
+      const posts = postsResponse.data ?? [];
+      const profiles = profilesResponse.data ?? [];
+      const entities = entitiesResponse.data ?? [];
+      const persons = personsResponse.data ?? [];
 
-      setEntities(entitiesData || []);
-      setPersons(personsData || []);
-
-      const allEntities = entitiesData.length ? entitiesData : entities;
-      const allPersons = personsData.length ? personsData : persons;
-
-      // Extract unique targets
+      // --------- استخراج لیست اهداف از پست‌ها ----------
       const targetMap = new Map<string, TargetItem>();
 
-      posts?.forEach(post => {
-        // Process target_entity
+      posts.forEach((post) => {
+        // نهادها
         const postEntities = Array.isArray(post.target_entity)
           ? post.target_entity
-          : post.target_entity ? [post.target_entity] : [];
+          : post.target_entity
+          ? [post.target_entity]
+          : [];
 
         postEntities.forEach((entity: any) => {
-          let parsedEntity = entity;
+          let parsed = entity;
           if (typeof entity === 'string') {
             try {
-              parsedEntity = JSON.parse(entity);
+              parsed = JSON.parse(entity);
             } catch {
-              parsedEntity = { name_persian: entity };
+              parsed = { name_persian: entity };
             }
           }
 
-          const persianName = parsedEntity.name_persian;
-          const englishName = parsedEntity.name_english;
-          const arabicName = parsedEntity.name_arabic;
+          const persianName = parsed.name_persian;
+          const englishName = parsed.name_english;
+          const arabicName = parsed.name_arabic;
           const key = englishName || persianName || arabicName;
 
           if (!key) return;
@@ -112,12 +117,12 @@ export default function PhotoManagement() {
               name_persian: persianName,
               name_english: englishName,
               name_arabic: arabicName,
-              entity_type: parsedEntity.entity_type,
-              location: parsedEntity.location,
+              entity_type: parsed.entity_type,
+              location: parsed.location,
               postsCount: 0,
               photo_url: null,
               photo_source: null,
-              position: parsedEntity.position,
+              position: parsed.position,
               hasPersianName: !!persianName,
               linkedEntityId: null,
               linkedPersonId: null,
@@ -130,21 +135,21 @@ export default function PhotoManagement() {
           }
         });
 
-        // Process target_persons
+        // اشخاص
         const postPersons = Array.isArray(post.target_persons) ? post.target_persons : [];
         postPersons.forEach((person: any) => {
-          let parsedPerson = person;
+          let parsed = person;
           if (typeof person === 'string') {
             try {
-              parsedPerson = JSON.parse(person);
+              parsed = JSON.parse(person);
             } catch {
-              parsedPerson = { name_persian: person };
+              parsed = { name_persian: person };
             }
           }
 
-          const persianName = parsedPerson.name_persian;
-          const englishName = parsedPerson.name_english;
-          const arabicName = parsedPerson.name_arabic;
+          const persianName = parsed.name_persian;
+          const englishName = parsed.name_english;
+          const arabicName = parsed.name_arabic;
           const key = englishName || persianName || arabicName;
 
           if (!key) return;
@@ -159,7 +164,7 @@ export default function PhotoManagement() {
               postsCount: 0,
               photo_url: null,
               photo_source: null,
-              position: parsedPerson.position,
+              position: parsed.position,
               hasPersianName: !!persianName,
               linkedEntityId: null,
               linkedPersonId: null,
@@ -173,16 +178,14 @@ export default function PhotoManagement() {
         });
       });
 
-      const normalize = (s?: string | null) =>
-        (s || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
-
+      // ---------- مچ کردن با جداول مرجع و پروفایل ----------
       const targetsArray: TargetItem[] = Array.from(targetMap.values()).map((target) => {
         let linkedEntityId: string | null = null;
         let linkedPersonId: string | null = null;
         let canonicalPersian = (target.name_persian || '').trim();
 
         if (target.kind === 'entity') {
-          const te = allEntities.find((e) => {
+          const te = entities.find((e) => {
             const ep = normalize(e.name_persian);
             const ee = normalize(e.name_english);
             const tp = normalize(target.name_persian);
@@ -198,7 +201,7 @@ export default function PhotoManagement() {
             }
           }
         } else {
-          const tp = allPersons.find((p) => {
+          const tp = persons.find((p) => {
             const pp = normalize(p.name_persian);
             const pe = normalize(p.name_english);
             const tp = normalize(target.name_persian);
@@ -215,11 +218,13 @@ export default function PhotoManagement() {
           }
         }
 
-        const profile = profiles?.find(p =>
-          p.name_english === target.name_english ||
-          p.name_persian === target.name_persian
+        const profile = profiles.find(
+          (p) =>
+            (p.name_english && target.name_english && p.name_english === target.name_english) ||
+            (p.name_persian && target.name_persian && p.name_persian === target.name_persian)
         );
 
+        // ❗ اولویت: پروفایل → جدول مرجع → داده خام پست
         const finalPersianName =
           (profile?.name_persian && profile.name_persian.trim()) ||
           (canonicalPersian && canonicalPersian.trim()) ||
@@ -239,6 +244,7 @@ export default function PhotoManagement() {
         };
       });
 
+      // اولویت نمایش: بدون تصویرها اول
       targetsArray.sort((a, b) => {
         if (!a.photo_url && b.photo_url) return -1;
         if (a.photo_url && !b.photo_url) return 1;
@@ -246,7 +252,6 @@ export default function PhotoManagement() {
       });
 
       setTargets(targetsArray);
-
     } catch (error) {
       console.error('Failed to fetch targets:', error);
       toast({ title: 'خطا در بارگذاری اهداف', variant: 'destructive' });
@@ -256,30 +261,33 @@ export default function PhotoManagement() {
   }
 
   async function handleFetchFromWikipedia() {
-    const targetsWithoutPhotos = targets.filter(t => !t.photo_url);
+    const targetsWithoutPhotos = targets.filter((t) => !t.photo_url);
 
     if (targetsWithoutPhotos.length === 0) {
       toast({ title: 'همه اهداف دارای تصویر هستند', variant: 'default' });
       return;
     }
-    
+
     setFetching(true);
     setProgress({ current: 0, total: targetsWithoutPhotos.length });
-    
+
     try {
-      console.log(`📋 Starting to fetch photos for ${targetsWithoutPhotos.length} targets`, targetsWithoutPhotos);
-      
-      const results = await fetchPhotosForTargets(
-        targetsWithoutPhotos,
-        (current, total) => setProgress({ current, total })
+      console.log(
+        `📋 Starting to fetch photos for ${targetsWithoutPhotos.length} targets`,
+        targetsWithoutPhotos
+      );
+
+      const results = await fetchPhotosForTargets(targetsWithoutPhotos, (current, total) =>
+        setProgress({ current, total })
       );
 
       console.log(`✅ Fetch complete. Got ${results.size} photos from Wikipedia`);
-      toast({ title: `${results.size} تصویر از Wikipedia دریافت و ذخیره شد`, variant: 'default' });
+      toast({
+        title: `${results.size} تصویر از Wikipedia دریافت و ذخیره شد`,
+        variant: 'default',
+      });
 
-      // Refresh targets
       await fetchTargets();
-
     } catch (error) {
       console.error('❌ Failed to fetch from Wikipedia:', error);
       toast({ title: 'خطا در دریافت تصاویر از Wikipedia', variant: 'destructive' });
@@ -288,42 +296,25 @@ export default function PhotoManagement() {
       setProgress({ current: 0, total: 0 });
     }
   }
-  
-  const filteredTargets = targets.filter(t => {
-    if (filter === 'with-photo') return !!t.photo_url;
-    if (filter === 'without-photo') return !t.photo_url;
-    return true;
-  });
-  
-  const statsWithPhoto = targets.filter(t => t.photo_url).length;
-  const statsWithoutPhoto = targets.filter(t => !t.photo_url).length;
 
+  // ---------- upsert دستی روی target_profiles ----------
   async function upsertTargetProfile(target: TargetItem, newName: string) {
-    // if we have neither english nor persian name, nothing to persist
-    if (
-      !((target.name_english && target.name_english.trim()) ||
-        (newName && newName.trim()))
-    ) {
-      return;
-    }
+    const hasEnglish = !!(target.name_english && target.name_english.trim());
+    const identifierValue = hasEnglish
+      ? target.name_english!.trim()
+      : newName.trim();
+    const identifierColumn = hasEnglish ? 'name_english' : 'name_persian';
 
-    const identifierValue =
-      (target.name_english && target.name_english.trim()) ||
-      newName.trim();
-    const identifierColumn =
-      (target.name_english && target.name_english.trim())
-        ? 'name_english'
-        : 'name_persian';
+    if (!identifierValue) return;
 
-    const profilePayload = {
+    const payload = {
       name_english: target.name_english ?? null,
       name_persian: newName,
       photo_url: target.photo_url ?? null,
       photo_source: target.photo_source ?? null,
     };
 
-    // Try to find existing profile
-    const { data: existingProfile, error: fetchError } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('target_profiles')
       .select('id')
       .eq(identifierColumn, identifierValue)
@@ -334,10 +325,10 @@ export default function PhotoManagement() {
       throw fetchError;
     }
 
-    if (existingProfile) {
+    if (existing) {
       const { error: updateError } = await supabase
         .from('target_profiles')
-        .update(profilePayload)
+        .update(payload)
         .eq(identifierColumn, identifierValue);
 
       if (updateError) {
@@ -345,10 +336,7 @@ export default function PhotoManagement() {
         throw updateError;
       }
     } else {
-      const { error: insertError } = await supabase
-        .from('target_profiles')
-        .insert(profilePayload);
-
+      const { error: insertError } = await supabase.from('target_profiles').insert(payload);
       if (insertError) {
         console.error('[PhotoManagement] Failed to insert target_profile', insertError);
         throw insertError;
@@ -356,56 +344,24 @@ export default function PhotoManagement() {
     }
   }
 
-  async function verifyEntityPersianName(entityId: string, expected: string) {
-    const { data, error } = await supabase
-      .from('resistance_entities')
-      .select('id, name_persian')
-      .eq('id', entityId)
-      .maybeSingle();
+  const filteredTargets = targets.filter((t) => {
+    if (filter === 'with-photo') return !!t.photo_url;
+    if (filter === 'without-photo') return !t.photo_url;
+    return true;
+  });
 
-    if (error) {
-      console.error('[PhotoManagement] Failed to verify entity Persian name', error);
-      throw error;
-    }
-
-    console.log('[PhotoManagement] Verified entity Persian name from DB', data);
-
-    if (!data || (data.name_persian || '').trim() !== expected.trim()) {
-      const msg = `[PhotoManagement] Entity Persian name mismatch after save. Expected="${expected}", got="${data?.name_persian ?? ''}"`;
-      console.error(msg);
-      throw new Error(msg);
-    }
-  }
-
-  async function verifyPersonPersianName(personId: string, expected: string) {
-    const { data, error } = await supabase
-      .from('resistance_persons')
-      .select('id, name_persian')
-      .eq('id', personId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[PhotoManagement] Failed to verify person Persian name', error);
-      throw error;
-    }
-
-    console.log('[PhotoManagement] Verified person Persian name from DB', data);
-
-    if (!data || (data.name_persian || '').trim() !== expected.trim()) {
-      const msg = `[PhotoManagement] Person Persian name mismatch after save. Expected="${expected}", got="${data?.name_persian ?? ''}"`;
-      console.error(msg);
-      throw new Error(msg);
-    }
-  }
+  const statsWithPhoto = targets.filter((t) => t.photo_url).length;
+  const statsWithoutPhoto = targets.filter((t) => !t.photo_url).length;
 
   const handleSavePersianName = async (target: TargetItem) => {
     const newName = (editPersianNames[target.key] ?? target.name_persian ?? '').trim();
     if (!newName) return;
 
     setSavingNameId(target.key);
+
     try {
       if (target.kind === 'entity') {
-        let entityId = target.linkedEntityId;
+        let entityId = target.linkedEntityId ?? null;
         const entityType =
           target.entity_type && typeof target.entity_type === 'string'
             ? target.entity_type
@@ -417,37 +373,49 @@ export default function PhotoManagement() {
             .update({ name_persian: newName })
             .eq('id', entityId);
           if (error) throw error;
-          console.log('[PhotoManagement] Saved entity Persian name', {
-            entityId,
-            name_persian: newName,
-          });
         } else {
-          const insertPayload: any = {
-            name_persian: newName,
-            name_english: target.name_english,
-            name_arabic: target.name_arabic,
-            entity_type: entityType,
-            active: true,
-          };
-
-          if (target.location && typeof target.location === 'string' && target.location.trim() !== '') {
-            insertPayload.location = target.location.trim();
-          }
-
-          const { data, error } = await supabase
+          const { data: existing, error: findError } = await supabase
             .from('resistance_entities')
-            .insert(insertPayload)
             .select('id')
-            .single();
-          if (error) throw error;
-          entityId = data.id;
-          console.log('[PhotoManagement] Saved entity Persian name', {
-            entityId,
-            name_persian: newName,
-          });
+            .eq('name_english', target.name_english ?? '')
+            .maybeSingle();
+
+          if (findError) throw findError;
+
+          if (existing) {
+            entityId = existing.id;
+            const { error } = await supabase
+              .from('resistance_entities')
+              .update({ name_persian: newName })
+              .eq('id', entityId);
+            if (error) throw error;
+          } else {
+            const insertPayload: any = {
+              name_persian: newName,
+              name_english: target.name_english,
+              name_arabic: target.name_arabic,
+              entity_type: entityType,
+              active: true,
+            };
+
+            if (target.location && target.location.trim() !== '') {
+              insertPayload.location = target.location.trim();
+            }
+
+            const { data, error } = await supabase
+              .from('resistance_entities')
+              .insert(insertPayload)
+              .select('id')
+              .single();
+            if (error) throw error;
+            entityId = data.id;
+          }
         }
 
-        await verifyEntityPersianName(entityId, newName);
+        console.log('[PhotoManagement] Saved entity Persian name', {
+          entityId,
+          name_persian: newName,
+        });
 
         await upsertTargetProfile(target, newName);
 
@@ -465,7 +433,7 @@ export default function PhotoManagement() {
           )
         );
       } else {
-        let personId = target.linkedPersonId;
+        let personId = target.linkedPersonId ?? null;
 
         if (personId) {
           const { error } = await supabase
@@ -473,42 +441,60 @@ export default function PhotoManagement() {
             .update({ name_persian: newName })
             .eq('id', personId);
           if (error) throw error;
-          console.log('[PhotoManagement] Saved person Persian name', {
-            personId,
-            name_persian: newName,
-          });
         } else {
-          const { data, error } = await supabase
+          const { data: existing, error: findError } = await supabase
             .from('resistance_persons')
-            .insert({
-              name_persian: newName,
-              name_english: target.name_english,
-              name_arabic: target.name_arabic,
-              active: true,
-            })
             .select('id')
-            .single();
-          if (error) throw error;
-          personId = data.id;
-          console.log('[PhotoManagement] Saved person Persian name', {
-            personId,
-            name_persian: newName,
-          });
+            .eq('name_english', target.name_english ?? '')
+            .maybeSingle();
+
+          if (findError) throw findError;
+
+          if (existing) {
+            personId = existing.id;
+            const { error } = await supabase
+              .from('resistance_persons')
+              .update({ name_persian: newName })
+              .eq('id', personId);
+            if (error) throw error;
+          } else {
+            const { data, error } = await supabase
+              .from('resistance_persons')
+              .insert({
+                name_persian: newName,
+                name_english: target.name_english,
+                name_arabic: target.name_arabic,
+                active: true,
+              })
+              .select('id')
+              .single();
+            if (error) throw error;
+            personId = data.id;
+          }
         }
 
-        await verifyPersonPersianName(personId, newName);
+        console.log('[PhotoManagement] Saved person Persian name', {
+          personId,
+          name_persian: newName,
+        });
 
         await upsertTargetProfile(target, newName);
 
         setTargets((prev) =>
           prev.map((t) =>
             t.key === target.key
-              ? { ...t, name_persian: newName, hasPersianName: true, linkedPersonId: personId }
+              ? {
+                  ...t,
+                  name_persian: newName,
+                  hasPersianName: true,
+                  linkedPersonId: personId,
+                }
               : t
           )
         );
       }
 
+      // دوباره از دیتابیس بخوان تا بعد از رفرش هم یکسان باشد
       await fetchTargets();
 
       toast({ title: 'نام فارسی ذخیره شد', variant: 'default' });
@@ -583,7 +569,7 @@ export default function PhotoManagement() {
       setSuggestingNameId(null);
     }
   };
-  
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -595,13 +581,9 @@ export default function PhotoManagement() {
               {statsWithPhoto} از {targets.length} هدف دارای تصویر هستند
             </p>
           </div>
-          
+
           <div className="flex gap-3">
-            <Button
-              onClick={handleFetchFromWikipedia}
-              disabled={fetching || loading}
-              variant="default"
-            >
+            <Button onClick={handleFetchFromWikipedia} disabled={fetching || loading} variant="default">
               {fetching ? (
                 <>
                   <Loader2 className="w-4 h-4 ml-2 animate-spin" />
@@ -614,17 +596,13 @@ export default function PhotoManagement() {
                 </>
               )}
             </Button>
-            
-            <Button
-              onClick={fetchTargets}
-              disabled={loading || fetching}
-              variant="outline"
-            >
+
+            <Button onClick={fetchTargets} disabled={loading || fetching} variant="outline">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
-        
+
         {/* Progress Bar */}
         {fetching && (
           <Card>
@@ -632,14 +610,16 @@ export default function PhotoManagement() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>در حال دریافت تصاویر...</span>
-                  <span>{progress.current} از {progress.total}</span>
+                  <span>
+                    {progress.current} از {progress.total}
+                  </span>
                 </div>
                 <Progress value={(progress.current / progress.total) * 100} />
               </div>
             </CardContent>
           </Card>
         )}
-        
+
         {/* Filter */}
         <div className="flex gap-2">
           <Button
@@ -663,7 +643,7 @@ export default function PhotoManagement() {
             بدون تصویر ({statsWithoutPhoto})
           </Button>
         </div>
-        
+
         {/* Grid */}
         {loading ? (
           <div className="text-center py-12">
@@ -671,104 +651,105 @@ export default function PhotoManagement() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTargets.map((target) => {
-              return (
-                <Card key={target.key} className="hover:shadow-lg transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <TargetAvatar
-                        target={target}
-                        size="lg"
-                        showUpload={true}
-                        onPhotoUpdate={async () => {
-                          await fetchTargets();
-                        }}
-                      />
+            {filteredTargets.map((target) => (
+              <Card key={target.key} className="hover:shadow-lg transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <TargetAvatar
+                      target={target}
+                      size="lg"
+                      showUpload={true}
+                      onPhotoUpdate={async () => {
+                        await fetchTargets();
+                      }}
+                    />
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <div className="font-semibold">
-                              {target.name_persian || target.name_english || target.name_arabic || 'بدون نام'}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="font-semibold">
+                            {target.name_persian ||
+                              target.name_english ||
+                              target.name_arabic ||
+                              'بدون نام'}
+                          </div>
+                          {target.name_english && (
+                            <div className="text-xs text-muted-foreground">
+                              {target.name_english}
                             </div>
-                            {target.name_english && (
-                              <div className="text-xs text-muted-foreground">
-                                {target.name_english}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <Badge variant="outline">
-                              {target.kind === 'entity' ? 'نهاد' : 'فرد'}
-                            </Badge>
-                            <Badge variant={target.hasPersianName ? 'default' : 'destructive'}>
-                              {target.hasPersianName ? 'نام فارسی ثبت شده' : 'نیازمند ترجمه'}
-                            </Badge>
-                          </div>
+                          )}
                         </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="outline">
+                            {target.kind === 'entity' ? 'نهاد' : 'فرد'}
+                          </Badge>
+                          <Badge variant={target.hasPersianName ? 'default' : 'destructive'}>
+                            {target.hasPersianName ? 'نام فارسی ثبت شده' : 'نیازمند ترجمه'}
+                          </Badge>
+                        </div>
+                      </div>
 
-                        {target.position && (
-                          <div className="text-xs text-muted-foreground truncate mt-1">
-                            {target.position}
-                          </div>
-                        )}
-                        {target.photo_source && (
-                          <div className="text-xs text-primary mt-1">
-                            منبع: {target.photo_source}
-                          </div>
-                        )}
+                      {target.position && (
+                        <div className="text-xs text-muted-foreground truncate mt-1">
+                          {target.position}
+                        </div>
+                      )}
+                      {target.photo_source && (
+                        <div className="text-xs text-primary mt-1">
+                          منبع: {target.photo_source}
+                        </div>
+                      )}
 
-                        <div className="mt-3 space-y-2">
-                          <label className="text-xs text-muted-foreground">نام فارسی</label>
-                          <div className="flex gap-2">
-                            <Input
-                              value={editPersianNames[target.key] ?? target.name_persian ?? ''}
-                              onChange={(e) =>
-                                setEditPersianNames((prev) => ({
-                                  ...prev,
-                                  [target.key]: e.target.value,
-                                }))
-                              }
-                              placeholder="نام فارسی هدف را وارد کنید"
-                              className="text-sm"
-                            />
-                          </div>
-                          <div className="flex gap-2 justify-between">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="xs"
-                              disabled={suggestingNameId === target.key}
-                              onClick={() => handleSuggestPersianName(target)}
-                              className="gap-1"
-                            >
-                              {suggestingNameId === target.key ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Wand2 className="h-3 w-3" />
-                              )}
-                              پیشنهاد هوشمند
-                            </Button>
-                            <Button
-                              type="button"
-                              size="xs"
-                              disabled={savingNameId === target.key}
-                              onClick={() => handleSavePersianName(target)}
-                              className="gap-1"
-                            >
-                              {savingNameId === target.key ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : null}
-                              ذخیره نام فارسی
-                            </Button>
-                          </div>
+                      <div className="mt-3 space-y-2">
+                        <label className="text-xs text-muted-foreground">نام فارسی</label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={editPersianNames[target.key] ?? target.name_persian ?? ''}
+                            onChange={(e) =>
+                              setEditPersianNames((prev) => ({
+                                ...prev,
+                                [target.key]: e.target.value,
+                              }))
+                            }
+                            placeholder="نام فارسی هدف را وارد کنید"
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2 justify-between">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            disabled={suggestingNameId === target.key}
+                            onClick={() => handleSuggestPersianName(target)}
+                            className="gap-1"
+                          >
+                            {suggestingNameId === target.key ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Wand2 className="h-3 w-3" />
+                            )}
+                            پیشنهاد هوشمند
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            disabled={savingNameId === target.key}
+                            onClick={() => handleSavePersianName(target)}
+                            className="gap-1"
+                          >
+                            {savingNameId === target.key ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : null}
+                            ذخیره نام فارسی
+                          </Button>
                         </div>
                       </div>
                     </div>
-                  </CardContent>
+                  </div>
+                </CardContent>
               </Card>
-              );
-            })}
+            ))}
           </div>
         )}
       </div>
