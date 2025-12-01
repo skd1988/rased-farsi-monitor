@@ -1,73 +1,80 @@
-// supabase/functions/suggest-target-name/index.ts
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY");
 
-const corsHeaders: HeadersInit = {
+const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/**
- * ساده‌ترین نسخه:
- * ورودی:
- *   { kind: "entity" | "person", name_english?: string, name_arabic?: string }
- *
- * خروجی:
- *   { suggested_persian: string | null }
- */
-
-serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") {
-    // CORS preflight
-    return new Response("ok", {
-      headers: corsHeaders,
-    });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      {
-        status: 405,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-  }
-
+async function callDeepseek(body: unknown): Promise<string> {
   if (!DEEPSEEK_API_KEY) {
-    console.error("❌ Missing DEEPSEEK_API_KEY env");
-    return new Response(
-      JSON.stringify({ error: "Server misconfigured: missing API key" }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    throw new Error("DEEPSEEK_API_KEY not configured");
+  }
+
+  const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("DeepSeek error", res.status, text);
+    throw new Error(`DeepSeek error: ${res.status}`);
+  }
+
+  const json = await res.json();
+  const content =
+    json.choices?.[0]?.message?.content?.trim?.() ??
+    json.choices?.[0]?.message?.content ??
+    "";
+
+  return content;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const kind = body.kind as "entity" | "person" | undefined;
-    const nameEnglish = (body.name_english ?? "").toString().trim();
-    const nameArabic = (body.name_arabic ?? "").toString().trim();
-    const namePersian = (body.name_persian ?? "").toString().trim();
-
-    const hasAnyName =
-      !!nameEnglish.length || !!nameArabic.length || !!namePersian.length;
-
-    if (!kind) {
+    if (req.method !== "POST") {
       return new Response(
-        JSON.stringify({ error: "Missing 'kind' (entity|person)" }),
+        JSON.stringify({ error: "Only POST is allowed" }),
+        {
+          status: 405,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        {
+          status: 401,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
+
+    const payload = await req.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body" }),
         {
           status: 400,
           headers: {
@@ -78,71 +85,25 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!hasAnyName) {
-      return new Response(
-        JSON.stringify({
-          error:
-            "At least one of name_english, name_arabic or name_persian is required",
-        }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
-
-    // ───────────────────── DeepSeek call ─────────────────────
-    const systemPrompt = `
-شما یک دستیار متخصص در نام‌گذاری و ترجمه نهادها و افراد مرتبط با محور مقاومت هستید.
-کار شما:
-- اگر نام انگلیسی یا عربی داده شد، آن را به «نام رسمی و رایج فارسی» تبدیل کنید.
-- فقط نام فارسی را خروجی بدهید.
-- از معادل‌های جاافتاده استفاده کنید (مثلاً "Muslim Brotherhood" → "اخوان‌المسلمین").
-    `.trim();
-
-    const userPrompt = `
-نوع هدف: ${kind === "entity" ? "نهاد / سازمان" : "فرد"}
-نام انگلیسی: ${nameEnglish || "-"}
-نام عربی: ${nameArabic || "-"}
-نام فارسی فعلی (اگر وجود دارد): ${namePersian || "-"}
-
-لطفاً فقط یک خروجی JSON برگردان:
-{
-  "persian_name": "نام پیشنهادی فارسی"
-}
-    `.trim();
-
-    const payload = {
-      model: "deepseek-chat",
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
+    const { kind, name_english, name_arabic, name_persian } = payload as {
+      kind?: "entity" | "person";
+      name_english?: string | null;
+      name_arabic?: string | null;
+      name_persian?: string | null;
     };
 
-    const res = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    const sourceName =
+      (name_persian && name_persian.trim()) ||
+      (name_english && name_english.trim()) ||
+      (name_arabic && name_arabic.trim());
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("❌ DeepSeek error:", res.status, text);
+    if (!sourceName) {
       return new Response(
         JSON.stringify({
-          error: "DeepSeek API error",
-          status: res.status,
+          error: "At least one of name_persian / name_english / name_arabic is required",
         }),
         {
-          status: 502,
+          status: 400,
           headers: {
             ...corsHeaders,
             "Content-Type": "application/json",
@@ -151,33 +112,38 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const json = await res.json();
-    const content = json?.choices?.[0]?.message?.content?.trim() ?? "";
+    const roleLabel = kind === "person" ? "فرد حقیقی" : "نهاد یا سازمان";
 
-    let suggested: string | null = null;
+    const body = {
+      model: "deepseek-chat",
+      messages: [
+        {
+          role: "system",
+          content:
+            "تو یک دستیار ترجمه و یکسان‌سازی اسامی برای سامانه رصد عملیات روانی هستی. " +
+            "کار تو این است که برای نام‌های افراد و نهادها، یک «نام فارسی کوتاه، استاندارد و رایج» پیشنهاد بدهی. " +
+            "فقط خود نام را بدون هیچ توضیح اضافی، بدون نقل‌قول و بدون علائم اضافه برگردان.",
+        },
+        {
+          role: "user",
+          content:
+            `نوع هدف: ${roleLabel}
+نام موجود: ${sourceName}
 
-    // تلاش برای پارس JSON
-    if (content) {
-      try {
-        const cleaned = content
-          .replace(/^```json/i, "")
-          .replace(/^```/, "")
-          .replace(/```$/, "")
-          .trim();
-        const parsed = JSON.parse(cleaned);
-        if (typeof parsed?.persian_name === "string") {
-          suggested = parsed.persian_name.trim();
-        }
-      } catch {
-        // اگر مدل به‌صورت متن ساده برگرداند، همان را استفاده کن
-        suggested = content.split("\n")[0].trim();
-      }
-    }
+اگر این نام از قبل فارسی است، فقط همان را تمیز و استاندارد کن (مثلاً فاصله‌ها را اصلاح کن).
+اگر انگلیسی یا عربی است، معادل فارسی رایج و حرفه‌ای را پیشنهاد بده.
+فقط یک نام فارسی نهایی برگردان.`,
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 64,
+    };
+
+    const suggestion = await callDeepseek(body);
+    const suggested_persian = suggestion.trim();
 
     return new Response(
-      JSON.stringify({
-        suggested_persian: suggested,
-      }),
+      JSON.stringify({ suggested_persian }),
       {
         status: 200,
         headers: {
@@ -187,9 +153,11 @@ serve(async (req: Request): Promise<Response> => {
       },
     );
   } catch (err) {
-    console.error("❌ Unexpected error in suggest-target-name:", err);
+    console.error("suggest-target-name error", err);
     return new Response(
-      JSON.stringify({ error: "Unexpected error" }),
+      JSON.stringify({
+        error: "Internal error in suggest-target-name",
+      }),
       {
         status: 500,
         headers: {
