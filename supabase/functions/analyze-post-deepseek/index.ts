@@ -8,6 +8,7 @@ import { logDeepseekUsage } from "../_shared/deepseekUsage.ts";
 // ENV & GLOBALS
 // ──────────────────────────────
 const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY");
+const DEEPSEEK_MODEL = Deno.env.get("DEEPSEEK_MODEL") ?? "deepseek-chat";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -200,7 +201,9 @@ serve(async (req) => {
 `;
 
     // 2) ساخت پرامپت فارسی برای DeepSeek
-    const userPrompt = `${quickScreeningContext}تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده:
+    const userPrompt = `${quickScreeningContext}قبل از پاسخ نهایی، تحلیل روایتی و روانی را در ذهن خود انجام بده اما هیچ استدلال، چرایی یا chain-of-thought را در خروجی ننویس. خروجی فقط باید JSON باشد.
+
+تحلیل عمیق (سطح B) برای پست زیر را انجام بده. از داده‌های غربالگری سریع فقط به عنوان سرنخ استفاده کن و تحلیل مستقل و کامل ارائه بده:
 
 عنوان: ${existingPost?.title ?? "(none)"}
 محتوا: ${existingPost?.contents ?? existingPost?.summary ?? ""}
@@ -261,10 +264,11 @@ serve(async (req) => {
 - techniques باید آرایه‌ای از این گزینه‌ها باشد: "demonization", "fear_mongering", "division_creation", "confusion", "ridicule", "character_assassination", "agenda_shifting", "disinformation".
 - keywords باید آرایه‌ای از واژه‌ها/اسامی مهم (افراد، مکان‌ها، سازمان‌ها، مفاهیم) باشد.
 
-در انتهای پاسخ این دستور را رعایت کن: فقط و فقط JSON معتبر با همین فیلدها برگردان و هیچ متن دیگری اضافه نکن.`;
+در انتهای پاسخ این دستور را رعایت کن: فقط و فقط JSON معتبر با همین فیلدها برگردان و هیچ متن دیگری اضافه نکن.
+تمام محتوا باید در قالب همین شیء JSON باشد. هیچ متن دیگری خارج از JSON تولید نکن.`;
 
     const deepseekBody = {
-      model: "deepseek-chat",
+      model: DEEPSEEK_MODEL,
       messages: [
         {
           role: "system",
@@ -281,7 +285,7 @@ serve(async (req) => {
         },
       ],
       temperature: 0.3,
-      max_tokens: 2000,
+      max_tokens: 2200,
     };
 
     // 3) فراخوانی DeepSeek
@@ -448,7 +452,7 @@ serve(async (req) => {
 
       // Required system fields
       analyzed_at: completionTimestamp,
-      analysis_model: "deepseek-chat",
+      analysis_model: DEEPSEEK_MODEL,
       processing_time: processingTime / 1000,
 
       status: "completed",
