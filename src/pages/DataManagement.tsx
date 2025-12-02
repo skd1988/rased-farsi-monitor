@@ -36,6 +36,9 @@ import {
 } from 'recharts';
 import { formatDistanceToNowIran } from '@/lib/dateUtils';
 
+// ستون مرجع برای محاسبه ورود محتوا و بازه‌های زمانی
+const RECENT_BASE_FIELD = 'created_at' as const;
+
 interface DataStats {
   total_posts: number;
   new_posts: number;
@@ -49,6 +52,11 @@ interface DataStats {
   old_posts: number;
   posts_24h_ago: number;
   posts_7d_ago: number;
+}
+
+interface IngestionTimelinePoint {
+  date: string; // YYYY-MM-DD
+  imported: number;
 }
 
 interface CleanupHistory {
@@ -68,6 +76,7 @@ interface TimelinePoint {
 
 const DataManagement = () => {
   const [stats, setStats] = useState<DataStats | null>(null);
+  const [ingestionTimeline, setIngestionTimeline] = useState<IngestionTimelinePoint[]>([]);
   const [cleanupHistory, setCleanupHistory] = useState<CleanupHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [cleanupRunning, setCleanupRunning] = useState(false);
@@ -114,29 +123,34 @@ const DataManagement = () => {
     const now = new Date();
     const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     try {
-      // 🔥 Use Promise.allSettled instead of Promise.all
-      // This ensures loading state will be set to false even if some queries fail
-      const results = await Promise.allSettled([
-        supabase.from('posts').select('*', { count: 'exact', head: true }),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'New'),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Analyzed'),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Archived'),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', true),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
-        // ✅ برای منطق پاکسازی از published_at استفاده می‌کنیم (old_posts و deletable_posts)
-        //    اما آمار «پست‌های 24 ساعت/7 روز اخیر» بر اساس created_at (زمان ورود به سیستم) محاسبه می‌شود.
-        supabase.from('posts').select('*', { count: 'exact', head: true }).lt('published_at', cutoff24h),
-        supabase.from('posts').select('*', { count: 'exact', head: true })
-          .lt('published_at', cutoff24h)
-          .neq('status', 'Archived')
-          .in('threat_level', ['Low', 'Medium'])
-          .eq('is_psyop', false),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff24h),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff7d),
+      const [results, postsForTimeline] = await Promise.all([
+        // 🔥 Use Promise.allSettled instead of Promise.all
+        // This ensures loading state will be set to false even if some queries fail
+        Promise.allSettled([
+          supabase.from('posts').select('*', { count: 'exact', head: true }),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'New'),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Analyzed'),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'Archived'),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', true),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
+          supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
+          // ✅ برای منطق پاکسازی از published_at استفاده می‌کنیم (old_posts و deletable_posts)
+          //    اما آمار «پست‌های 24 ساعت/7 روز اخیر» بر اساس created_at (زمان ورود به سیستم) محاسبه می‌شود.
+          supabase.from('posts').select('*', { count: 'exact', head: true }).lt('published_at', cutoff24h),
+          supabase.from('posts').select('*', { count: 'exact', head: true })
+            .lt('published_at', cutoff24h)
+            .neq('status', 'Archived')
+            .in('threat_level', ['Low', 'Medium'])
+            .eq('is_psyop', false),
+        ]),
+        supabase
+          .from('posts')
+          .select(`id, ${RECENT_BASE_FIELD}`)
+          .gte(RECENT_BASE_FIELD, cutoff30d),
       ]);
 
       // 🔥 Extract counts safely
@@ -160,9 +174,53 @@ const DataManagement = () => {
         low_medium_count: getCount(7),
         old_posts: getCount(8),
         deletable_posts: getCount(9),
-        posts_24h_ago: getCount(10),
-        posts_7d_ago: getCount(11),
+        posts_24h_ago: 0,
+        posts_7d_ago: 0,
       });
+
+      if (postsForTimeline.error) {
+        console.error('[DataManagement] postsForTimeline error:', postsForTimeline.error);
+        setIngestionTimeline([]);
+      } else {
+        const importedMap = new Map<string, number>();
+
+        (postsForTimeline.data || []).forEach((row: any) => {
+          const value = row[RECENT_BASE_FIELD];
+          if (!value) return;
+          const d = new Date(value);
+          if (isNaN(d.getTime())) return;
+          const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+          importedMap.set(key, (importedMap.get(key) || 0) + 1);
+        });
+
+        const series: IngestionTimelinePoint[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+          const key = d.toISOString().slice(0, 10);
+          series.push({
+            date: key,
+            imported: importedMap.get(key) || 0,
+          });
+        }
+
+        setIngestionTimeline(series);
+
+        const last1 = series.slice(-1);
+        const last7 = series.slice(-7);
+
+        const posts24h = last1.reduce((sum, p) => sum + p.imported, 0);
+        const posts7d = last7.reduce((sum, p) => sum + p.imported, 0);
+
+        setStats((prev) =>
+          prev
+            ? {
+                ...prev,
+                posts_24h_ago: posts24h,
+                posts_7d_ago: posts7d,
+              }
+            : prev
+        );
+      }
     } catch (error) {
       console.error('[DataManagement] Error:', error);
       // Set zeros on complete failure
@@ -201,27 +259,12 @@ const DataManagement = () => {
       const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const cutoffISO = cutoff.toISOString();
 
-      const [postsRes, cleanupRes] = await Promise.all([
-        supabase
-          .from('posts')
-          .select('id, created_at')
-          .gte('created_at', cutoffISO),
-        supabase
-          .from('cleanup_history')
-          .select('executed_at, posts_archived, posts_deleted')
-          .gte('executed_at', cutoffISO)
-      ]);
+      const cleanupRes = await supabase
+        .from('cleanup_history')
+        .select('executed_at, posts_archived, posts_deleted')
+        .gte('executed_at', cutoffISO);
 
-      if (postsRes.error) throw postsRes.error;
       if (cleanupRes.error) throw cleanupRes.error;
-
-      const importedMap = new Map<string, number>();
-      (postsRes.data || []).forEach((row: { created_at: string }) => {
-        const d = new Date(row.created_at);
-        if (isNaN(d.getTime())) return;
-        const key = d.toISOString().slice(0, 10);
-        importedMap.set(key, (importedMap.get(key) || 0) + 1);
-      });
 
       const archivedMap = new Map<string, number>();
       const deletedMap = new Map<string, number>();
@@ -241,7 +284,7 @@ const DataManagement = () => {
         const key = d.toISOString().slice(0, 10);
         series.push({
           date: key,
-          imported: importedMap.get(key) || 0,
+          imported: 0,
           archived: archivedMap.get(key) || 0,
           deleted: deletedMap.get(key) || 0,
         });
@@ -338,12 +381,19 @@ const DataManagement = () => {
     { name: '> 24 ساعت', value: stats.old_posts, color: '#f59e0b' },
   ];
 
-  const timelineChartData = timelineData.map((point) => ({
-    date: new Date(point.date).toLocaleDateString('fa-IR'),
-    imported: point.imported,
-    archived: point.archived,
-    deleted: point.deleted,
-  }));
+  const cleanupByDate = new Map(
+    timelineData.map((point) => [point.date, { archived: point.archived, deleted: point.deleted }])
+  );
+
+  const timelineChartData = ingestionTimeline.map((point) => {
+    const cleanup = cleanupByDate.get(point.date);
+    return {
+      date: new Date(point.date).toLocaleDateString('fa-IR'),
+      imported: point.imported,
+      archived: cleanup?.archived || 0,
+      deleted: cleanup?.deleted || 0,
+    };
+  });
 
   return (
     <div className="container mx-auto p-6 space-y-6">
