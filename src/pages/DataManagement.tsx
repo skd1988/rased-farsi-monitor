@@ -127,15 +127,16 @@ const DataManagement = () => {
         supabase.from('posts').select('*', { count: 'exact', head: true }).eq('is_psyop', false),
         supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['High', 'Critical']),
         supabase.from('posts').select('*', { count: 'exact', head: true }).in('threat_level', ['Low', 'Medium']),
-        // ✅ استفاده از published_at به جای created_at
+        // ✅ برای منطق پاکسازی از published_at استفاده می‌کنیم (old_posts و deletable_posts)
+        //    اما آمار «پست‌های 24 ساعت/7 روز اخیر» بر اساس created_at (زمان ورود به سیستم) محاسبه می‌شود.
         supabase.from('posts').select('*', { count: 'exact', head: true }).lt('published_at', cutoff24h),
         supabase.from('posts').select('*', { count: 'exact', head: true })
           .lt('published_at', cutoff24h)
           .neq('status', 'Archived')
           .in('threat_level', ['Low', 'Medium'])
           .eq('is_psyop', false),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff24h),
-        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('published_at', cutoff7d),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff24h),
+        supabase.from('posts').select('*', { count: 'exact', head: true }).gt('created_at', cutoff7d),
       ]);
 
       // 🔥 Extract counts safely
@@ -400,7 +401,7 @@ const DataManagement = () => {
           <CardContent>
             <div className="text-3xl font-bold">{stats.total_posts.toLocaleString('fa')}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.posts_7d_ago.toLocaleString('fa')} پست در 7 روز اخیر
+              {stats.posts_7d_ago.toLocaleString('fa')} پست ایمپورت شده در 7 روز اخیر
             </p>
           </CardContent>
         </Card>
