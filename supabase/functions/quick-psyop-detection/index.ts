@@ -10,6 +10,8 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY");
+const DEEPSEEK_MODEL = Deno.env.get("DEEPSEEK_MODEL") ?? "deepseek-chat";
 
 
 // NOTE: This function expects a post ID.
@@ -38,8 +40,7 @@ serve(async (req) => {
     console.log(`Quick screening post: ${effectivePostId}`);
     
     // Get DeepSeek API key
-    const deepseekApiKey = Deno.env.get("DEEPSEEK_API_KEY");
-    if (!deepseekApiKey) {
+    if (!DEEPSEEK_API_KEY) {
       throw new Error("DeepSeek API key not configured");
     }
     
@@ -136,10 +137,10 @@ serve(async (req) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${deepseekApiKey}`,
+            Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
           },
           body: JSON.stringify({
-            model: "deepseek-chat",
+            model: DEEPSEEK_MODEL,
             messages: [
               {
                 role: "user",
@@ -147,7 +148,7 @@ serve(async (req) => {
               },
             ],
             temperature: 0.2,
-            max_tokens: 200,
+            max_tokens: 250,
           }),
         });
         
@@ -370,7 +371,10 @@ function buildQuickPrompt(
   entityList: string,
   snippet?: string
 ) {
-  return `You are an expert media analyst whose job is to quickly assess whether a given piece of content is likely part of a **psychological operation (psyop)** against the "Axis of Resistance" or not.
+  return `Think internally but DO NOT output any reasoning, chain-of-thought, explanations, or commentary.
+Return ONLY a single valid JSON object with the requested fields.
+
+You are an expert media analyst whose job is to quickly assess whether a given piece of content is likely part of a **psychological operation (psyop)** against the "Axis of Resistance" or not.
 
 Respond **only in valid JSON** as described below. Do not include any extra text.
 
@@ -500,7 +504,8 @@ The final JSON MUST have exactly these fields:
 - "stance_type": string or null
 - "target_persons": array of strings
 
-Do NOT include any explanation, commentary, or extra text. Return only valid JSON.`;
+Do NOT include any explanation, commentary, or extra text. Return only valid JSON.
+Your final output MUST be ONLY a JSON object. No additional text.`;
 }
 
 function shouldDoDeepAnalysis(

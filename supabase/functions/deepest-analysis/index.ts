@@ -12,6 +12,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const DEEPSEEK_API_KEY = Deno.env.get("DEEPSEEK_API_KEY") ?? "";
+const DEEPSEEK_MODEL = Deno.env.get("DEEPSEEK_MODEL") ?? "deepseek-chat";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
@@ -63,10 +64,10 @@ async function callDeepseekWithRetry(
           Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: DEEPSEEK_MODEL,
           messages: [{ role: "user", content: prompt }],
           temperature: 0.15,
-          max_tokens: 800,
+          max_tokens: 1600,
         }),
       });
 
@@ -185,6 +186,7 @@ function buildDeepestPrompt(post: any, relatedPosts: any[]) {
     : "";
 
   return `شما یک تحلیلگر ارشد جنگ شناختی و عملیات روانی هستید که باید عمیق‌ترین ارزیابی بحران را ارائه دهید. تمام متن‌های خروجی (به جز مقادیر انگلیسی در فیلدهای کلیدی) باید فارسی باشند و پاسخ فقط به صورت JSON بازگردد.
+ابتدا در ذهن خودت تمام پست‌ها و خلاصه‌ها را کنار هم قرار بده، الگوهای تصعید، هماهنگی احتمالی، شدت عملیات روانی و پیامدهای احتمالی را بررسی کن. اما هیچ استدلال یا توضیحی خارج از JSON نده.
 
 اطلاعات پست:
 - عنوان: ${post.title || "(none)"}
@@ -226,7 +228,10 @@ function buildDeepestPrompt(post: any, relatedPosts: any[]) {
 - escalation_level فقط یکی از Low، Medium، High، Critical باشد.
 - strategic_summary باید ۳ تا ۶ جمله فارسی باشد.
 - تمام آرایه‌ها باید آیتم‌های کوتاه و عملی فارسی داشته باشند.
-- هیچ توضیح یا متن دیگری خارج از JSON برنگردان.`;
+- هیچ توضیح یا متن دیگری خارج از JSON برنگردان.
+Final output MUST be exactly one JSON object with the fields:
+escalation_level, strategic_summary, key_risks, audience_segments, recommended_actions, monitoring_indicators.
+No commentary or natural language outside the JSON.`;
 }
 
 // ──────────────────────────────
