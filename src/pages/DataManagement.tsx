@@ -59,12 +59,21 @@ interface CleanupHistory {
   success: boolean;
 }
 
+interface TimelinePoint {
+  date: string;
+  imported: number;
+  archived: number;
+  deleted: number;
+}
+
 const DataManagement = () => {
   const [stats, setStats] = useState<DataStats | null>(null);
   const [cleanupHistory, setCleanupHistory] = useState<CleanupHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [lastCleanup, setLastCleanup] = useState<string | null>(null);
+  const [timelineData, setTimelineData] = useState<TimelinePoint[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState<boolean>(false);
 
   useEffect(() => {
     loadData();
@@ -86,7 +95,8 @@ const DataManagement = () => {
       await Promise.all([
         loadStats(),
         loadCleanupHistory(),
-        loadLastCleanup()
+        loadLastCleanup(),
+        loadTimeline()
       ]);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -182,6 +192,68 @@ const DataManagement = () => {
     if (data) setCleanupHistory(data);
   };
 
+  const loadTimeline = async () => {
+    setTimelineLoading(true);
+
+    try {
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const cutoffISO = cutoff.toISOString();
+
+      const [postsRes, cleanupRes] = await Promise.all([
+        supabase
+          .from('posts')
+          .select('id, created_at')
+          .gte('created_at', cutoffISO),
+        supabase
+          .from('cleanup_history')
+          .select('executed_at, posts_archived, posts_deleted')
+          .gte('executed_at', cutoffISO)
+      ]);
+
+      if (postsRes.error) throw postsRes.error;
+      if (cleanupRes.error) throw cleanupRes.error;
+
+      const importedMap = new Map<string, number>();
+      (postsRes.data || []).forEach((row: { created_at: string }) => {
+        const d = new Date(row.created_at);
+        if (isNaN(d.getTime())) return;
+        const key = d.toISOString().slice(0, 10);
+        importedMap.set(key, (importedMap.get(key) || 0) + 1);
+      });
+
+      const archivedMap = new Map<string, number>();
+      const deletedMap = new Map<string, number>();
+      (cleanupRes.data || []).forEach(
+        (row: { executed_at: string; posts_archived: number; posts_deleted: number }) => {
+          const d = new Date(row.executed_at);
+          if (isNaN(d.getTime())) return;
+          const key = d.toISOString().slice(0, 10);
+          archivedMap.set(key, (archivedMap.get(key) || 0) + (row.posts_archived || 0));
+          deletedMap.set(key, (deletedMap.get(key) || 0) + (row.posts_deleted || 0));
+        },
+      );
+
+      const series: TimelinePoint[] = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const key = d.toISOString().slice(0, 10);
+        series.push({
+          date: key,
+          imported: importedMap.get(key) || 0,
+          archived: archivedMap.get(key) || 0,
+          deleted: deletedMap.get(key) || 0,
+        });
+      }
+
+      setTimelineData(series);
+    } catch (error) {
+      console.error('[DataManagement] loadTimeline error:', error);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
   const loadLastCleanup = async () => {
     const { data } = await supabase
       .from('cleanup_history')
@@ -264,6 +336,13 @@ const DataManagement = () => {
     { name: '< 24 ساعت', value: stats.posts_24h_ago, color: '#10b981' },
     { name: '> 24 ساعت', value: stats.old_posts, color: '#f59e0b' },
   ];
+
+  const timelineChartData = timelineData.map((point) => ({
+    date: new Date(point.date).toLocaleDateString('fa-IR'),
+    imported: point.imported,
+    archived: point.archived,
+    deleted: point.deleted,
+  }));
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -528,6 +607,69 @@ const DataManagement = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Timeline Line Chart: Imported vs Archived vs Deleted */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            روند ورود، آرشیو و حذف محتوا (۳۰ روز اخیر)
+          </CardTitle>
+          <CardDescription>
+            تعداد پست‌های ایمپورت‌شده، آرشیو شده و حذف شده در هر روز
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {timelineLoading ? (
+            <Skeleton className="w-full h-64" />
+          ) : timelineChartData.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              هنوز داده‌ای برای نمایش روند زمانی وجود ندارد
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart data={timelineChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis allowDecimals={false} />
+                <Tooltip
+                  formatter={(value: number) => (value as number).toLocaleString('fa')}
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="imported"
+                  name="ایمپورت شده"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="archived"
+                  name="آرشیو شده"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="deleted"
+                  name="حذف شده"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Cleanup History */}
       <Card>
