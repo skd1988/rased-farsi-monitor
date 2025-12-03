@@ -190,73 +190,57 @@ serve(async (req) => {
       console.log(`✅ Archived ${postsArchived} posts`);
     }
 
-  // === DELETE PHASE ===
-  console.log("\n=== DELETE PHASE ===");
-  console.log(
-    "🗑️ Selecting non-PsyOp posts older than retention window for deletion...",
-  );
+    // === DELETE PHASE ===
+    console.log("\n=== DELETE PHASE ===");
+    console.log(
+      `🗑️ Selecting non-PsyOp posts older than ${retentionHours}h (based on published_at) for deletion...`,
+    );
 
-  const { data: nonArchivedPosts, error: nonArchivedError } = await supabase
-    .from("posts")
-    .select(
-      "id, title, is_psyop, status, created_at, published_at, original_published_at",
-    )
-    .neq("status", "Archived"); // فقط غیر آرشیو شده‌ها
+    const { data: nonArchivedOldPosts, error: nonArchivedError } = await supabase
+      .from("posts")
+      .select("id, title, is_psyop, status, published_at, created_at")
+      .lt("published_at", cutoffDate.toISOString())
+      .neq("status", "Archived");
 
-  if (nonArchivedError) {
-    throw nonArchivedError;
-  }
-
-  console.log(
-    `📋 Non-archived posts to evaluate: ${nonArchivedPosts?.length || 0}`,
-  );
-
-  type PostRecord = {
-    id: string;
-    title?: string | null;
-    is_psyop?: boolean | null;
-    status?: string | null;
-    created_at?: string;
-    published_at?: string | null;
-    original_published_at?: string | null;
-  };
-
-  const getBaseTimestamp = (post: PostRecord) =>
-    post.original_published_at || post.published_at || post.created_at;
-
-  const postsToDelete = (nonArchivedPosts || []).filter((post: PostRecord) => {
-    const baseTimestamp = getBaseTimestamp(post);
-
-    if (!baseTimestamp) {
-      return false;
+    if (nonArchivedError) {
+      console.error("❌ Error selecting posts for deletion:", nonArchivedError);
+      throw nonArchivedError;
     }
 
-    const isOlderThanRetention =
-      new Date(baseTimestamp).getTime() < cutoffDate.getTime();
-    const isPsyOp = post.is_psyop === true;
+    console.log(
+      `📋 Old non-archived posts (based on published_at): ${
+        nonArchivedOldPosts?.length || 0
+      }`,
+    );
 
-    return isOlderThanRetention && !isPsyOp;
-  });
+    const postsToDelete = (nonArchivedOldPosts || []).filter((post: any) => {
+      const isPsyOp = post.is_psyop === true;
+      return !isPsyOp;
+    });
 
-  console.log(
-    `🗑️ Posts to delete (non-PsyOp and older than ${retentionHours}h based on original publication time): ${postsToDelete.length}`,
-  );
+    console.log(
+      `🗑️ Posts to delete (non-PsyOp older than ${retentionHours}h): ${postsToDelete.length}`,
+    );
 
     let postsDeleted = 0;
 
     if (postsToDelete.length > 0) {
-      const idsToDelete = postsToDelete.map((p) => p.id);
+      const idsToDelete = postsToDelete.map((p: any) => p.id);
 
       console.log("Sample posts to delete:");
-      postsToDelete.slice(0, 3).forEach((p) => {
+      postsToDelete.slice(0, 3).forEach((p: any) => {
         console.log(
-          `  - ${p.title?.substring(0, 50)} (published at: ${getBaseTimestamp(p)})`,
+          `  - ${p.title?.substring(0, 80) || "(no title)"} | is_psyop=${
+            p.is_psyop
+          } | published_at=${p.published_at}`,
         );
       });
 
-      // 🔥 اینجا به جای یک DELETE بزرگ، به شکل chunk حذف می‌کنیم
+      // استفاده از حذف تکه‌ای برای جلوگیری از خطاهای درخواست بزرگ
       postsDeleted = await deletePostsInChunks(supabase, idsToDelete);
       console.log(`✅ Successfully deleted ${postsDeleted} posts`);
+    } else {
+      console.log("ℹ️ No posts matched deletion criteria.");
     }
 
     // === COUNTER RESET PHASE ===
