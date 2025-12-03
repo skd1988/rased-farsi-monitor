@@ -190,47 +190,67 @@ serve(async (req) => {
       console.log(`✅ Archived ${postsArchived} posts`);
     }
 
-    // === DELETE PHASE ===
-    console.log("\n=== DELETE PHASE ===");
-    console.log(
-      "🗑️ Selecting low-priority posts (Low/Medium & NOT PsyOp) for deletion...",
-    );
+  // === DELETE PHASE ===
+  console.log("\n=== DELETE PHASE ===");
+  console.log(
+    "🗑️ Selecting non-PsyOp posts older than retention window for deletion...",
+  );
 
-    const { data: nonArchivedOldPosts, error: nonArchivedError } =
-      await supabase
-        .from("posts")
-        .select("id, title, threat_level, is_psyop, status")
-        .lt("created_at", cutoffDate.toISOString())
-        .neq("status", "Archived"); // فقط غیر آرشیو شده‌ها
+  const { data: nonArchivedPosts, error: nonArchivedError } = await supabase
+    .from("posts")
+    .select(
+      "id, title, is_psyop, status, created_at, published_at, original_published_at",
+    )
+    .neq("status", "Archived"); // فقط غیر آرشیو شده‌ها
 
-    if (nonArchivedError) {
-      throw nonArchivedError;
+  if (nonArchivedError) {
+    throw nonArchivedError;
+  }
+
+  console.log(
+    `📋 Non-archived posts to evaluate: ${nonArchivedPosts?.length || 0}`,
+  );
+
+  type PostRecord = {
+    id: string;
+    title?: string | null;
+    is_psyop?: boolean | null;
+    status?: string | null;
+    created_at?: string;
+    published_at?: string | null;
+    original_published_at?: string | null;
+  };
+
+  const getBaseTimestamp = (post: PostRecord) =>
+    post.original_published_at || post.published_at || post.created_at;
+
+  const postsToDelete = (nonArchivedPosts || []).filter((post: PostRecord) => {
+    const baseTimestamp = getBaseTimestamp(post);
+
+    if (!baseTimestamp) {
+      return false;
     }
 
-    console.log(
-      `📋 Old non-archived posts: ${nonArchivedOldPosts?.length || 0}`,
-    );
+    const isOlderThanRetention =
+      new Date(baseTimestamp).getTime() < cutoffDate.getTime();
+    const isPsyOp = post.is_psyop === true;
 
-    const postsToDelete = (nonArchivedOldPosts || []).filter((post: any) => {
-      const isLowThreat =
-        post.threat_level === "Low" || post.threat_level === "Medium";
-      const notPsyOp = post.is_psyop === false;
-      return isLowThreat && notPsyOp;
-    });
+    return isOlderThanRetention && !isPsyOp;
+  });
 
-    console.log(
-      `🗑️ Posts to delete (Low/Medium and NOT PsyOp): ${postsToDelete.length}`,
-    );
+  console.log(
+    `🗑️ Posts to delete (non-PsyOp and older than ${retentionHours}h based on original publication time): ${postsToDelete.length}`,
+  );
 
     let postsDeleted = 0;
 
     if (postsToDelete.length > 0) {
-      const idsToDelete = postsToDelete.map((p: any) => p.id);
+      const idsToDelete = postsToDelete.map((p) => p.id);
 
       console.log("Sample posts to delete:");
-      postsToDelete.slice(0, 3).forEach((p: any) => {
+      postsToDelete.slice(0, 3).forEach((p) => {
         console.log(
-          `  - ${p.title?.substring(0, 50)} (${p.threat_level})`,
+          `  - ${p.title?.substring(0, 50)} (published at: ${getBaseTimestamp(p)})`,
         );
       });
 
